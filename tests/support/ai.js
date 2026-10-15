@@ -1,15 +1,9 @@
-// Test helper for enemy AI: a small level, you (a soldier with health), some
-// enemies, and the full tick in the same order as main.js. No browser needed.
+// Test helper for enemy AI: a small level (or a whole one), 1 to 4 players and
+// some enemies, run with the game's own simulation (src/game/sim.js), so the
+// tick order is exactly the game's. No browser needed.
 
-import { initPhysics, createPhysicsWorld } from '../../src/world/physics.js';
-import { buildLevel } from '../../src/world/level.js';
-import { createSurfaceRegistry } from '../../src/world/surfaces.js';
-import { createSoldier } from '../../src/player/soldier.js';
-import { createHealth } from '../../src/player/health.js';
-import { buildNavGrid } from '../../src/ai/nav-grid.js';
-import { buildCover } from '../../src/ai/cover.js';
-import { createNoiseBoard } from '../../src/ai/noise.js';
-import { createEnemies } from '../../src/ai/enemies.js';
+import { initPhysics } from '../../src/world/physics.js';
+import { createSim } from '../../src/game/sim.js';
 import { createEvents } from '../../src/core/events.js';
 import { idleCommand } from '../../src/core/input.js';
 import { SIM_DT } from '../../src/core/loop.js';
@@ -18,75 +12,67 @@ import { FLOOR } from './sim.js';
 /**
  * @param {object} o
  * @param {Array} [o.pieces]   level pieces (enemy pieces included)
- * @param {number[]} [o.spawn] where you stand
+ * @param {number[]} [o.spawn] where player 1 stands
  * @param {number} [o.yaw]
  * @param {number} [o.seed]
  * @param {string} [o.difficulty]
  * @param {object} [o.bounds]  nav grid area
- * @param {boolean} [o.god]    you can't be hurt
+ * @param {boolean} [o.god]    players can't be hurt
  * @param {object} [o.level]   a whole level definition (levels/*.js) instead of pieces
+ * @param {number} [o.players] how many players (they start round the spawn)
  */
-export async function makeFight({ pieces = [], spawn = [0, 0, 0], yaw = 0, seed = 11, difficulty = 'regular', bounds = { min: [-40, -40], max: [40, 40] }, god = false, level: def = null } = {}) {
+export async function makeFight({ pieces = [], spawn = [0, 0, 0], yaw = 0, seed = 11, difficulty = 'regular', bounds = { min: [-40, -40], max: [40, 40] }, god = false, level: def = null, players = 1 } = {}) {
   await initPhysics();
-  const world = createPhysicsWorld();
-  const registry = createSurfaceRegistry();
-  if (def) {
-    spawn = def.spawn.pos;
-    yaw = def.spawn.yaw;
-    bounds = def.nav;
-  }
-  const level = buildLevel(def ?? { name: 'test', spawn: { pos: spawn, yaw }, pieces: [FLOOR, ...pieces] }, world, registry);
-  const nav = buildNavGrid(world, bounds);
-  const cover = buildCover(world, nav);
-  const noise = createNoiseBoard();
   const events = createEvents();
   const log = [];
   for (const name of ['weapon:fire', 'player:hurt', 'player:down', 'enemy:down', 'enemy:bark', 'bullet:nearmiss', 'target:hit']) {
     events.on(name, (data) => log.push({ name, time: fight.time, ...data }));
   }
-  const health = createHealth({ events });
-  health.godMode = god;
-  let enemies = null;
-  const soldier = createSoldier({
-    world, registry, events, seed, noise, flatZones: true,
-    spawn: { pos: spawn, yaw },
-    damage: (victim, amount, hit) => (victim.kind === 'enemy' ? enemies.damage(victim, amount, hit) : { killed: false }),
-  });
-  enemies = createEnemies({ world, registry, nav, cover, noise, events, seed, difficulty, specs: level.expanded.enemies, player: { soldier, health } });
-  world.step();
-  const look = { yaw, pitch: 0 };
+  const levelDef = def ?? { name: 'test', spawn: { pos: spawn, yaw }, nav: bounds, pieces: [FLOOR, ...pieces] };
+  const sim = createSim({ def: levelDef, id: 'test', seed, difficulty, events, players: Array.from({ length: players }, (_, owner) => ({ owner })) });
+  for (const p of sim.team.values()) p.health.godMode = god;
+  const looks = new Map([...sim.team.values()].map((p) => [p.owner, { yaw: p.spawn.yaw, pitch: 0 }]));
+  const me = sim.player(0);
 
   const fight = {
-    world, registry, nav, cover, noise, events, log, soldier, health, enemies, look, level,
+    sim, world: sim.world, registry: sim.registry, nav: sim.nav, cover: sim.cover, noise: sim.noise,
+    events, log, level: sim.level,
+    soldier: me.soldier, health: me.health, enemies: sim.enemies,
+    look: looks.get(0),
+    get players() { return [...sim.team.values()]; },
     time: 0,
-    get list() { return enemies.list; },
-    e: (i = 0) => enemies.list[i],
-    /** Run `seconds` of game time. `make(i)` (or a fixed object) is your command; `each(i)` runs after every tick. */
-    run(seconds, make = {}, each = null) {
+    get list() { return sim.enemies.list; },
+    e: (i = 0) => sim.enemies.list[i],
+    /**
+     * Run `seconds` of game time. `make(i, owner)` (or a fixed object) is each player's command
+     * (player 1's, if `others` is given); `others(i, owner)` gives the rest theirs; `each(i)` runs after every tick.
+     */
+    run(seconds, make = {}, each = null, others = null) {
       const ticks = Math.round(seconds / SIM_DT);
       for (let i = 0; i < ticks; i++) {
-        const partial = typeof make === 'function' ? make(i) : make;
-        const cmd = { ...idleCommand(look.yaw, look.pitch), ...partial };
-        soldier.move(cmd, SIM_DT);
-        enemies.move(SIM_DT);
-        world.step();
-        const out = soldier.act(cmd, SIM_DT);
-        look.yaw += out.look.yaw;
-        look.pitch += out.look.pitch;
-        enemies.playerShots(out.shots);
-        enemies.think(SIM_DT);
-        enemies.act(SIM_DT);
-        health.update(SIM_DT);
+        const cmds = new Map();
+        for (const p of sim.team.values()) {
+          const look = looks.get(p.owner);
+          const source = p.owner === 0 || !others ? make : others;
+          const partial = typeof source === 'function' ? source(i, p.owner) : (p.owner === 0 ? source : {});
+          cmds.set(p.owner, { ...idleCommand(look.yaw, look.pitch), ...partial });
+        }
+        const outs = sim.tick(SIM_DT, cmds);
+        for (const [owner, out] of outs) {
+          const look = looks.get(owner);
+          look.yaw += out.look.yaw;
+          look.pitch += out.look.pitch;
+        }
         fight.time += SIM_DT;
         each?.(i);
       }
     },
     count: (name, filter = () => true) => log.filter((e) => e.name === name && filter(e)).length,
-    /** Put yourself somewhere instantly. */
-    teleport(pos, y = look.yaw) {
-      soldier.teleport(pos, y);
-      look.yaw = y;
-      world.step();
+    /** Put a player (default: you) somewhere instantly. */
+    teleport(pos, y = looks.get(0).yaw, owner = 0) {
+      sim.player(owner).soldier.teleport(pos, y);
+      looks.get(owner).yaw = y;
+      sim.world.step();
     },
   };
   return fight;
