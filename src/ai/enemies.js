@@ -157,8 +157,10 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     for (let i = 0; i < ROUTES_PER_TICK && queue.length; i++) {
       const e = queue.shift();
       e.path.pending = false;
-      if (e.dead || !e.intent.dest) continue;
-      const points = route(nav, e.pos, e.path.dest, { avoid: e.intent.avoid ?? null });
+      const dest = e.path.dest ?? e.intent.dest;
+      if (e.dead || !dest) continue;
+      e.path.dest = { ...dest };
+      const points = route(nav, e.pos, dest, { avoid: e.intent.avoid ?? null });
       if (points) {
         e.path.points = points;
         e.path.index = Math.min(1, points.length - 1);

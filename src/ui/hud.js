@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { HOSTAGE_PENALTY } from '../game/course.js';
+import { ROLES } from '../ai/enemy-data.js';
 
 const MODE_LABEL = { mantle: 'CLIMB', slide: 'SLIDE', air: 'AIR' };
 const DEG = Math.PI / 180;
@@ -15,7 +16,16 @@ const formatTime = (t) => {
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 };
 
-export function createHud({ soldier, settings, loop, input, camera, course, events }) {
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+/**
+ * @param {object} opts
+ * @param {object} [opts.course]     the kill house (Proving Ground)
+ * @param {object} [opts.encounter]  the Compound's rules (game/encounter.js)
+ * @param {object} [opts.enemies]    ai/enemies.js, for "someone's noticing you" arrows
+ * @param {object} [opts.health]     player/health.js
+ */
+export function createHud({ soldier, settings, loop, input, camera, course, encounter = null, enemies = null, health = null, events }) {
   const player = soldier.body;
   const arsenal = soldier.arsenal;
   const el = (id) => document.getElementById(id);
@@ -41,6 +51,15 @@ export function createHud({ soldier, settings, loop, input, camera, course, even
   const resultsList = el('resultsList');
   const toast = el('toast');
   const dmgLayer = el('dmgNums');
+  const hurt = el('hurt');
+  const healthBox = el('health');
+  const healthFill = el('healthFill');
+  const dirsLayer = el('dirs');
+  const feed = el('feed');
+  const subs = el('subs');
+  const downBox = el('down');
+  const downInfo = el('downInfo');
+  const view = el('view');
 
   const options = { damageNumbers: false };
   const touchScreen = matchMedia('(pointer: coarse)');
@@ -118,6 +137,152 @@ export function createHud({ soldier, settings, loop, input, camera, course, even
   }
   const projected = new THREE.Vector3();
 
+  // ---- getting hurt: red screen edges and an arrow pointing at the shooter
+  let hurtFlash = 0;
+  let saturation = 1;
+  const arrows = Array.from({ length: 6 }, () => {
+    const d = document.createElement('div');
+    d.className = 'dir';
+    d.append(document.createElement('i'));
+    dirsLayer.append(d);
+    return { el: d, from: null, life: 0 };
+  });
+  let nextArrow = 0;
+  events.on('player:hurt', (e) => {
+    if ((e.owner ?? 0) !== 0) return;
+    hurtFlash = Math.min(0.8, hurtFlash + 0.25 + e.amount / 60);
+    if (!e.from) return;
+    // One arrow per shooter: reuse it if this one's already showing.
+    const same = arrows.find((a) => a.life > 0 && a.from && Math.hypot(a.from.x - e.from.x, a.from.z - e.from.z) < 2);
+    const a = same ?? arrows[nextArrow++ % arrows.length];
+    a.from = { ...e.from };
+    a.life = 1.8;
+  });
+  // "Someone's noticing you": white arrows turning red as their awareness fills.
+  const notices = Array.from({ length: 8 }, () => {
+    const d = document.createElement('div');
+    d.className = 'dir notice';
+    d.append(document.createElement('i'));
+    dirsLayer.append(d);
+    return d;
+  });
+  const angleTo = (p) => {
+    const me = player.state.pos;
+    const yawTo = Math.atan2(-(p.x - me.x), -(p.z - me.z));
+    return -wrap(yawTo - input.yaw) / DEG; // screen degrees, clockwise from straight ahead
+  };
+
+  // ---- kill notices and callout subtitles
+  function line(box, html, cls = '', seconds = 3.5, max = 4) {
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    if (cls) d.className = cls;
+    box.append(d);
+    while (box.children.length > max) box.firstChild.remove();
+    setTimeout(() => { d.style.opacity = '0'; }, seconds * 1000);
+    setTimeout(() => d.remove(), seconds * 1000 + 450);
+  }
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  events.on('enemy:down', (e) => {
+    if ((e.owner ?? 0) !== 0) return;
+    line(feed, `<b>${esc(ROLES[e.role]?.name ?? 'Enemy')}</b> down${e.headshot ? ' · headshot' : ''}`, e.headshot ? 'head' : '');
+  });
+  events.on('enemy:bark', (e) => {
+    // Subtitles for what you'd hear: only callouts from nearby.
+    const me = player.state.pos;
+    if (Math.hypot(e.pos.x - me.x, e.pos.z - me.z) > 40) return;
+    line(subs, `<b>${esc(ROLES[e.role]?.name ?? 'Enemy')}</b>${esc(e.text)}`, '', 3, 3);
+  });
+
+  // ---- the Compound
+  events.on('encounter:ready', (e) => {
+    bestTime = e.best;
+    results.hidden = true;
+    downBox.hidden = true;
+  });
+  events.on('encounter:down', (e) => {
+    downInfo.textContent = `${e.kills} of ${e.total} hostiles down · ${formatTime(e.time)}`;
+    downBox.hidden = false;
+  });
+  events.on('encounter:finish', (r) => {
+    bestTime = r.best;
+    resultsTitle.textContent = r.record && r.previous ? 'New best time!' : 'Compound cleared';
+    const rows = [
+      ['Time', formatTime(r.time)],
+      ['Best', formatTime(r.best)],
+      ['Hostiles', String(r.kills)],
+      ['Headshots', String(r.headshots)],
+      ['Accuracy', `${Math.round(r.accuracy * 100)}% (${r.hits}/${r.shots})`],
+      ['Damage taken', String(r.damageTaken)],
+    ];
+    resultsList.replaceChildren(...rows.flatMap(([k, v]) => {
+      const dt = document.createElement('dt');
+      dt.textContent = k;
+      const dd = document.createElement('dd');
+      dd.textContent = v;
+      return [dt, dd];
+    }));
+    results.hidden = false;
+    resultsTimer = 14;
+  });
+
+  function updateThreats(dt) {
+    if (!health) return;
+    const frac = health.fraction;
+    healthBox.hidden = !enemies;
+    set(healthFill.style, 'hw', `${Math.round(frac * 100)}%`, 'width');
+    healthBox.classList.toggle('low', health.state.hp < health.tuning.low);
+    hurtFlash = Math.max(0, hurtFlash - dt * 1.6);
+    const edge = Math.min(1, Math.pow(1 - frac, 1.4) * 0.85 + hurtFlash);
+    set(hurt.style, 'hurt', edge.toFixed(2), 'opacity');
+    // Low health drains the colour from the world.
+    const sat = frac < health.tuning.low / health.tuning.max ? 0.35 + 0.65 * (frac / (health.tuning.low / health.tuning.max)) : 1;
+    if (Math.abs(sat - saturation) > 0.02 || (sat === 1 && saturation !== 1)) {
+      saturation = sat;
+      view.style.filter = sat < 1 ? `saturate(${sat.toFixed(2)})` : '';
+    }
+    for (const a of arrows) {
+      a.life -= dt;
+      if (a.life <= 0 || !a.from) { a.el.style.opacity = '0'; continue; }
+      a.el.style.transform = `rotate(${angleTo(a.from).toFixed(1)}deg)`;
+      a.el.style.opacity = Math.min(1, a.life).toFixed(2);
+    }
+    // Who's noticing you?
+    let n = 0;
+    if (enemies && !health.state.down) {
+      for (const e of enemies.alive) {
+        if (n >= notices.length) break;
+        const laser = e.motor.laserOn && e.senses.visible;
+        const aw = e.senses.awareness;
+        const fresh = e.inCombat ? (enemies.ai.time - e.engagedAt < 1.2) : aw > 0.04;
+        if (!laser && !fresh) continue;
+        const d = notices[n++];
+        d.classList.toggle('laser', laser);
+        d.style.setProperty('--k', aw.toFixed(2));
+        d.style.transform = `rotate(${angleTo(e.pos).toFixed(1)}deg) scale(${(0.7 + 0.5 * aw).toFixed(2)})`;
+        d.style.opacity = laser ? '1' : (0.35 + 0.65 * aw).toFixed(2);
+      }
+    }
+    for (let i = n; i < notices.length; i++) notices[i].style.opacity = '0';
+  }
+
+  function updateEncounter() {
+    if (!encounter) return false;
+    const showing = encounter.state === 'ready' || encounter.state === 'running';
+    courseBox.hidden = !showing;
+    if (encounter.state !== 'down') downBox.hidden = true;
+    if (!showing) return true;
+    set(courseTitle, 'cT', 'THE COMPOUND');
+    if (encounter.state === 'ready') {
+      set(courseTime, 'ct', formatTime(0));
+      set(courseInfo, 'ci', `Leave the start area to begin${bestTime ? ` · best ${formatTime(bestTime)}` : ''}`);
+    } else {
+      set(courseTime, 'ct', formatTime(encounter.time));
+      set(courseInfo, 'ci', `${encounter.remaining} hostile${encounter.remaining === 1 ? '' : 's'} left`);
+    }
+    return true;
+  }
+
   // ---- the kill house
   events.on('course:ready', (e) => {
     bestTime = e.best;
@@ -148,13 +313,13 @@ export function createHud({ soldier, settings, loop, input, camera, course, even
   });
 
   function updateCourse(dt) {
-    if (!course) return;
     resultsTimer -= dt;
     if (resultsTimer <= 0) results.hidden = true;
+    if (updateEncounter() || !course) return;
     const showing = course.state === 'ready' || course.state === 'running';
     courseBox.hidden = !showing;
     if (!showing) return;
-    courseTitle.textContent = 'KILL HOUSE';
+    set(courseTitle, 'cT', 'KILL HOUSE');
     if (course.state === 'ready') {
       set(courseTime, 'ct', formatTime(0));
       set(courseInfo, 'ci', `Step off the pad to start${bestTime ? ` · best ${formatTime(bestTime)}` : ''}`);
@@ -183,7 +348,7 @@ export function createHud({ soldier, settings, loop, input, camera, course, even
       const spreadPx = (Math.tan(arsenal.state.spread * DEG) / Math.tan((camera.fov * DEG) / 2)) * (innerHeight / 2);
       crosshair.style.setProperty('--spread', `${Math.max(3, spreadPx).toFixed(1)}px`);
       const gun = arsenal.current;
-      const hide = arsenal.state.ads > 0.6 || s.sprinting || gun.status === 'raising' || gun.status === 'lowering';
+      const hide = arsenal.state.ads > 0.6 || s.sprinting || gun.status === 'raising' || gun.status === 'lowering' || !!health?.state.down;
       crosshair.classList.toggle('hide', hide);
 
       // Weapon panel.
@@ -206,6 +371,7 @@ export function createHud({ soldier, settings, loop, input, camera, course, even
       if (toastTimer <= 0) toast.classList.remove('on');
 
       updateCourse(dt);
+      updateThreats(dt);
 
       for (const n of numbers) {
         if (n.el.hidden) continue;

@@ -201,6 +201,20 @@ test('two headshots drop a Rifleman; its body leaves the physics world', async (
   assert.equal(f.enemies.alive.length, 0);
 });
 
+// Regression test: an enemy that got stuck while its route request was still
+// queued lost the request's destination, and the route-finder crashed.
+test('a route request that goes stale while it waits in the queue does not crash', async () => {
+  const f = await makeFight({ pieces: [enemy('rifleman', [0, 0, -10], { patrol: [[0, -10], [8, -10]] })] });
+  const e = f.e();
+  f.run(0.2);
+  e.intent.dest = { x: 8, y: 0, z: -10 };
+  e.path.pending = false;
+  f.enemies.ai.requestPath(e);
+  e.path.dest = null; // what the stuck check used to do
+  assert.doesNotThrow(() => f.run(0.1));
+  assert.ok(e.path.points.length > 0, 'it still got a route');
+});
+
 test('a fight plays out exactly the same twice (determinism)', async () => {
   const play = async () => {
     const f = await makeFight({

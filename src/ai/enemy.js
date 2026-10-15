@@ -164,7 +164,7 @@ export function command(e, ai, dt) {
     if (m.stuckTimer > 1) {
       const moved = Math.hypot(pos.x - m.stuckFrom.x, pos.z - m.stuckFrom.z);
       m.stuckCount = moved < 0.25 ? m.stuckCount + 1 : 0;
-      if (m.stuckCount >= 1) e.path.dest = null; // ask for a fresh route
+      if (m.stuckCount >= 1 && !e.path.pending) e.path.dest = null; // ask for a fresh route
       if (m.stuckCount >= 3) { e.path.failed = true; e.pathFailed = true; m.stuckCount = 0; }
       m.stuckTimer = 0;
       m.stuckFrom = { ...pos };
@@ -220,12 +220,13 @@ export function command(e, ai, dt) {
     m.err.pitch += clamp(m.errGoal.pitch - m.err.pitch, -step, step);
     let offYaw = m.err.yaw, offPitch = m.err.pitch;
     if (m.warning > 0) {
-      // A warning burst: just wide, about a metre past your ear (plus the gun's spread,
-      // so it can't hit by luck). You hear the whizz and know where it came from.
+      // A warning burst: just over your head, about a metre above your chest (plus the
+      // gun's spread, so it can't hit by luck). You hear the crack and know where it
+      // came from. High rather than wide, so side-stepping can't walk you into it.
       const dist = Math.hypot(m.track.x - eye.x, m.track.z - eye.z);
       const spread = e.soldier.arsenal.state.spread;
-      offYaw = m.warnDir * (Math.atan2(0.95, Math.max(dist, 1)) / DEG + spread);
-      offPitch = 0.3;
+      offYaw = m.warnDir * 0.6 * spread;
+      offPitch = Math.atan2(1.05, Math.max(dist, 1)) / DEG + spread;
     }
     desiredYaw += offYaw * DEG;
     desiredPitch += offPitch * DEG;

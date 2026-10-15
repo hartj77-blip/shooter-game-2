@@ -16,10 +16,12 @@ import { HITBOX_GROUPS } from '../world/groups.js';
 import { placePoint } from '../world/kit.js';
 
 // Box sizes [width, height, depth] and centres [x, y, z] in the soldier's own
-// space: x to the right, y up from the feet, -z forwards.
+// space: x to the right, y up from the feet, -z forwards. They match the block
+// soldier drawn by src/render/soldier-model.js (standing, and crouched with its
+// lean forwards), so shooting what you see hits what you see.
 export const HITBOX_POSES = {
   stand: [
-    { zone: 'head', size: [0.26, 0.28, 0.28], at: [0, 1.62, 0] },
+    { zone: 'head', size: [0.26, 0.28, 0.28], at: [0, 1.6, 0] },
     { zone: 'body', size: [0.48, 0.74, 0.3], at: [0, 1.13, 0] },
     { zone: 'limb', size: [0.13, 0.56, 0.16], at: [-0.31, 1.18, -0.06] },
     { zone: 'limb', size: [0.13, 0.56, 0.16], at: [0.31, 1.18, -0.06] },
@@ -27,12 +29,12 @@ export const HITBOX_POSES = {
     { zone: 'limb', size: [0.18, 0.76, 0.2], at: [0.12, 0.38, 0] },
   ],
   crouch: [
-    { zone: 'head', size: [0.26, 0.28, 0.28], at: [0, 0.99, -0.06] },
-    { zone: 'body', size: [0.48, 0.58, 0.32], at: [0, 0.6, 0] },
-    { zone: 'limb', size: [0.13, 0.46, 0.16], at: [-0.31, 0.62, -0.1] },
-    { zone: 'limb', size: [0.13, 0.46, 0.16], at: [0.31, 0.62, -0.1] },
-    { zone: 'limb', size: [0.18, 0.36, 0.44], at: [-0.12, 0.18, -0.08] },
-    { zone: 'limb', size: [0.18, 0.36, 0.44], at: [0.12, 0.18, -0.08] },
+    { zone: 'head', size: [0.26, 0.28, 0.3], at: [0, 1.06, -0.17] },
+    { zone: 'body', size: [0.48, 0.62, 0.36], at: [0, 0.66, -0.03] },
+    { zone: 'limb', size: [0.13, 0.42, 0.18], at: [-0.31, 0.7, -0.16] },
+    { zone: 'limb', size: [0.13, 0.42, 0.18], at: [0.31, 0.7, -0.16] },
+    { zone: 'limb', size: [0.18, 0.36, 0.5], at: [-0.12, 0.2, -0.1] },
+    { zone: 'limb', size: [0.18, 0.36, 0.5], at: [0.12, 0.2, -0.1] },
   ],
 };
 

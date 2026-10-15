@@ -222,7 +222,68 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 .dmg { position: absolute; left: 0; top: 0; margin: -10px 0 0 -12px; font: 700 18px var(--head); color: #fff; }
 .dmg.head { color: var(--accent); }
 
+/* ------------------------------------------------------------------ milestone 3: health, threats, the map picker */
+/* Red screen edges: stronger the more hurt you are, with a flash on each hit. */
+.hurt {
+  position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(ellipse at 50% 50%, rgba(120, 0, 0, 0) 45%, rgba(150, 10, 0, 0.55) 80%, rgba(110, 0, 0, 0.9) 100%);
+}
+.health {
+  position: absolute; left: calc(20px + env(safe-area-inset-left, 0px)); bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  width: 150px; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.5); border: 1px solid var(--line); overflow: hidden;
+}
+.health i { display: block; height: 100%; width: 100%; background: var(--text); transition: width 0.15s; }
+.health.low i { background: var(--danger); }
+
+/* Arrows round the crosshair: red = where a shot came from; white to red = someone noticing you. */
+.dirs { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.dir { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; }
+.dir i {
+  position: absolute; left: -26px; top: -132px; width: 52px; height: 14px;
+  background: linear-gradient(to bottom, rgba(255, 70, 50, 0.95), rgba(255, 70, 50, 0));
+  clip-path: polygon(0 100%, 50% 0, 100% 100%, 50% 60%);
+}
+.dir.notice i { --k: 0; top: -104px; left: -12px; width: 24px; height: 12px; background: color-mix(in srgb, #ffffff calc(100% - var(--k) * 100%), #ff5a3c); clip-path: polygon(0 100%, 50% 0, 100% 100%, 50% 55%); }
+.dir.laser i { top: -112px; left: -14px; width: 28px; height: 16px; background: #ff2a1a; animation: pulse 0.35s ease-in-out infinite alternate; }
+@keyframes pulse { from { opacity: 0.45; } to { opacity: 1; } }
+
+/* Kill notices (top right) and callout subtitles (bottom middle). */
+.feed {
+  position: absolute; right: calc(22px + env(safe-area-inset-right, 0px)); top: calc(14px + env(safe-area-inset-top, 0px));
+  display: grid; justify-items: end; gap: 4px; font: 600 16px var(--head); letter-spacing: 0.08em; text-transform: uppercase;
+}
+.feed div { padding: 3px 10px; border-radius: 4px; background: rgba(0, 0, 0, 0.45); transition: opacity 0.4s; }
+.feed div b { color: var(--danger); }
+.feed div.head b { color: var(--accent); }
+.subs {
+  position: absolute; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  display: grid; justify-items: center; gap: 4px; width: min(560px, calc(100vw - 32px));
+}
+.subs div { padding: 3px 12px; border-radius: 4px; background: rgba(0, 0, 0, 0.55); font-size: 17px; transition: opacity 0.4s; text-shadow: none; }
+.subs div b { font: 600 15px var(--head); letter-spacing: 0.1em; text-transform: uppercase; color: #ff8a6a; margin-right: 8px; }
+
+/* You're down. */
+.down {
+  position: absolute; left: 50%; top: 34%; transform: translateX(-50%); text-align: center;
+  padding: 18px 28px; border-radius: 10px; background: rgba(20, 8, 6, 0.8); border: 1px solid rgba(224, 88, 62, 0.5); text-shadow: none;
+}
+.down-title { font: 700 40px var(--head); letter-spacing: 0.08em; text-transform: uppercase; color: var(--danger); }
+.down-info { color: var(--muted); margin-top: 4px; }
+.down-hint { margin-top: 10px; font: 600 16px var(--head); letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* The map picker on the title screen. */
+.maps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+.map {
+  display: grid; gap: 4px; text-align: left; padding: 12px 14px; min-height: 0; text-transform: none; letter-spacing: 0;
+  font: 400 14px/1.35 var(--body); color: var(--muted);
+}
+.map b { font: 700 20px var(--head); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); }
+.map[aria-checked="true"] { border-color: var(--accent); background: rgba(232, 177, 74, 0.12); }
+.map[aria-checked="true"] b { color: var(--accent); }
+@media (max-width: 460px) { .maps { grid-template-columns: 1fr; } }
+
 @media (max-width: 560px) {
   .ammo b { font-size: 34px; }
   .course-time { font-size: 30px; }
+  .subs div { font-size: 15px; }
 }

@@ -63,7 +63,7 @@ test('crouching lowers the head hitbox', async () => {
   assert.equal(bravo.state.crouched, true);
   const high = traceShot(r.world, r.registry, shotAt(0, 1.62, -10), r.soldier).hits[0];
   assert.notEqual(high?.target, bravo.entity, 'standing head height now misses');
-  const low = traceShot(r.world, r.registry, shotAt(0, 0.99, -10), r.soldier).hits[0];
+  const low = traceShot(r.world, r.registry, shotAt(0, 1.06, -9.83), r.soldier).hits[0]; // leaning forwards, towards you
   assert.equal(low.zone, 'head');
 });
 
