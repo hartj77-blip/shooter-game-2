@@ -278,7 +278,10 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
       point: hit.point ? { ...hit.point } : null, dir: hit.dir ? { ...hit.dir } : null,
       weapon: hit.weapon ?? null, zone: hit.zone ?? null, time: ai.time,
     };
+    // Their ragdoll takes over the drawing: switch off the hitboxes and the body
+    // they moved with, or it would stand there as an invisible wall.
     e.soldier.hitboxes.setEnabled(false);
+    e.soldier.body.collider.setEnabled(false);
     tokens.release(e);
     for (const [k, v] of taken) if (v === e) taken.delete(k);
     if (e.squad.flanker === e.id) e.squad.flanker = null;

@@ -17,6 +17,7 @@
 
 export function createEvents() {
   const listeners = new Map();
+  const everything = new Set(); // listeners for every event (the co-op host forwards them)
 
   function on(name, fn) {
     if (!listeners.has(name)) listeners.set(name, new Set());
@@ -29,12 +30,19 @@ export function createEvents() {
   }
 
   function emit(name, data) {
+    for (const fn of everything) fn(name, data);
     const set = listeners.get(name);
     if (!set) return;
     for (const fn of set) fn(data);
   }
 
-  return { on, off, emit };
+  /** Hear every event: fn(name, data). Returns a function that stops listening. */
+  function onAny(fn) {
+    everything.add(fn);
+    return () => everything.delete(fn);
+  }
+
+  return { on, off, emit, onAny };
 }
 
 // One shared noticeboard for the whole game.
