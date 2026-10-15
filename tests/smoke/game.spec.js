@@ -130,3 +130,48 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
 
   expect(problems).toEqual([]);
 });
+
+test('changing map needs no page reload, and leaves nothing behind', async ({ page }) => {
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
+  });
+
+  await page.goto('/?map=proving-ground');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 10, null, { timeout: 30_000 });
+  await page.evaluate(() => { window.samePage = true; }); // a reload would wipe this
+  const measure = () => page.evaluate(() => {
+    const f = window.fireteam;
+    return {
+      children: f.view.scene.children.length,
+      geometries: f.view.renderer.info.memory.geometries,
+      textures: f.view.renderer.info.memory.textures,
+      slots: document.querySelectorAll('#slots span').length,
+      panels: document.querySelectorAll('.lil-gui.root').length,
+    };
+  });
+  const before = await measure();
+
+  await page.click('#mapCompound');
+  await page.waitForFunction(() => window.fireteam.map === 'compound' && window.fireteam.enemies?.list.length === 16, null, { timeout: 60_000 });
+  await expect(page.locator('#title')).toBeVisible();
+  await expect(page.locator('#mapCompound')).toHaveAttribute('aria-checked', 'true');
+  expect(page.url()).toContain('map=compound');
+  await page.screenshot({ path: 'test-results/map-compound.png' });
+
+  await page.click('#mapProving');
+  await page.waitForFunction(() => window.fireteam.map === 'proving-ground', null, { timeout: 60_000 });
+  const tick = await page.evaluate(() => window.fireteam.loop.tick);
+  await page.waitForFunction((t) => window.fireteam.loop.tick > t + 10, tick, { timeout: 30_000 });
+  const after = await measure();
+
+  expect(await page.evaluate(() => window.samePage)).toBe(true);
+  // Same scenery as at the start: the Compound's meshes, HUD bits and tuning panel are all gone.
+  expect(after.children).toBe(before.children);
+  expect(after.slots).toBe(before.slots);
+  expect(after.panels).toBe(before.panels);
+  expect(after.geometries).toBeLessThanOrEqual(before.geometries + 2);
+  expect(after.textures).toBeLessThanOrEqual(before.textures + 2);
+  expect(problems).toEqual([]);
+});

@@ -46,7 +46,7 @@ export function verticalFov(horizontalDeg) {
  * @param {object} opts
  * @param {() => {amount:number, zoom:number}} [opts.aim] how far you're aiming down the sights, and the gun's zoom
  */
-export function createCameraRig({ camera, player, input, settings, aim = () => ({ amount: 0, zoom: 1 }), tuning = { ...DEFAULT_CAMERA_TUNING }, events = gameEvents }) {
+export function createCameraRig({ camera, player, input, settings, aim = () => ({ amount: 0, zoom: 1 }), tuning = { ...DEFAULT_CAMERA_TUNING }, events = gameEvents, owner = 0 }) {
   const rig = {
     tuning,
     eyeY: player.eyeHeight(),
@@ -71,8 +71,9 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
   // Each shot jolts the view up a touch (on top of the real recoil, which moves
   // your aim) and adds "trauma". Shake is trauma squared: small shots barely
   // wobble, a shotgun blast really shakes.
+  const mine = (e) => (e.owner ?? 0) === owner; // only your own body moves your camera
   events.on('weapon:fire', (e) => {
-    if ((e.owner ?? 0) !== 0) return;
+    if (!mine(e)) return;
     const kick = WEAPONS[e.weapon]?.kick;
     if (!kick) return;
     const k = 1 - aim().amount * 0.5;
@@ -80,7 +81,6 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
     rig.trauma = Math.min(1, rig.trauma + kick.shake * k);
   });
 
-  const mine = (e) => (e.owner ?? 0) === 0; // only your own body moves your camera
   events.on('player:land', (e) => {
     const { speed } = e;
     if (!mine(e) || speed < 2.5) return;

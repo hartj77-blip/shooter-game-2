@@ -43,6 +43,23 @@ export function spawnFor(level, slot) {
 }
 
 /**
+ * What drawing code needs to know about a player: the same shape as an enemy's
+ * view (ai/enemy.js viewOf), so one piece of drawing code shows both.
+ */
+export function playerView(p) {
+  const s = p.soldier.state;
+  const gun = p.soldier.arsenal.current;
+  const h = p.health.state;
+  return {
+    id: p.id, owner: p.owner, callsign: p.callsign, weapon: gun.def.id,
+    pos: s.pos, prev: p.soldier.body.prev, yaw: s.yaw, pitch: s.pitch,
+    crouched: s.crouched, speed: s.speed, sprinting: s.sprinting, grounded: s.grounded,
+    ready: !s.sprinting, reloading: gun.status === 'reloading',
+    hp: h.hp, down: !!(h.down || h.bleeding), dead: !!h.dead,
+  };
+}
+
+/**
  * @param {object} opts
  * @param {object} opts.def         a level definition (levels/*.js)
  * @param {string} [opts.id]        the map's name, for best times (e.g. 'compound')
@@ -96,7 +113,8 @@ export function createSim({
       spawn: start,
       options: { infiniteAmmo },
     });
-    const p = { owner, soldier, health, callsign, spawn: start, lastCmd: idleCommand(start.yaw) };
+    const p = { id: `p${owner}`, owner, soldier, health, callsign, spawn: start, lastCmd: idleCommand(start.yaw) };
+    Object.defineProperty(p, 'view', { get: () => playerView(p) });
     team.set(owner, p);
     enemies?.addPlayer(p);
     world.step(); // file the new body and hitboxes so rays can find them
@@ -134,6 +152,22 @@ export function createSim({
     ? createCourse({ id: 'killhouse', start: trigger('killhouse:start'), finish: trigger('killhouse:finish'), targets, records, emit: events.emit })
     : null;
   world.step();
+
+  // Score-keeping: every player's shots and hits count towards the kill house
+  // or the Compound's results card.
+  const isPlayer = (owner) => typeof owner === 'number';
+  events.on('weapon:fire', (e) => {
+    if (!isPlayer(e.owner)) return;
+    for (let i = 0; i < e.pulls; i++) {
+      course?.onShot();
+      encounter?.onShot(e.owner);
+    }
+  });
+  events.on('target:hit', (e) => {
+    if (!isPlayer(e.owner)) return;
+    if (e.kind === 'enemy') encounter?.onHit({ owner: e.owner, headshot: e.headshot, killed: e.killed });
+    else if (e.kind !== 'player') course?.onHit(e.target, { headshot: e.headshot });
+  });
 
   /**
    * One fixed step.

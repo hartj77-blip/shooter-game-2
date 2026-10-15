@@ -2,6 +2,8 @@
 // It's plain HTML and CSS rather than 3D, which keeps text crisp and cheap to update.
 //
 // It only reads game state and listens to events; it never changes the game.
+// Each mission builds its own HUD and calls dispose() when it ends, which
+// empties everything this file added to the page.
 
 import * as THREE from 'three';
 import { HOSTAGE_PENALTY } from '../game/course.js';
@@ -22,10 +24,11 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
  * @param {object} opts
  * @param {object} [opts.course]     the kill house (Proving Ground)
  * @param {object} [opts.encounter]  the Compound's rules (game/encounter.js)
- * @param {object} [opts.enemies]    ai/enemies.js, for "someone's noticing you" arrows
+ * @param {{list: Array}} [opts.threats] the enemies (each with a `view`), for "someone's noticing you" arrows
  * @param {object} [opts.health]     player/health.js
+ * @param {number} [opts.owner]      your player slot: only your hits, hurts and kills show
  */
-export function createHud({ soldier, settings, loop, input, camera, course, encounter = null, enemies = null, health = null, events }) {
+export function createHud({ soldier, settings, loop, input, camera, course, encounter = null, threats = null, health = null, events, owner = 0 }) {
   const player = soldier.body;
   const arsenal = soldier.arsenal;
   const el = (id) => document.getElementById(id);
@@ -70,6 +73,12 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
   let resultsTimer = 0;
   let bestTime = null;
   const last = {};
+  const mine = (e) => (e.owner ?? 0) === owner;
+  const timers = new Set();
+  const later = (fn, ms) => {
+    const t = setTimeout(() => { timers.delete(t); fn(); }, ms);
+    timers.add(t);
+  };
 
   // Slot numbers along the top of the weapon panel.
   for (const g of arsenal.guns) {
@@ -108,7 +117,7 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
 
   // ---- hit markers: white for a hit, gold for a headshot, red for a kill
   events.on('target:hit', (e) => {
-    if ((e.owner ?? 0) !== 0) return;
+    if (!mine(e)) return;
     hitmarker.classList.remove('on', 'head', 'kill', 'hostage');
     void hitmarker.offsetWidth; // restart the CSS animation
     hitmarker.classList.add('on');
@@ -149,7 +158,7 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
   });
   let nextArrow = 0;
   events.on('player:hurt', (e) => {
-    if ((e.owner ?? 0) !== 0) return;
+    if (!mine(e)) return;
     hurtFlash = Math.min(0.8, hurtFlash + 0.25 + e.amount / 60);
     if (!e.from) return;
     // One arrow per shooter: reuse it if this one's already showing.
@@ -179,12 +188,12 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
     if (cls) d.className = cls;
     box.append(d);
     while (box.children.length > max) box.firstChild.remove();
-    setTimeout(() => { d.style.opacity = '0'; }, seconds * 1000);
-    setTimeout(() => d.remove(), seconds * 1000 + 450);
+    later(() => { d.style.opacity = '0'; }, seconds * 1000);
+    later(() => d.remove(), seconds * 1000 + 450);
   }
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   events.on('enemy:down', (e) => {
-    if ((e.owner ?? 0) !== 0) return;
+    if (!mine(e)) return;
     line(feed, `<b>${esc(ROLES[e.role]?.name ?? 'Enemy')}</b> down${e.headshot ? ' · headshot' : ''}`, e.headshot ? 'head' : '');
   });
   events.on('enemy:bark', (e) => {
@@ -229,7 +238,7 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
   function updateThreats(dt) {
     if (!health) return;
     const frac = health.fraction;
-    healthBox.hidden = !enemies;
+    healthBox.hidden = !threats;
     set(healthFill.style, 'hw', `${Math.round(frac * 100)}%`, 'width');
     healthBox.classList.toggle('low', health.state.hp < health.tuning.low);
     hurtFlash = Math.max(0, hurtFlash - dt * 1.6);
@@ -247,14 +256,16 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
       a.el.style.transform = `rotate(${angleTo(a.from).toFixed(1)}deg)`;
       a.el.style.opacity = Math.min(1, a.life).toFixed(2);
     }
-    // Who's noticing you?
+    // Who's noticing you? (Not a teammate: only enemies watching you.)
     let n = 0;
-    if (enemies && !health.state.down) {
-      for (const e of enemies.alive) {
+    if (threats && !health.state.down) {
+      for (const t of threats.list) {
         if (n >= notices.length) break;
-        const laser = e.motor.laserOn && e.senses.visible;
-        const aw = e.senses.awareness;
-        const fresh = e.inCombat ? (enemies.ai.time - e.engagedAt < 1.2) : aw > 0.04;
+        const e = t.view;
+        if (e.dead || e.target !== owner) continue;
+        const laser = e.laserOn && e.sees;
+        const aw = e.awareness;
+        const fresh = e.inCombat ? e.fresh : aw > 0.04;
         if (!laser && !fresh) continue;
         const d = notices[n++];
         d.classList.toggle('laser', laser);
@@ -332,6 +343,20 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
   return {
     options,
     show(on) { root.hidden = !on; },
+
+    /** Remove everything this HUD added to the page (the mission is ending). */
+    dispose() {
+      for (const t of timers) clearTimeout(t);
+      timers.clear();
+      for (const box of [slots, dmgLayer, dirsLayer, feed, subs]) box.replaceChildren();
+      for (const box of [results, downBox, courseBox]) box.hidden = true;
+      toast.classList.remove('on');
+      hitmarker.classList.remove('on', 'head', 'kill', 'hostage');
+      hurt.style.opacity = '0';
+      view.style.filter = '';
+      setHint('');
+      root.hidden = true;
+    },
 
     update(dt, { playing }) {
       const s = player.state;

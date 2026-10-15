@@ -1,53 +1,33 @@
-// Fireteam: the starting point. This file wires every system together.
+// Fireteam: the starting point, and the "app shell" that lives as long as the page.
 //
 // Boot order:
 //   1. load the physics engine, fonts and sounds (with a loading bar)
-//   2. build the renderer, the level (and, if it has enemies, map it for them),
-//      the targets, you, the enemies, input, camera, the gun on screen,
-//      effects, sound, HUD and menus
-//   3. start the game loop
+//   2. build what every map shares: the renderer, sound, input, settings, menus
+//   3. load a mission (src/mission.js): one map with everything in it
+//   4. start the game loop
+//
+// Choosing a different map unloads the current mission and loads the next one,
+// without reloading the page (which would drop a co-op game's connections).
 //
 // The game flow is a state machine (core/fsm.js):
 //
 //     title --Deploy--> playing <--Esc / Resume--> paused --Quit--> title
 //
 // Handy URL options (add them after the address, like ?map=compound&debug):
-//   ?map=NAME   which map: proving-ground (default) or compound (the title screen sets this)
+//   ?map=NAME   which map: proving-ground (default) or compound
 //   ?debug      open the tuning panel straight away
 //   ?autostart  skip the title screen (the automated browser test uses this)
 
-import { initPhysics, createPhysicsWorld } from './world/physics.js';
-import { buildLevel } from './world/level.js';
-import { createSurfaceRegistry } from './world/surfaces.js';
-import { createTargets } from './world/targets.js';
+import { initPhysics } from './world/physics.js';
 import { createLoop } from './core/loop.js';
-import { createInput, idleCommand } from './core/input.js';
+import { createInput } from './core/input.js';
 import { createSettings } from './core/settings.js';
 import { createStateMachine } from './core/fsm.js';
-import { events } from './core/events.js';
-import { createDebugPanel } from './core/debug.js';
+import { events as appEvents } from './core/events.js';
 import { createRenderer } from './render/renderer.js';
-import { createMaterials } from './render/materials.js';
-import { buildLevelView } from './render/level-view.js';
-import { createViewmodel } from './render/viewmodel.js';
-import { createEffects } from './render/effects.js';
-import { createTargetsView } from './render/targets-view.js';
-import { createEnemiesView } from './render/enemies-view.js';
-import { createRagdolls } from './render/ragdolls.js';
-import { createAiDebug } from './render/ai-debug.js';
-import { createSoldier } from './player/soldier.js';
-import { createHealth } from './player/health.js';
-import { createCameraRig } from './player/camera.js';
-import { buildNavGrid } from './ai/nav-grid.js';
-import { buildCover } from './ai/cover.js';
-import { createNoiseBoard } from './ai/noise.js';
-import { createEnemies } from './ai/enemies.js';
-import { createCourse, createRecords } from './game/course.js';
-import { createEncounter } from './game/encounter.js';
 import { createAudio } from './audio/audio.js';
-import { connectGameSounds } from './audio/game-sounds.js';
-import { createHud } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
+import { loadMission } from './mission.js';
 import provingGround from '../levels/proving-ground.js';
 import compound from '../levels/compound.js';
 
@@ -84,11 +64,7 @@ function pickMap() {
   return 'proving-ground';
 }
 
-const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
-
 async function boot() {
-  const mapId = pickMap();
-  const def = LEVELS[mapId];
   const settings = createSettings();
   const menus = createMenus(settings);
   const audio = createAudio({ settings: settings.values });
@@ -96,172 +72,23 @@ async function boot() {
   await initPhysics();
   menus.setLoading(0.4, 'Loading sounds…');
   await Promise.all([loadFonts(), audio.preload((k) => menus.setLoading(0.4 + k * 0.3, 'Loading sounds…'))]);
-  menus.setLoading(0.72, `Building ${def.name}…`);
-  await nextFrame();
 
-  // ---------------------------------------------------------------- world
   const view = createRenderer(canvas, settings.values);
-  const world = createPhysicsWorld();
-  const registry = createSurfaceRegistry();
-  const level = buildLevel(def, world, registry);
-  view.scene.add(buildLevelView(level.expanded, createMaterials(view.renderer)));
-  view.setSun(def.sun);
-  const targets = createTargets(world, registry, level.expanded.targets);
-  const trigger = (id) => level.expanded.triggers.find((t) => t.id === id);
-  const records = createRecords();
-  const course = trigger('killhouse:start')
-    ? createCourse({ id: 'killhouse', start: trigger('killhouse:start'), finish: trigger('killhouse:finish'), targets, records, emit: events.emit })
-    : null;
-
-  // Maps with enemies get mapped for them: where they can walk, where they can hide.
-  let nav = null, cover = null;
-  const noise = createNoiseBoard();
-  if (level.expanded.enemies.length) {
-    menus.setLoading(0.82, 'Mapping the level for the enemies…');
-    await nextFrame();
-    nav = buildNavGrid(world, level.nav);
-    cover = buildCover(world, nav);
-  }
-
-  // ---------------------------------------------------------------- you, and them
-  const seed = (Math.random() * 2 ** 31) | 0;
-  const health = createHealth({ events });
-  let enemies = null;
-  // Who gets hurt when one of your bullets hits something.
-  const damage = (victim, amount, hit) => {
-    if (victim.kind === 'enemy') return enemies.damage(victim, amount, hit);
-    if (victim.kind === 'player') return { killed: false };
-    return targets.damage(victim, amount);
-  };
-  const soldier = createSoldier({
-    world, registry, targets, damage, seed,
-    noise: nav ? noise : null, // only maps with enemies need to hear you (nothing would clear the board otherwise)
-    flatZones: true, // enemies don't get headshot bonuses on you
-    spawn: level.spawn,
-    options: { infiniteAmmo: true }, // spare magazines are unlimited for now (see the design doc's open questions)
-  });
-  const player = soldier.body;
-  if (nav) {
-    enemies = createEnemies({
-      world, registry, nav, cover, noise, events, seed,
-      specs: level.expanded.enemies,
-      player: { soldier, health },
-      difficulty: settings.values.difficulty,
-    });
-  }
-  const encounter = enemies
-    ? createEncounter({ id: mapId, start: trigger('compound:start'), enemies, health, records, emit: events.emit })
-    : null;
-
   const input = createInput({ target: window, doc: document, settings: settings.values });
-  input.setLook(level.spawn.yaw);
   input.requireLock = !params.has('autostart');
-  const aim = () => ({ amount: soldier.arsenal.state.ads, zoom: soldier.arsenal.current.def.ads.zoom });
-  const rig = createCameraRig({ camera: view.camera, player, input, settings: settings.values, aim });
 
-  // ---------------------------------------------------------------- what you see and hear
-  const viewmodel = createViewmodel({ soldier, input, settings: settings.values, cameraRig: rig, worldCamera: view.camera, sunDir: view.sunDir });
-  const effects = createEffects(view.scene);
-  const targetsView = createTargetsView(view.scene, targets, level.expanded.racks);
-  const ragdolls = enemies ? createRagdolls(view.scene, def) : null;
-  const enemiesView = enemies ? createEnemiesView({ scene: view.scene, enemies, effects, ragdolls, world, camera: view.camera, events }) : null;
-  const aiDebug = enemies ? createAiDebug(view.scene, { enemies, nav, cover, noise }) : null;
-  const sounds = connectGameSounds({ audio, events, soldier, cameraRig: rig, world, registry, enemies, health });
-
-  const mine = (e) => (e.owner ?? 0) === 0;
-  events.on('weapon:fire', (e) => {
-    if (!mine(e)) return; // enemies' muzzle flashes and tracers: render/enemies-view.js
-    const muzzle = viewmodel.muzzleWorld();
-    effects.muzzleLight(muzzle);
-    for (const s of e.shots) {
-      if (s.tracer) effects.tracer(muzzle, s.end);
-      if (effects.options.showPaths) effects.path(e.origin, s.end);
-    }
-    for (let i = 0; i < e.pulls; i++) {
-      course?.onShot();
-      encounter?.onShot();
-    }
-  });
-  events.on('bullet:impact', (hit) => effects.impact(hit));
-  events.on('target:hit', (e) => {
-    if (!mine(e)) return;
-    if (e.kind === 'enemy') encounter?.onHit({ headshot: e.headshot, killed: e.killed });
-    else if (e.kind !== 'player') course?.onHit(e.target, { headshot: e.headshot });
-  });
-
-  function respawn() {
-    soldier.teleport(level.spawn.pos, level.spawn.yaw);
-    input.setLook(level.spawn.yaw);
-    health.reset();
-    rig.snap();
-  }
-
-  /** Start the fight again: everyone back where they began. */
-  function restart() {
-    if (enemies) {
-      enemies.reset();
-      enemiesView.reset();
-    }
-    respawn();
-    encounter?.reset();
-  }
-
-  // ---------------------------------------------------------------- loop
+  let mission = null; // the map being played (src/mission.js)
   const loop = createLoop({
     update(dt) {
-      if (!flow.is('playing')) return;
-      let cmd = input.sample();
-      if (health.state.down) {
-        // You're down: no moving or shooting. R starts again.
-        if (cmd.reload && health.state.downTime > 0.8) {
-          restart();
-          return;
-        }
-        cmd = idleCommand(cmd.yaw, cmd.pitch);
-      }
-      soldier.move(cmd, dt);
-      enemies?.move(dt);
-      targets.update(dt);
-      world.step();
-      const out = soldier.act(cmd, dt);
-      input.addLook(out.look.yaw, out.look.pitch); // recoil moves your aim
-      enemies?.playerShots(out.shots);
-      enemies?.think(dt);
-      enemies?.act(dt);
-      health.update(dt);
-      course?.update(dt, soldier.state.pos);
-      encounter?.update(dt, soldier.state.pos);
-      sounds.tick();
+      mission?.update(dt, flow.is('playing'));
     },
     render(alpha, dt) {
-      // While aiming, slow the mouse down to match the zoom.
-      const ads = soldier.arsenal.state.ads;
-      input.lookScale = 1 + ((settings.values.adsSensitivity / aim().zoom) - 1) * ads;
-      rig.downTarget = health.state.down ? 1 : 0;
-      rig.update(alpha, dt);
-      view.followWithShadows(view.camera.position);
-      viewmodel.update(dt);
-      effects.update(dt);
-      targetsView.update(dt);
-      enemiesView?.update(dt, alpha);
-      ragdolls?.update(dt);
-      aiDebug?.update();
+      if (!mission) return;
+      mission.render(alpha, dt, flow.is('playing'));
       audio.update(view.camera);
-      sounds.frame(dt);
-      hud.update(dt, { playing: flow.is('playing') });
-      debug.update(alpha);
-      // No gun in your face in the debug third-person view, or once you're down.
-      view.render(rig.tuning.thirdPerson || health.state.down ? null : viewmodel);
     },
   });
-
-  const hud = createHud({ soldier, settings: settings.values, loop, input, camera: view.camera, course, encounter, enemies, health, events });
-  const debug = createDebugPanel({
-    scene: view.scene, world, player, rig, loop,
-    arsenal: soldier.arsenal, effects, hud, enemies, aiDebug, health,
-    onRespawn: enemies ? restart : respawn,
-    visible: params.has('debug'),
-  });
+  const app = { view, audio, input, settings, loop, debugOpen: params.has('debug') };
 
   // ---------------------------------------------------------------- game flow
   const flow = createStateMachine({
@@ -270,7 +97,7 @@ async function boot() {
         input.enabled = false;
         input.clear();
         input.unlockPointer();
-        hud.show(false);
+        mission?.hud.show(false);
         menus.only('title');
         document.body.classList.remove('playing');
       },
@@ -279,7 +106,7 @@ async function boot() {
       enter() {
         input.enabled = true;
         menus.only();
-        hud.show(true);
+        mission?.hud.show(true);
         document.body.classList.add('playing');
       },
     },
@@ -291,7 +118,33 @@ async function boot() {
         document.body.classList.remove('playing');
       },
     },
-  }, (from, to) => events.emit('game:state', { from, to }));
+  }, (from, to) => appEvents.emit('game:state', { from, to }));
+
+  // ---------------------------------------------------------------- loading maps
+  let busy = Promise.resolve();
+  /** Swap to map `id`: unload the current mission, build the new one. One at a time. */
+  function openMap(id) {
+    busy = busy.then(async () => {
+      if (mission?.mapId === id) return;
+      menus.only('loading');
+      menus.setLoading(0.72, `Loading ${LEVELS[id].name}…`);
+      const old = mission;
+      mission = null; // the loop stops touching it straight away
+      old?.dispose();
+      mission = await loadMission({ app, mapId: id, def: LEVELS[id], onProgress: (k, text) => menus.setLoading(k, text) });
+      try { localStorage.setItem('fireteam.map', id); } catch { /* not remembered, that's all */ }
+      if (params.get('map') !== id) {
+        params.set('map', id);
+        history.replaceState(null, '', `?${params}`); // a reload stays on this map
+      }
+      for (const b of document.querySelectorAll('.map')) b.setAttribute('aria-checked', String(b.dataset.map === id));
+      document.getElementById('btnRespawn').textContent = mission.hasEnemies ? 'Restart the fight' : 'Back to spawn';
+      menus.setLoading(1, 'Ready');
+      menus.hide('loading');
+      if (flow.is('title')) menus.show('title'); // back to where you picked the map
+    });
+    return busy;
+  }
 
   async function play() {
     audio.unlock(); // browsers only allow sound after a click
@@ -314,9 +167,10 @@ async function boot() {
   addEventListener('keydown', (e) => {
     if (e.code === 'Backquote') {
       e.preventDefault();
-      debug.toggle();
+      if (!mission) return;
+      mission.debug.toggle();
       // The panel needs the mouse, so opening it pauses the game.
-      if (debug.visible && flow.is('playing')) {
+      if (mission.debug.visible && flow.is('playing')) {
         input.unlockPointer();
         flow.go('paused');
       }
@@ -326,42 +180,32 @@ async function boot() {
     }
   });
 
-  // The map picker: choosing a different map reloads the page with it. (Simpler
-  // and safer than tearing down a running world; milestone 5 adds a proper loader.)
+  // The map picker on the title screen.
   for (const button of document.querySelectorAll('.map')) {
-    button.setAttribute('aria-checked', String(button.dataset.map === mapId));
-    button.addEventListener('click', () => {
-      const chosen = button.dataset.map;
-      try { localStorage.setItem('fireteam.map', chosen); } catch { /* not remembered, that's all */ }
-      if (chosen === mapId) return;
-      const next = new URLSearchParams(location.search);
-      next.set('map', chosen);
-      location.search = next.toString();
-    });
+    button.addEventListener('click', () => openMap(button.dataset.map));
   }
 
+  const restartOrRespawn = () => (mission.hasEnemies ? mission.restart() : mission.respawn());
   const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
-  on('btnDeploy', play);
+  on('btnDeploy', () => busy.then(play));
   on('btnResume', play);
-  on('btnRespawn', () => { (enemies ? restart : respawn)(); play(); });
-  on('btnMaps', () => { restart(); flow.go('title'); });
-  on('btnQuit', () => { restart(); flow.go('title'); });
+  on('btnRespawn', () => { restartOrRespawn(); play(); });
+  on('btnMaps', () => { mission.restart(); flow.go('title'); });
+  on('btnQuit', () => { mission.restart(); flow.go('title'); });
   on('btnSettingsT', () => menus.openSettings());
   on('btnSettingsP', () => menus.openSettings());
   on('btnSettingsDone', () => menus.closeSettings());
   on('btnSettingsReset', () => { settings.reset(); menus.refresh(); });
-  if (enemies) document.getElementById('btnRespawn').textContent = 'Restart the fight';
 
-  events.on('settings:change', ({ key, value }) => {
+  appEvents.on('settings:change', ({ key, value }) => {
     if (key === 'quality') view.applyQuality(value);
     if (key === 'masterVolume' || key === 'sfxVolume') audio.applyVolumes();
-    if (key === 'difficulty') enemies?.setDifficulty(value);
+    if (key === 'difficulty') mission?.setDifficulty(value);
   });
 
   if (matchMedia('(pointer: coarse)').matches) document.getElementById('touchNote').hidden = false;
 
-  menus.setLoading(1, 'Ready');
-  menus.hide('loading');
+  await openMap(pickMap());
   loop.start();
   if (params.has('autostart')) flow.go('playing');
   else flow.go('title');
@@ -369,10 +213,32 @@ async function boot() {
   // A handle for poking at the game from the browser's developer console, e.g.
   //   fireteam.player.tuning.gravity = 5
   //   fireteam.enemies.options.freeze = true
+  // Everything after `mission` belongs to the map being played, so it changes when the map does.
   window.fireteam = {
-    map: mapId, player, soldier, health, targets, course, encounter, enemies, nav, cover, noise,
-    input, loop, world, view, flow, settings, rig, debug, events, audio, effects, viewmodel,
-    enemiesView, ragdolls, aiDebug, respawn, restart, ready: true,
+    input, loop, view, flow, settings, audio, app, openMap, ready: true,
+    get mission() { return mission; },
+    get map() { return mission?.mapId; },
+    get events() { return mission?.events; },
+    get player() { return mission?.player; },
+    get soldier() { return mission?.soldier; },
+    get health() { return mission?.health; },
+    get targets() { return mission?.targets; },
+    get course() { return mission?.course; },
+    get encounter() { return mission?.encounter; },
+    get enemies() { return mission?.enemies; },
+    get nav() { return mission?.nav; },
+    get cover() { return mission?.cover; },
+    get noise() { return mission?.noise; },
+    get world() { return mission?.world; },
+    get rig() { return mission?.rig; },
+    get debug() { return mission?.debug; },
+    get effects() { return mission?.effects; },
+    get viewmodel() { return mission?.viewmodel; },
+    get enemiesView() { return mission?.enemiesView; },
+    get ragdolls() { return mission?.ragdolls; },
+    get aiDebug() { return mission?.aiDebug; },
+    respawn: () => mission?.respawn(),
+    restart: () => mission?.restart(),
   };
 }
 

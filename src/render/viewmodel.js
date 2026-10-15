@@ -66,7 +66,7 @@ function flashTexture() {
   return t;
 }
 
-export function createViewmodel({ soldier, input, settings, cameraRig, worldCamera, sunDir, events = gameEvents }) {
+export function createViewmodel({ soldier, input, settings, cameraRig, worldCamera, sunDir, events = gameEvents, owner = 0 }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, worldCamera.aspect, 0.01, 10);
 
@@ -130,7 +130,7 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
   let time = 0;
   let current = null;
 
-  const mine = (e) => (e.owner ?? 0) === 0;
+  const mine = (e) => (e.owner ?? 0) === owner;
 
   events.on('weapon:fire', (e) => {
     if (!mine(e)) return;
