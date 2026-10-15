@@ -24,12 +24,18 @@ import { FLOOR } from './sim.js';
  * @param {string} [o.difficulty]
  * @param {object} [o.bounds]  nav grid area
  * @param {boolean} [o.god]    you can't be hurt
+ * @param {object} [o.level]   a whole level definition (levels/*.js) instead of pieces
  */
-export async function makeFight({ pieces = [], spawn = [0, 0, 0], yaw = 0, seed = 11, difficulty = 'regular', bounds = { min: [-40, -40], max: [40, 40] }, god = false } = {}) {
+export async function makeFight({ pieces = [], spawn = [0, 0, 0], yaw = 0, seed = 11, difficulty = 'regular', bounds = { min: [-40, -40], max: [40, 40] }, god = false, level: def = null } = {}) {
   await initPhysics();
   const world = createPhysicsWorld();
   const registry = createSurfaceRegistry();
-  const level = buildLevel({ name: 'test', spawn: { pos: spawn, yaw }, pieces: [FLOOR, ...pieces] }, world, registry);
+  if (def) {
+    spawn = def.spawn.pos;
+    yaw = def.spawn.yaw;
+    bounds = def.nav;
+  }
+  const level = buildLevel(def ?? { name: 'test', spawn: { pos: spawn, yaw }, pieces: [FLOOR, ...pieces] }, world, registry);
   const nav = buildNavGrid(world, bounds);
   const cover = buildCover(world, nav);
   const noise = createNoiseBoard();
