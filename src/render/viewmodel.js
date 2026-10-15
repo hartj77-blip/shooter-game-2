@@ -156,8 +156,9 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
     pumpTime = 0;
     ejectShell(models[soldier.arsenal.current.def.id]);
   });
-  events.on('player:land', ({ speed }) => {
-    if (speed > 2) kick.kick(1, -Math.min(speed, 15) * 0.05);
+  events.on('player:land', (e) => {
+    const { speed } = e;
+    if (mine(e) && speed > 2) kick.kick(1, -Math.min(speed, 15) * 0.05);
   });
 
   /** Where the muzzle is in the world, for tracers and the muzzle light. */

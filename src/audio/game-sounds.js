@@ -3,6 +3,7 @@
 
 import { SURFACES } from '../world/surfaces.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
+import { SIGHT } from '../world/groups.js';
 import { RAPIER } from '../world/physics.js';
 
 export function connectGameSounds({ audio, events, soldier, cameraRig, world, registry }) {
@@ -32,8 +33,9 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
     audio.play(e.killed ? 'kill' : e.headshot ? 'headshot' : 'hitmarker');
   });
 
-  events.on('player:land', ({ speed }) => {
-    if (speed > 2) audio.play('land', { volume: Math.min(1, speed / 10) });
+  events.on('player:land', (e) => {
+    const { speed } = e;
+    if (mine(e) && speed > 2) audio.play('land', { volume: Math.min(1, speed / 10) });
   });
 
   events.on('course:ready', () => audio.play('beep'));
@@ -48,7 +50,7 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
   function surfaceUnderfoot() {
     const p = soldier.state.pos;
     ray.origin = { x: p.x, y: p.y + 0.1, z: p.z };
-    const hit = world.castRay(ray, 0.4, true, undefined, undefined, soldier.body.collider);
+    const hit = world.castRay(ray, 0.4, true, undefined, SIGHT); // the floor only, not your own legs
     return hit ? registry.get(hit.collider).surface : 'concrete';
   }
 

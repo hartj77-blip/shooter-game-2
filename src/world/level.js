@@ -17,12 +17,19 @@ export function buildLevel(def, world, registry) {
   const expanded = expandLevel(def);
   for (const solid of expanded.solids) {
     const collider = world.createCollider(colliderFor(solid));
-    registry?.set(collider, { surface: MATERIAL_SURFACE[solid.mat] ?? 'concrete' });
+    registry?.set(collider, { surface: surfaceOf(solid.mat) });
   }
   // Rapier files new colliders into its search index during a step. Do one now,
   // so ray casts can find the level straight away.
   world.step();
-  return { name: def.name, spawn: def.spawn, expanded };
+  return { name: def.name, spawn: def.spawn, nav: def.nav ?? null, expanded };
+}
+
+/** What a level material is made of, for bullets. (Every colour of container is steel.) */
+export function surfaceOf(mat) {
+  if (MATERIAL_SURFACE[mat]) return MATERIAL_SURFACE[mat];
+  if (mat?.startsWith('container')) return 'metal';
+  return 'concrete';
 }
 
 function colliderFor(solid) {

@@ -12,6 +12,7 @@
 
 import { RAPIER } from '../world/physics.js';
 import { SURFACES } from '../world/surfaces.js';
+import { BULLET } from '../world/groups.js';
 import { damageAt } from './weapons-data.js';
 
 const MAX_SURFACES = 4;
@@ -23,10 +24,13 @@ const along = (p, d, t) => ({ x: p.x + d.x * t, y: p.y + d.y * t, z: p.z + d.z *
  * @param {RAPIER.World} world
  * @param {ReturnType<import('../world/surfaces.js').createSurfaceRegistry>} registry
  * @param {{weapon:object, origin:{x,y,z}, dir:{x,y,z}}} shot
- * @param {RAPIER.Collider} [exclude] the shooter's own body, which bullets must ignore
+ * @param {object|Function} [ignore] the shooter, whose own body and hitboxes bullets must pass through:
+ *        anything with an owns(collider) method, a single collider, or a function (collider) => true to skip
  * @returns {{hits: Array, end: {x,y,z}}} everything hit, in order, and where the bullet stopped
  */
-export function traceShot(world, registry, shot, exclude) {
+export function traceShot(world, registry, shot, ignore) {
+  const skip = skipper(ignore);
+  const keep = skip ? (c) => !skip(c) : undefined;
   const def = shot.weapon;
   const dir = shot.dir;
   let origin = { ...shot.origin };
@@ -39,7 +43,7 @@ export function traceShot(world, registry, shot, exclude) {
   for (let i = 0; i < MAX_SURFACES; i++) {
     const remaining = def.range - travelled;
     if (remaining <= 0) break;
-    const hit = world.castRayAndGetNormal(new RAPIER.Ray(origin, dir), remaining, true, undefined, undefined, exclude);
+    const hit = world.castRayAndGetNormal(new RAPIER.Ray(origin, dir), remaining, true, undefined, BULLET, undefined, undefined, keep);
     if (!hit) {
       end = along(origin, dir, remaining);
       break;
@@ -85,4 +89,13 @@ export function traceShot(world, registry, shot, exclude) {
   }
 
   return { hits, end };
+}
+
+/** Turns the different ways of saying "ignore the shooter" into one test. */
+function skipper(ignore) {
+  if (!ignore) return null;
+  if (typeof ignore === 'function') return ignore;
+  if (typeof ignore.owns === 'function') return (c) => ignore.owns(c);
+  if (ignore.handle != null) return (c) => c.handle === ignore.handle;
+  return null;
 }

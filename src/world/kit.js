@@ -8,6 +8,7 @@
 //   targets   things to shoot (src/world/targets.js brings them to life)
 //   triggers  invisible boxes that notice when you walk in (start and finish pads)
 //   racks     tables showing the guns (drawn by the presentation code)
+//   enemies   where enemy soldiers start, and how they behave (src/ai/enemies.js)
 // The physics side (world/level.js) and the drawing side (render/level-view.js)
 // both read these same descriptions, so what you see always matches what you hit.
 //
@@ -156,6 +157,44 @@ const expanders = {
     };
   },
 
+  // A shipping container: 6 x 2.6 x 2.4 m of corrugated steel, great high cover.
+  // `open: true` leaves the doors at its south end (before rotY) open, so you can hide inside.
+  container(p) {
+    const rotY = p.rotY ?? 0;
+    const mat = p.mat ?? 'container';
+    const [L, H, W] = [6, 2.6, 2.4];
+    if (!p.open) return { solids: [box([W, H, L], [p.at[0], p.at[1] + H / 2, p.at[2]], rotY, mat)] };
+    const t = 0.1;
+    const part = (size, local) => box(size, placePoint(local, p.at, rotY), rotY, mat);
+    return {
+      solids: [
+        part([t, H, L], [-W / 2 + t / 2, H / 2, 0]),
+        part([t, H, L], [W / 2 - t / 2, H / 2, 0]),
+        part([W, t, L], [0, H - t / 2, 0]),
+        part([W, H, t], [0, H / 2, -L / 2 + t / 2]),
+      ],
+    };
+  },
+
+  // A low wall of sandbags from `from` to `to` ([x, z]): waist-high cover you can shoot over.
+  sandbags(p) {
+    return expanders.wall({ ...p, height: p.height ?? 1.0, thick: p.thick ?? 0.6, mat: 'sandbag' });
+  },
+
+  // Where an enemy soldier starts (src/ai/enemies.js). role: 'rifleman' | 'rusher' | 'marksman'.
+  //   yaw     which way they face (0 = north)
+  //   squad   enemies with the same squad name share what they know
+  //   patrol  [[x, z], ...] (or [x, z, y] upstairs): walk this loop; otherwise stand guard
+  //   perch   a Marksman's lookout: hold this spot in a fight
+  enemy(p) {
+    return {
+      enemies: [{
+        id: p.id, role: p.role, at: p.at, yaw: p.yaw ?? 0, squad: p.squad ?? null,
+        patrol: p.patrol ?? null, perch: !!p.perch,
+      }],
+    };
+  },
+
   // A text panel. `at` is the centre of the panel. Lying flat on the floor if `floor` is set.
   sign(p) {
     const out = { signs: [{ ...p, rotY: p.rotY ?? 0, size: p.size ?? [2, 1] }] };
@@ -177,7 +216,7 @@ export function expandPiece(piece) {
   return result;
 }
 
-const KINDS = ['solids', 'paint', 'signs', 'targets', 'triggers', 'racks'];
+const KINDS = ['solids', 'paint', 'signs', 'targets', 'triggers', 'racks', 'enemies'];
 
 /** Expands a whole level definition. */
 export function expandLevel(def) {
