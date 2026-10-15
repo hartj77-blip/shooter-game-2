@@ -1,0 +1,159 @@
+/* Fireteam UI. One dark theme on purpose: the HUD sits over a 3D scene, and
+   dark translucent panels read well over any part of it.
+   Colours live in variables (design tokens) so the whole look can change in one place. */
+
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: swap; src: url(../../assets/fonts/barlow-400.woff2) format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url(../../assets/fonts/barlow-600.woff2) format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 500; font-display: swap; src: url(../../assets/fonts/barlow-condensed-500.woff2) format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap; src: url(../../assets/fonts/barlow-condensed-600.woff2) format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 700; font-display: swap; src: url(../../assets/fonts/barlow-condensed-700.woff2) format("woff2"); }
+
+:root {
+  --bg: #14170f;
+  --panel: rgba(22, 25, 17, 0.88);
+  --panel-solid: #1b1f16;
+  --line: rgba(231, 227, 212, 0.14);
+  --line-strong: rgba(231, 227, 212, 0.28);
+  --text: #e7e3d4;
+  --muted: #a7a393;
+  --accent: #e8b14a;
+  --accent-ink: #1d1505;
+  --danger: #e0583e;
+  --good: #8fc46a;
+  --head: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Barlow", system-ui, sans-serif;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font: 16px/1.45 var(--body); }
+body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+body.playing #view { cursor: none; }
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+a { color: var(--accent); }
+kbd { font: 600 0.85em var(--head); padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: rgba(255, 255, 255, 0.06); }
+[hidden] { display: none !important; }
+
+/* ------------------------------------------------------------------ buttons */
+button {
+  font: 600 18px var(--head); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text); background: rgba(231, 227, 212, 0.06);
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  padding: 10px 20px; min-height: 44px; cursor: pointer; touch-action: manipulation;
+}
+button:hover { background: rgba(231, 227, 212, 0.14); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.primary:hover { filter: brightness(1.08); }
+
+/* ------------------------------------------------------------------ screens */
+.screen {
+  position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; overflow: auto;
+  background: radial-gradient(ellipse at 50% 35%, rgba(20, 23, 15, 0.35), rgba(10, 12, 8, 0.82));
+  -webkit-user-select: text; user-select: text;
+}
+.screen-top { z-index: 30; }
+#loading { background: var(--bg); }
+.card {
+  width: min(560px, 100%); padding: 28px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+}
+.card-slim { width: min(380px, 100%); }
+.brand { font: 700 clamp(44px, 10vw, 68px)/0.9 var(--head); letter-spacing: 0.12em; color: var(--text); }
+.brand::after { content: ""; display: block; width: 64px; height: 4px; margin-top: 12px; background: var(--accent); }
+.tag { margin: 14px 0 0; font: 600 15px var(--head); letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+.lede { margin: 10px 0 0; color: var(--muted); }
+h2 { margin: 0 0 18px; font: 700 34px/1 var(--head); letter-spacing: 0.08em; text-transform: uppercase; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.stack { display: grid; gap: 10px; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; margin: 18px 0 0; }
+.foot { margin: 22px 0 0; font-size: 14px; }
+.note { margin-top: 16px; padding: 10px 12px; border-left: 3px solid var(--accent); background: rgba(232, 177, 74, 0.08); font-size: 15px; }
+.controls { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 24px 0 0; padding-top: 18px; border-top: 1px solid var(--line); }
+.controls dt { font: 600 15px var(--head); letter-spacing: 0.08em; color: var(--accent); }
+.controls dd { margin: 0; color: var(--muted); font-size: 15px; }
+pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.4); font-size: 12px; }
+.noscript { position: fixed; inset: 0; display: grid; place-items: center; margin: 0; }
+
+/* loading bar */
+.bar { height: 4px; margin: 26px 0 12px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+
+/* ------------------------------------------------------------------ settings */
+.settings { display: grid; gap: 4px; }
+.setting {
+  display: grid; grid-template-columns: 1fr minmax(120px, 200px) 52px; align-items: center; gap: 4px 12px;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.setting-check { grid-template-columns: 1fr auto; }
+.setting-name { font-weight: 600; }
+.setting small { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+.setting output { font: 600 16px var(--head); color: var(--accent); text-align: right; font-variant-numeric: tabular-nums; }
+.setting select { grid-column: 2 / -1; font: inherit; color: var(--text); background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px; min-height: 40px; }
+.setting input[type="range"] { width: 100%; accent-color: var(--accent); }
+.setting input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); }
+@media (max-width: 460px) {
+  .setting { grid-template-columns: 1fr 52px; }
+  .setting input[type="range"] { grid-column: 1 / -1; grid-row: 2; }
+  .setting select { grid-column: 1 / -1; }
+  .card { padding: 22px 18px; }
+}
+
+/* ------------------------------------------------------------------ HUD */
+.hud { position: fixed; inset: 0; pointer-events: none; font-variant-numeric: tabular-nums; text-shadow: var(--shadow); }
+
+.crosshair { --spread: 6px; position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.crosshair i { position: absolute; background: var(--text); box-shadow: 0 0 2px #000; transition: transform 0.08s; }
+.crosshair i:nth-child(1), .crosshair i:nth-child(2) { width: 2px; height: 8px; left: -1px; }
+.crosshair i:nth-child(3), .crosshair i:nth-child(4) { width: 8px; height: 2px; top: -1px; }
+.crosshair i:nth-child(1) { bottom: var(--spread); }
+.crosshair i:nth-child(2) { top: var(--spread); }
+.crosshair i:nth-child(3) { right: var(--spread); }
+.crosshair i:nth-child(4) { left: var(--spread); }
+.crosshair b { position: absolute; left: -1px; top: -1px; width: 2px; height: 2px; background: var(--accent); }
+
+.readout {
+  position: absolute; left: calc(20px + env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 6px;
+  font-family: var(--head);
+}
+#rSpeed { font-size: 44px; font-weight: 700; line-height: 1; min-width: 2.4ch; text-align: right; }
+.readout small { font-size: 16px; color: var(--muted); letter-spacing: 0.08em; }
+#rMode {
+  grid-column: 1 / -1; justify-self: start; margin-top: 6px; padding: 2px 8px; border-radius: 4px;
+  font: 600 14px var(--head); font-style: normal; letter-spacing: 0.18em;
+  background: rgba(0, 0, 0, 0.45); border: 1px solid var(--line-strong); text-shadow: none;
+}
+#rMode[data-mode="sprint"], #rMode[data-mode="slide"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+#rMode[data-mode="climb"] { background: var(--good); color: #10200a; border-color: var(--good); }
+#rMode[data-mode="air"] { border-color: var(--accent); color: var(--accent); }
+
+.hint {
+  position: absolute; left: 50%; top: 62%; transform: translateX(-50%);
+  max-width: calc(100vw - 32px); padding: 6px 14px; border-radius: 6px;
+  font: 600 18px var(--head); letter-spacing: 0.08em; text-transform: uppercase; text-align: center;
+  background: rgba(0, 0, 0, 0.45); opacity: 0; transition: opacity 0.2s;
+}
+.hint.on { opacity: 1; }
+.fps { position: absolute; left: 12px; top: 10px; font: 500 13px var(--head); letter-spacing: 0.06em; color: var(--muted); }
+
+/* ------------------------------------------------------------------ tuning panel (lil-gui) */
+/* lil-gui resets its colours on every nested folder, so theme those too. */
+.lil-gui.tuning, .lil-gui.tuning .lil-gui {
+  --background-color: rgba(20, 23, 15, 0.94);
+  --title-background-color: #262b1f;
+  --title-text-color: var(--accent);
+  --text-color: var(--text);
+  --widget-color: #343a2b;
+  --hover-color: #414834;
+  --focus-color: #4b533c;
+  --number-color: var(--accent);
+  --string-color: var(--good);
+  --font-family: var(--body);
+  --font-size: 12px;
+  --name-width: 48%;
+}
+.lil-gui.tuning.root { z-index: 20; width: 300px; max-height: 100vh; overflow: auto; }
