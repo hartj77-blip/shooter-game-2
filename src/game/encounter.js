@@ -16,7 +16,7 @@ const inside = (box, p) =>
 /**
  * @param {object} opts
  * @param {string} opts.id         record name (e.g. 'compound')
- * @param {object} opts.start      trigger box { min, max }: the timer starts when you leave it
+ * @param {object} [opts.start]    trigger box { min, max }: the timer starts when you leave it (no box: at once)
  * @param {object} opts.enemies    ai/enemies.js
  * @param {object} opts.health     player/health.js
  * @param {object} opts.records    createRecords() from game/course.js
@@ -49,7 +49,7 @@ export function createEncounter({ id, start, enemies, health, records, emit = ()
   /** @param {{x,y,z}} feet your feet position */
   function update(dt, feet) {
     if (enc.state === 'ready') {
-      if (!inside(start, feet)) {
+      if (!start || !inside(start, feet)) {
         enc.state = 'running';
         emit('encounter:start', { id, total: enc.total });
       }
