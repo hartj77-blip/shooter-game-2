@@ -76,6 +76,10 @@ KENNEY = [
     ('step_concrete', 'footstep_concrete', [0, 1, 2, 3, 4], 0.25),
     ('step_wood', 'footstep_wood', [0, 1, 2, 3, 4], 0.3),
     ('land', 'impactSoft_heavy', [0, 1], 0.5),
+    # Milestone 3: soldiers.
+    ('hit_flesh', 'impactPunch_heavy', [0, 1, 2], 0.3),
+    ('hurt', 'impactPunch_heavy', [3, 4], 0.35),
+    ('bodyfall', 'impactSoft_heavy', [2, 3, 4], 0.6),
 ]
 
 

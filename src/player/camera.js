@@ -59,6 +59,10 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
     punch: 0,       // visual-only upward jolt from the last shot (radians)
     punchVel: 0,
     trauma: 0,      // 0..1, how shaken the camera is; fades over time
+    flinch: 0,      // sideways jolt when you're hit (radians)
+    flinchVel: 0,
+    down: 0,        // 0..1: you've gone down, the view sinks and tips over (main.js sets the target)
+    downTarget: 0,
     time: 0,
     update,
     snap,
@@ -76,15 +80,28 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
     rig.trauma = Math.min(1, rig.trauma + kick.shake * k);
   });
 
-  events.on('player:land', ({ speed }) => {
-    if (speed < 2.5) return;
+  const mine = (e) => (e.owner ?? 0) === 0; // only your own body moves your camera
+  events.on('player:land', (e) => {
+    const { speed } = e;
+    if (!mine(e) || speed < 2.5) return;
     rig.dipVel -= Math.min(speed, 22) * 0.035 * tuning.landDip;
   });
-  events.on('player:mantle', () => {
+  events.on('player:mantle', (e) => {
+    if (!mine(e)) return;
     rig.dipVel -= 0.25 * tuning.landDip;
   });
-  events.on('player:crouch-air', ({ feetShift }) => {
-    rig.eyeY -= feetShift; // your feet moved but your head didn't: keep the eyes where they were
+  // Getting hit: a jolt to the side and a little shake, stronger for bigger hits.
+  events.on('player:hurt', (e) => {
+    if (!mine(e) || e.amount <= 0) return;
+    const k = Math.min(1, e.amount / 25);
+    rig.flinchVel += (Math.random() < 0.5 ? -1 : 1) * 2.2 * DEG * 9 * k;
+    rig.punchVel -= 1.2 * DEG * 9 * k;
+    rig.trauma = Math.min(1, rig.trauma + 0.18 * k);
+  });
+
+  events.on('player:crouch-air', (e) => {
+    if (!mine(e)) return;
+    rig.eyeY -= e.feetShift; // your feet moved but your head didn't: keep the eyes where they were
   });
 
   const feet = new THREE.Vector3();
@@ -94,6 +111,8 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
   function snap() {
     rig.eyeY = player.eyeHeight();
     rig.dip = rig.dipVel = rig.roll = 0;
+    rig.flinch = rig.flinchVel = 0;
+    rig.down = rig.downTarget = 0;
   }
 
   /**
@@ -136,7 +155,12 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
       rig.dip += rig.dipVel * h;
       rig.punchVel += (-420 * rig.punch - 38 * rig.punchVel) * h;
       rig.punch += rig.punchVel * h;
+      rig.flinchVel += (-220 * rig.flinch - 24 * rig.flinchVel) * h;
+      rig.flinch += rig.flinchVel * h;
     }
+    // Going down: sink towards the floor and tip over (kept even with reduced motion,
+    // because it's information: you're out).
+    rig.down = damp(rig.down, rig.downTarget, 3.5, dt);
     rig.dip = Math.max(-0.5, Math.min(0.2, rig.dip));
 
     // Lean: a touch when strafing, more in a slide.
@@ -175,10 +199,15 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
     // the last tick, so aiming responds the instant you move the mouse.
     const yaw = input.yaw;
     const pitch = input.pitch;
-    camera.rotation.set(pitch + pitchOffset + rig.punch * motion + shakePitch, yaw + shakeYaw, rig.roll + shakeRoll, 'YXZ');
+    camera.rotation.set(
+      pitch + pitchOffset + rig.punch * motion + shakePitch - rig.down * 0.25,
+      yaw + shakeYaw + rig.flinch * motion * 0.5,
+      rig.roll + shakeRoll + rig.flinch * motion + rig.down * 0.6,
+      'YXZ',
+    );
     camera.position.set(
       feet.x + Math.cos(yaw) * bobX,
-      feet.y + rig.eyeY + bobY + rig.dip * motion,
+      feet.y + rig.eyeY + bobY + rig.dip * motion - rig.down * (rig.eyeY - 0.35),
       feet.z - Math.sin(yaw) * bobX,
     );
 

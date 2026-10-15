@@ -34,6 +34,17 @@ test('diagonal movement is not faster than straight movement', async () => {
   near(sim.state.speed, DEFAULT_TUNING.walkSpeed, 0.05, 'diagonal speed');
 });
 
+// Regression test (milestone 3): a patrolling enemy crept along at 0.2 m/s
+// because the minimum friction ("stopSpeed") was stronger than a slow walk's push.
+test('a half-pushed stick walks at a slow, steady speed instead of creeping', async () => {
+  for (const pace of [0.25, 0.5]) {
+    const sim = await makeSim();
+    sim.settle();
+    sim.run(1.5, { moveZ: pace });
+    near(sim.state.speed, DEFAULT_TUNING.walkSpeed * pace, 0.05, `speed at pace ${pace}`);
+  }
+});
+
 test('sprinting is faster, but only going forwards', async () => {
   const sim = await makeSim();
   sim.settle();

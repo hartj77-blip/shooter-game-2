@@ -10,9 +10,46 @@ import * as THREE from 'three';
 import { DEFAULT_TUNING, BODY } from '../player/controller.js';
 import { DEFAULT_CAMERA_TUNING } from '../player/camera.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
+import { ROLES, AWARENESS } from '../ai/enemy-data.js';
+import { NOISE } from '../ai/noise.js';
 
-// A copy of the weapon table as it was at the start, for "Reset everything".
+// Copies of the tables as they were at the start, for "Reset everything".
 const DEFAULT_WEAPONS = structuredClone(WEAPONS);
+const DEFAULT_ROLES = structuredClone(ROLES);
+const DEFAULT_AWARENESS = { ...AWARENESS };
+const DEFAULT_NOISE = { ...NOISE };
+
+// Enemy role sliders: [path inside the role row, min, max, step, label]
+const ROLE_ROWS = [
+  ['reaction', 0, 2, 0.01, 'Reaction time (s)'],
+  ['aim.start', 0, 15, 0.1, 'Aim error at first (°)'],
+  ['aim.end', 0, 10, 0.05, 'Aim error settled (°)'],
+  ['aim.settle', 0.1, 6, 0.05, 'Aim settles over (s)'],
+  ['aim.lag', 0.02, 1, 0.01, 'Tracking delay (s)'],
+  ['aim.turn', 30, 720, 5, 'Turn speed (°/s)'],
+  ['sight.range', 5, 150, 1, 'Sight range (m)'],
+  ['sight.fov', 30, 180, 1, 'Vision cone (°)'],
+  ['hearing', 0, 3, 0.05, 'Hearing (x)'],
+  ['range.ideal', 2, 80, 1, 'Favourite range (m)'],
+  ['flank', 0, 1, 0.01, 'Keen to flank'],
+  ['rush', 0, 1, 0.01, 'Keen to charge'],
+  ['fireOnMove', 0, 1, 0.01, 'Shoots while moving'],
+  ['telegraph', 0.2, 3, 0.05, 'Laser warning (s)'],
+];
+const AWARENESS_ROWS = [
+  ['rate', 0.1, 6, 0.05, 'Noticing speed (/s)'],
+  ['instant', 0, 12, 0.25, 'Spotted at once within (m)'],
+  ['crouched', 0, 1, 0.01, 'Crouched counts'],
+  ['still', 0, 1, 0.01, 'Standing still counts'],
+  ['peripheral', 0, 1, 0.01, 'Corner of the eye counts'],
+  ['decay', 0, 1, 0.01, 'Forgets at (/s)'],
+];
+const NOISE_ROWS = [
+  ['gunshot', 0, 150, 1, 'Gunshot (m)'],
+  ['sprintStep', 0, 40, 0.5, 'Sprinting steps (m)'],
+  ['walkStep', 0, 30, 0.5, 'Walking steps (m)'],
+  ['crouchStep', 0, 20, 0.5, 'Crouching steps (m)'],
+];
 
 // Weapon sliders: [path inside the weapon row, min, max, step, label]
 const WEAPON_ROWS = [
@@ -89,7 +126,7 @@ function addSliders(folder, target, rows) {
   for (const [key, min, max, step, label] of rows) folder.add(target, key, min, max, step).name(label);
 }
 
-export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, arsenal, effects, hud, visible = false }) {
+export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, arsenal, effects, hud, enemies = null, aiDebug = null, health = null, visible = false }) {
   const gui = new GUI({ title: 'Tuning panel  ·  ` to hide' });
   gui.domElement.classList.add('tuning');
 
@@ -129,6 +166,28 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
     }
   }
 
+  // ---- enemies
+  const ai = gui.addFolder('AI').close();
+  if (enemies) ai.add(enemies.options, 'freeze').name('Freeze enemies');
+  if (health) ai.add(health, 'godMode').name("God mode (you can't be hurt)");
+  if (aiDebug) {
+    ai.add(aiDebug.options, 'senses').name('Show vision and brain state');
+    ai.add(aiDebug.options, 'paths').name('Show routes');
+    ai.add(aiDebug.options, 'cover').name('Show cover points');
+    ai.add(aiDebug.options, 'nav').name('Show the nav grid');
+    ai.add(aiDebug.options, 'noise').name('Show noises');
+  }
+  for (const [id, role] of Object.entries(ROLES)) {
+    const f = ai.addFolder(role.name).close();
+    for (const [path, min, max, step, label] of ROLE_ROWS) {
+      const [obj, key] = holder(role, path);
+      if (obj[key] !== undefined) f.add(obj, key, min, max, step).name(label);
+    }
+    f.domElement.dataset.role = id;
+  }
+  addSliders(ai.addFolder('Noticing').close(), AWARENESS, AWARENESS_ROWS);
+  addSliders(ai.addFolder('Hearing').close(), NOISE, NOISE_ROWS);
+
   // What the physics engine sees: every collider drawn as lines.
   const lines = new THREE.LineSegments(
     new THREE.BufferGeometry(),
@@ -162,6 +221,15 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
           obj[key] = orig[key];
         }
       }
+      for (const [id, role] of Object.entries(ROLES)) {
+        for (const [path] of ROLE_ROWS) {
+          const [obj, key] = holder(role, path);
+          const [orig] = holder(DEFAULT_ROLES[id], path);
+          if (key in orig) obj[key] = orig[key];
+        }
+      }
+      Object.assign(AWARENESS, DEFAULT_AWARENESS);
+      Object.assign(NOISE, DEFAULT_NOISE);
       loop.timeScale = 1;
       loop.paused = false;
       gui.controllersRecursive().forEach((c) => c.updateDisplay());
@@ -174,7 +242,7 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
           return [path, obj[key]];
         }));
       }
-      const text = JSON.stringify({ movement: player.tuning, camera: rig.tuning, weapons: guns }, null, 2);
+      const text = JSON.stringify({ movement: player.tuning, camera: rig.tuning, weapons: guns, roles: ROLES, awareness: AWARENESS, noise: NOISE }, null, 2);
       try {
         await navigator.clipboard.writeText(text);
         copyButton.name('Copied!');

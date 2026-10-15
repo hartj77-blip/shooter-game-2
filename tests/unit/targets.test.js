@@ -32,11 +32,11 @@ test('a paper target falls after 100 damage, ignores bullets while down, then po
   assert.equal(t.state, 'falling');
   r.run(0.5);
   assert.equal(t.state, 'down');
-  assert.equal(traceShot(r.world, r.registry, SHOT(), r.soldier.body.collider).hits[0]?.target, undefined, 'bullets pass over it');
+  assert.equal(traceShot(r.world, r.registry, SHOT(), r.soldier).hits[0]?.target, undefined, 'bullets pass over it');
   r.run(3.5);
   assert.equal(t.state, 'up');
   assert.equal(t.health, 100);
-  assert.equal(traceShot(r.world, r.registry, SHOT(), r.soldier.body.collider).hits[0].target, t, 'hittable again');
+  assert.equal(traceShot(r.world, r.registry, SHOT(), r.soldier).hits[0].target, t, 'hittable again');
 });
 
 test('pop-ups start down and rise when raised', async () => {

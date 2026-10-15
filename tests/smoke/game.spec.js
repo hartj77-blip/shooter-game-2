@@ -44,7 +44,7 @@ test('the title screen and settings open', async ({ page }) => {
   await expect(page.locator('#title')).toBeVisible();
   await page.click('#btnSettingsT');
   await expect(page.locator('#settings')).toBeVisible();
-  await expect(page.locator('#settingsForm .setting')).toHaveCount(13);
+  await expect(page.locator('#settingsForm .setting')).toHaveCount(14);
   await page.screenshot({ path: 'test-results/settings.png' });
   await page.click('#btnSettingsDone');
   await expect(page.locator('#settings')).toBeHidden();
@@ -86,6 +86,47 @@ test('shooting works: ammo goes down, a target gets hit, the kill house timer st
   await page.waitForFunction(() => window.fireteam.course.state === 'running', null, { timeout: 30_000 });
   await expect(page.locator('#course')).toBeVisible();
   await page.screenshot({ path: 'test-results/killhouse.png' });
+
+  expect(problems).toEqual([]);
+});
+
+test('the Compound: you can drop an enemy, and the rest fight back', async ({ page }) => {
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
+  });
+
+  await page.goto('/?map=compound&autostart');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
+  expect(await page.evaluate(() => window.fireteam.enemies.list.length)).toBe(16);
+
+  // Hold everyone still, step in 3.5 m in front of the gate guard, and aim at their chest.
+  await page.evaluate(() => {
+    const f = window.fireteam;
+    f.health.godMode = true; // the test shouldn't fail just because we lost a fight
+    f.enemies.options.freeze = true;
+    window.enemyShots = 0;
+    f.events.on('weapon:fire', (e) => { if (e.owner !== 0) window.enemyShots++; });
+    const guard = f.enemies.list[0];
+    f.soldier.teleport([guard.pos.x, 0, guard.pos.z + 3.5], 0);
+    f.input.setLook(0, Math.atan2(1.15 - 1.68, 3.5));
+  });
+  await page.waitForFunction(() => window.fireteam.soldier.arsenal.current.status === 'ready', null, { timeout: 30_000 });
+  const startTick = await page.evaluate(() => window.fireteam.loop.tick);
+  await page.mouse.down();
+  await page.waitForFunction((t) => window.fireteam.loop.tick > t + 45, startTick, { timeout: 30_000 });
+  await page.mouse.up();
+  await page.waitForFunction(() => window.fireteam.enemies.alive.length === 15, null, { timeout: 30_000 });
+  expect(await page.evaluate(() => window.fireteam.ragdolls.count)).toBeGreaterThan(0);
+  await expect(page.locator('#feed')).toContainText('down');
+  await page.screenshot({ path: 'test-results/compound-kill.png' });
+
+  // Now let them fight: someone should shoot at us.
+  await page.evaluate(() => { window.fireteam.enemies.options.freeze = false; });
+  await page.waitForFunction(() => window.enemyShots > 0, null, { timeout: 90_000 });
+  await expect(page.locator('#course')).toContainText('hostiles left');
+  await page.screenshot({ path: 'test-results/compound-fight.png' });
 
   expect(problems).toEqual([]);
 });
