@@ -62,6 +62,10 @@ export const DEFAULT_TUNING = {
 
 const GROUND_STICK = -1.5; // small downward push while grounded, so we notice the moment the floor disappears
 
+// How the gun in your hands changes movement this tick (see weapons/arsenal.js).
+// Aiming slows you down; pressing fire or aiming stops a sprint.
+export const NO_MODS = Object.freeze({ speedScale: 1, canSprint: true });
+
 /**
  * @param {object} opts
  * @param {RAPIER.World} opts.world
@@ -340,8 +344,9 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
    * Moves the player forward by one tick.
    * @param {ReturnType<import('../core/input.js').idleCommand>} cmd
    * @param {number} dt seconds (always SIM_DT in the game)
+   * @param {{speedScale:number, canSprint:boolean}} [mods] what the gun allows this tick
    */
-  function update(cmd, dt) {
+  function update(cmd, dt, mods = NO_MODS) {
     const t = tuning;
     Object.assign(prev, state.pos);
     state.yaw = cmd.yaw;
@@ -373,7 +378,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     state.standBlocked = state.crouched && !wantCrouch;
 
     // Sprinting only works going forwards, standing up.
-    state.sprinting = cmd.sprint && cmd.moveZ > 0 && !state.crouched && state.mode === 'ground';
+    state.sprinting = cmd.sprint && mods.canSprint && cmd.moveZ > 0 && !state.crouched && state.mode === 'ground';
 
     // Start a slide: press crouch while running fast on the ground.
     if (state.mode === 'ground' && cmd.crouchPressed && state.slideCooldown <= 0 && horizSpeed() >= t.slideMinSpeed) {
@@ -404,6 +409,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     if (state.mode === 'ground') {
       let wishSpeed = state.crouched ? t.crouchSpeed : state.sprinting ? t.sprintSpeed : t.walkSpeed;
       if (cmd.moveZ < 0) wishSpeed *= t.backwardScale;
+      wishSpeed *= mods.speedScale;
       applyFriction(t.friction, t.stopSpeed, dt);
       if (moving) accelerate(wx, wz, wishSpeed, t.groundAccel, dt);
       state.vel.y = GROUND_STICK;

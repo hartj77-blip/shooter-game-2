@@ -20,6 +20,8 @@ export const PALETTE = {
   stairs:   { base: '#6c7e57', line: '#758760', edge: '#86986f' },
   crate:    { base: '#7c5e3c', line: '#856744', edge: '#977852' },
   post:     { base: '#5a5e53', line: '#61655a', edge: '#6d7165' },
+  plank:    { base: '#9a7a4e', line: '#a3835a', edge: '#b39468' },
+  steel:    { base: '#4e5358', line: '#565b60', edge: '#62676c' },
 };
 
 const SIZE = 256; // pixels per 1 m square

@@ -2,12 +2,13 @@
 //
 // The rest of the game never reads the keyboard directly. Once per tick it
 // asks for a command: a small plain object such as
-//   { moveX: 0, moveZ: 1, yaw: 1.2, pitch: -0.1, jump: true, crouch: false, sprint: true }
+//   { moveX: 0, moveZ: 1, yaw: 1.2, pitch: -0.1, jump: true, fire: true, ads: false, ... }
 // That one rule pays off later: in co-op, commands from a friend's computer
 // arrive over the network and drive their character with exactly the same code.
 //
 // Keys use `event.code`, the physical key position, so WASD stays in the
-// same place on French or German keyboards.
+// same place on French or German keyboards. Mouse buttons get made-up codes
+// ('Mouse0' = left, 'Mouse2' = right) so they live in the same bindings table.
 
 export const DEFAULT_BINDINGS = {
   forward: ['KeyW', 'ArrowUp'],
@@ -18,6 +19,14 @@ export const DEFAULT_BINDINGS = {
   sprint:  ['ShiftLeft', 'ShiftRight'],
   // Not Ctrl: Ctrl+W closes the browser tab, which is a bad way to crouch.
   crouch:  ['KeyC'],
+  fire:    ['Mouse0'],
+  ads:     ['Mouse2'],
+  reload:  ['KeyR'],
+  last:    ['KeyQ'],
+  slot1:   ['Digit1'],
+  slot2:   ['Digit2'],
+  slot3:   ['Digit3'],
+  slot4:   ['Digit4'],
 };
 
 // Classic shooter sensitivity scale: at sensitivity 1, one mouse "count"
@@ -30,7 +39,7 @@ const PITCH_LIMIT = (89 * Math.PI) / 180;
  * @param {object} opts
  * @param {EventTarget} [opts.target]  where keyboard/mouse events come from
  * @param {Document|object} [opts.doc]  for pointer lock state
- * @param {object} [opts.settings]      settings.values (sensitivity, invertY, crouchMode, sprintMode)
+ * @param {object} [opts.settings]      settings.values (sensitivity, invertY, crouchMode, sprintMode, aimMode)
  */
 export function createInput({ target = globalThis, doc = globalThis.document, settings = {} } = {}) {
   const bindings = structuredClone(DEFAULT_BINDINGS);
@@ -38,15 +47,20 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
   const held = new Set();              // actions currently held down
   const pressed = new Set();           // actions pressed since the last command
   let lockedAt = 0;
+  let wheel = 0;                       // mouse wheel steps since the last command
 
   const input = {
     enabled: false,     // only true while playing; menus don't move the player
+    requireLock: true,  // mouse buttons only count while the pointer is captured (off for automated tests)
     yaw: 0,             // left/right look angle in radians (0 = facing -Z, "north")
     pitch: 0,           // up/down look angle in radians (positive = up)
+    lookScale: 1,       // mouse speed multiplier, lowered while aiming down the sights
     crouchToggled: false,
     sprintToggled: false,
+    adsToggled: false,
     sample,
     setLook,
+    addLook,
     clear,
     isLocked,
     lockPointer,
@@ -60,21 +74,51 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
   }
   rebuild();
 
+  function press(action) {
+    if (held.has(action)) return;
+    held.add(action);
+    pressed.add(action);
+    if (action === 'crouch' && settings.crouchMode === 'toggle') input.crouchToggled = !input.crouchToggled;
+    if (action === 'sprint' && settings.sprintMode === 'toggle') input.sprintToggled = !input.sprintToggled;
+    if (action === 'sprint') {
+      input.crouchToggled = false; // sprinting stands you up
+      input.adsToggled = false;    // ...and lowers the sights
+    }
+    if (action === 'ads' && settings.aimMode === 'toggle') input.adsToggled = !input.adsToggled;
+    if (action.startsWith('slot') || action === 'last') input.adsToggled = false;
+  }
+
   function onKeyDown(e) {
     const action = actionOf.get(e.code);
     if (!action || !input.enabled) return;
     e.preventDefault?.(); // stop Space from scrolling the page, etc.
     if (e.repeat) return; // holding a key fires repeats; we only want the first press
-    held.add(action);
-    pressed.add(action);
-    if (action === 'crouch' && settings.crouchMode === 'toggle') input.crouchToggled = !input.crouchToggled;
-    if (action === 'sprint' && settings.sprintMode === 'toggle') input.sprintToggled = !input.sprintToggled;
-    if (action === 'sprint') input.crouchToggled = false; // sprinting stands you up
+    press(action);
   }
 
   function onKeyUp(e) {
     const action = actionOf.get(e.code);
     if (action) held.delete(action);
+  }
+
+  const mouseAllowed = () => input.enabled && (isLocked() || !input.requireLock);
+
+  function onMouseDown(e) {
+    const action = actionOf.get(`Mouse${e.button}`);
+    if (!action || !mouseAllowed()) return;
+    e.preventDefault?.();
+    press(action);
+  }
+
+  function onMouseUp(e) {
+    const action = actionOf.get(`Mouse${e.button}`);
+    if (action) held.delete(action);
+  }
+
+  function onWheel(e) {
+    if (!mouseAllowed() || !e.deltaY) return;
+    wheel += Math.sign(e.deltaY);
+    input.adsToggled = false;
   }
 
   function onMouseMove(e) {
@@ -83,10 +127,8 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
     const dy = e.movementY || 0;
     // Some browsers report one huge jump right after the pointer locks. Ignore it.
     if (performance.now() - lockedAt < 80 && (Math.abs(dx) > 200 || Math.abs(dy) > 200)) return;
-    const k = (settings.sensitivity ?? 2) * RAD_PER_COUNT;
-    input.yaw -= dx * k;
-    input.pitch -= dy * k * (settings.invertY ? -1 : 1);
-    input.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, input.pitch));
+    const k = (settings.sensitivity ?? 2) * RAD_PER_COUNT * input.lookScale;
+    addLook(-dx * k, -dy * k * (settings.invertY ? -1 : 1));
   }
 
   // If the window loses focus while you hold W, we never see the key-up.
@@ -94,16 +136,29 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
   function clear() {
     held.clear();
     pressed.clear();
+    wheel = 0;
+    input.adsToggled = false;
   }
 
   target.addEventListener('keydown', onKeyDown);
   target.addEventListener('keyup', onKeyUp);
+  target.addEventListener('mousedown', onMouseDown);
+  target.addEventListener('mouseup', onMouseUp);
+  target.addEventListener('wheel', onWheel, { passive: true });
   target.addEventListener('mousemove', onMouseMove);
   target.addEventListener('blur', clear);
+  // Right-click is "aim", so the browser's right-click menu must stay away.
+  target.addEventListener('contextmenu', (e) => { if (input.enabled) e.preventDefault?.(); });
 
   function setLook(yaw, pitch = 0) {
     input.yaw = yaw;
     input.pitch = pitch;
+  }
+
+  /** Turns the view. Used by the mouse and by recoil. */
+  function addLook(dyaw, dpitch) {
+    input.yaw += dyaw;
+    input.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, input.pitch + dpitch));
   }
 
   /** Builds this tick's command and resets the "pressed" flags. */
@@ -115,6 +170,9 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
     // Toggle sprint switches itself off when you stop running forward.
     if (moveZ <= 0) input.sprintToggled = false;
 
+    let slot = 0;
+    for (let i = 1; i <= 4; i++) if (pressed.has(`slot${i}`)) slot = i;
+
     const cmd = {
       moveX,
       moveZ,
@@ -125,8 +183,16 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
       crouch: settings.crouchMode === 'toggle' ? input.crouchToggled : on('crouch'),
       crouchPressed: pressed.has('crouch'),
       sprint: settings.sprintMode === 'toggle' ? input.sprintToggled : on('sprint'),
+      fire: on('fire') || pressed.has('fire'),
+      firePressed: pressed.has('fire'),
+      ads: settings.aimMode === 'toggle' ? input.adsToggled : on('ads'),
+      reload: pressed.has('reload'),
+      slot,
+      cycle: Math.sign(wheel),
+      lastWeapon: pressed.has('last'),
     };
     pressed.clear();
+    wheel = 0;
     return cmd;
   }
 
@@ -160,7 +226,11 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
   return input;
 }
 
-/** An empty command: standing still. Used for tests and when nobody is controlling a player. */
+/** An empty command: standing still, not shooting. Used for tests and when nobody is controlling a player. */
 export function idleCommand(yaw = 0, pitch = 0) {
-  return { moveX: 0, moveZ: 0, yaw, pitch, jump: false, jumpHeld: false, crouch: false, crouchPressed: false, sprint: false };
+  return {
+    moveX: 0, moveZ: 0, yaw, pitch,
+    jump: false, jumpHeld: false, crouch: false, crouchPressed: false, sprint: false,
+    fire: false, firePressed: false, ads: false, reload: false, slot: 0, cycle: 0, lastWeapon: false,
+  };
 }

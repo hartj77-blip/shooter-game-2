@@ -119,13 +119,29 @@ export function createRenderer(canvas, settings) {
 
   applyQuality(settings.quality);
 
+  /**
+   * Draws the world, then (optionally) the gun in your hands on top of it.
+   * The gun has its own scene and camera; clearing the depth in between means
+   * it's always drawn in front, so it can never poke through a wall.
+   */
+  function render(overlay) {
+    renderer.autoClear = false;
+    renderer.clear();
+    renderer.render(scene, camera);
+    if (overlay) {
+      renderer.clearDepth();
+      renderer.render(overlay.scene, overlay.camera);
+    }
+  }
+
   return {
     renderer,
     scene,
     camera,
+    sunDir,
     setSun,
     followWithShadows,
     applyQuality,
-    render: () => renderer.render(scene, camera),
+    render,
   };
 }

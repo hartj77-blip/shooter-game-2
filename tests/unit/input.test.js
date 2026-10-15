@@ -76,3 +76,66 @@ test('hold crouch: crouched only while the key is down', () => {
   up('KeyC');
   assert.equal(input.sample().crouch, false);
 });
+
+// ---------------------------------------------------------------- weapons input (milestone 2)
+
+function mouse(target, type, button) {
+  target.dispatchEvent(Object.assign(new Event(type), { button }));
+}
+
+test('left mouse fires, right mouse aims (hold mode)', () => {
+  const { input, target } = setup({ aimMode: 'hold' });
+  input.requireLock = false;
+  mouse(target, 'mousedown', 0);
+  mouse(target, 'mousedown', 2);
+  let cmd = input.sample();
+  assert.equal(cmd.fire, true);
+  assert.equal(cmd.firePressed, true);
+  assert.equal(cmd.ads, true);
+  cmd = input.sample();
+  assert.equal(cmd.firePressed, false, 'a click counts once');
+  assert.equal(cmd.fire, true, 'still held');
+  mouse(target, 'mouseup', 2);
+  assert.equal(input.sample().ads, false);
+});
+
+test('a click shorter than one tick still fires', () => {
+  const { input, target } = setup();
+  input.requireLock = false;
+  mouse(target, 'mousedown', 0);
+  mouse(target, 'mouseup', 0);
+  const cmd = input.sample();
+  assert.equal(cmd.fire, true);
+  assert.equal(cmd.firePressed, true);
+});
+
+test('mouse buttons are ignored until the pointer is captured', () => {
+  const { input, target } = setup();
+  mouse(target, 'mousedown', 0);
+  assert.equal(input.sample().fire, false);
+});
+
+test('aim toggle: one click to aim, another to stop; sprinting cancels it', () => {
+  const { input, target, down } = setup({ aimMode: 'toggle' });
+  input.requireLock = false;
+  mouse(target, 'mousedown', 2); mouse(target, 'mouseup', 2);
+  assert.equal(input.sample().ads, true);
+  down('ShiftLeft');
+  assert.equal(input.sample().ads, false);
+});
+
+test('number keys pick a gun, R reloads, Q swaps back, the wheel cycles', () => {
+  const { input, target, down } = setup();
+  input.requireLock = false;
+  down('Digit3');
+  down('KeyR');
+  let cmd = input.sample();
+  assert.equal(cmd.slot, 3);
+  assert.equal(cmd.reload, true);
+  down('KeyQ');
+  assert.equal(input.sample().lastWeapon, true);
+  target.dispatchEvent(Object.assign(new Event('wheel'), { deltaY: 120 }));
+  cmd = input.sample();
+  assert.equal(cmd.cycle, 1);
+  assert.equal(input.sample().cycle, 0, 'one step per wheel click');
+});

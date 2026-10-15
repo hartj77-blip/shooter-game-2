@@ -157,3 +157,72 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
   --name-width: 48%;
 }
 .lil-gui.tuning.root { z-index: 20; width: 300px; max-height: 100vh; overflow: auto; }
+
+/* ------------------------------------------------------------------ weapons HUD (milestone 2) */
+.crosshair { transition: opacity 0.12s; }
+.crosshair.hide { opacity: 0; }
+
+.hitmarker { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
+.hitmarker i { position: absolute; width: 2px; height: 9px; background: #fff; box-shadow: 0 0 2px #000; }
+.hitmarker i:nth-child(1) { transform: translate(-9px, -16px) rotate(-45deg); }
+.hitmarker i:nth-child(2) { transform: translate(7px, -16px) rotate(45deg); }
+.hitmarker i:nth-child(3) { transform: translate(-9px, 7px) rotate(45deg); }
+.hitmarker i:nth-child(4) { transform: translate(7px, 7px) rotate(-45deg); }
+.hitmarker.on { animation: hitmark 0.28s ease-out; }
+.hitmarker.head i { background: var(--accent); }
+.hitmarker.kill i { background: var(--danger); height: 12px; }
+.hitmarker.hostage i { background: #6fb7ff; }
+@keyframes hitmark { 0% { opacity: 1; transform: scale(1.35); } 60% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1); } }
+
+.weapon-panel {
+  position: absolute; right: calc(22px + env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  display: grid; justify-items: end; gap: 2px; font-family: var(--head);
+}
+.slots { display: flex; gap: 4px; margin-bottom: 4px; }
+.slots span {
+  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 4px;
+  font: 600 13px var(--head); color: var(--muted); background: rgba(0, 0, 0, 0.4); border: 1px solid var(--line); text-shadow: none;
+}
+.slots span.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.w-name { font-size: 15px; font-weight: 600; letter-spacing: 0.16em; color: var(--muted); }
+.ammo { line-height: 1; }
+.ammo b { font-size: 46px; font-weight: 700; }
+.ammo b.low { color: var(--danger); }
+.ammo span { font-size: 20px; color: var(--muted); }
+.ammo-hint { min-height: 18px; font-size: 14px; font-weight: 600; letter-spacing: 0.18em; color: var(--accent); }
+
+.course {
+  position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+  min-width: 220px; padding: 8px 18px 10px; border-radius: 8px; text-align: center;
+  background: rgba(20, 23, 15, 0.72); border: 1px solid var(--line); font-family: var(--head); text-shadow: none;
+}
+.course-title { font-size: 12px; font-weight: 600; letter-spacing: 0.22em; color: var(--accent); }
+.course-time { font-size: 38px; font-weight: 700; line-height: 1.05; }
+.course-info { font-size: 14px; color: var(--muted); letter-spacing: 0.04em; }
+
+.results {
+  position: absolute; left: 50%; top: 20%; transform: translateX(-50%);
+  width: min(340px, calc(100vw - 32px)); padding: 18px 22px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5); text-shadow: none;
+}
+.results-title { font: 700 26px var(--head); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+.results dl { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; margin: 0; }
+.results dt { color: var(--muted); }
+.results dd { margin: 0; font: 600 17px var(--head); text-align: right; }
+
+.toast {
+  position: absolute; left: 50%; top: 30%; transform: translateX(-50%);
+  padding: 6px 14px; border-radius: 6px; background: rgba(0, 0, 0, 0.55);
+  font: 600 18px var(--head); letter-spacing: 0.06em; text-transform: uppercase;
+  opacity: 0; transition: opacity 0.2s;
+}
+.toast.on { opacity: 1; }
+
+.dmg-nums { position: absolute; inset: 0; overflow: hidden; }
+.dmg { position: absolute; left: 0; top: 0; margin: -10px 0 0 -12px; font: 700 18px var(--head); color: #fff; }
+.dmg.head { color: var(--accent); }
+
+@media (max-width: 560px) {
+  .ammo b { font-size: 34px; }
+  .course-time { font-size: 30px; }
+}

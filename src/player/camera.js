@@ -10,6 +10,7 @@
 
 import * as THREE from 'three';
 import { events as gameEvents } from '../core/events.js';
+import { WEAPONS } from '../weapons/weapons-data.js';
 
 export const DEFAULT_CAMERA_TUNING = {
   bobAmount: 0.045,     // metres of head bob at walking speed
@@ -20,6 +21,8 @@ export const DEFAULT_CAMERA_TUNING = {
   sprintFovKick: 7,     // percent wider view while sprinting
   slideFovKick: 11,     // percent wider view while sliding
   crouchSmoothing: 14,  // how quickly your eyes move when crouching (higher = faster)
+  shotPunch: 1.0,       // how much each shot jolts the view (0 = off)
+  shake: 1.0,           // camera shake from big shots (0 = off)
   thirdPerson: false,   // debug: watch your own capsule from behind
 };
 
@@ -39,7 +42,11 @@ export function verticalFov(horizontalDeg) {
   return (2 * Math.atan(Math.tan((horizontalDeg * DEG) / 2) / ASPECT_16_9)) / DEG;
 }
 
-export function createCameraRig({ camera, player, input, settings, tuning = { ...DEFAULT_CAMERA_TUNING }, events = gameEvents }) {
+/**
+ * @param {object} opts
+ * @param {() => {amount:number, zoom:number}} [opts.aim] how far you're aiming down the sights, and the gun's zoom
+ */
+export function createCameraRig({ camera, player, input, settings, aim = () => ({ amount: 0, zoom: 1 }), tuning = { ...DEFAULT_CAMERA_TUNING }, events = gameEvents }) {
   const rig = {
     tuning,
     eyeY: player.eyeHeight(),
@@ -49,9 +56,25 @@ export function createCameraRig({ camera, player, input, settings, tuning = { ..
     dipVel: 0,
     roll: 0,
     fovScale: 1,
+    punch: 0,       // visual-only upward jolt from the last shot (radians)
+    punchVel: 0,
+    trauma: 0,      // 0..1, how shaken the camera is; fades over time
+    time: 0,
     update,
     snap,
   };
+
+  // Each shot jolts the view up a touch (on top of the real recoil, which moves
+  // your aim) and adds "trauma". Shake is trauma squared: small shots barely
+  // wobble, a shotgun blast really shakes.
+  events.on('weapon:fire', (e) => {
+    if ((e.owner ?? 0) !== 0) return;
+    const kick = WEAPONS[e.weapon]?.kick;
+    if (!kick) return;
+    const k = 1 - aim().amount * 0.5;
+    rig.punchVel += kick.rot * DEG * 9 * k * tuning.shotPunch;
+    rig.trauma = Math.min(1, rig.trauma + kick.shake * k);
+  });
 
   events.on('player:land', ({ speed }) => {
     if (speed < 2.5) return;
@@ -98,15 +121,22 @@ export function createCameraRig({ camera, player, input, settings, tuning = { ..
     const walkSpeed = player.tuning.walkSpeed;
     rig.bobWeight = damp(rig.bobWeight, walking ? Math.min(s.speed / walkSpeed, 1.6) : 0, 10, dt);
     if (walking) rig.bobPhase += ((s.speed * dt) / t.bobStride) * Math.PI * 2;
-    const bob = t.bobAmount * rig.bobWeight * motion;
+    const aiming = aim();
+    const bob = t.bobAmount * rig.bobWeight * motion * (1 - aiming.amount * 0.75);
     const bobY = -Math.abs(Math.sin(rig.bobPhase)) * bob + bob * 0.5;
     const bobX = Math.sin(rig.bobPhase * 0.5) * bob * 0.6;
 
     // Landing dip: a spring that gets kicked down and bounces back.
-    const k = 140;
-    const c = 17;
-    rig.dipVel += (-k * rig.dip - c * rig.dipVel) * dt;
-    rig.dip += rig.dipVel * dt;
+    // Springs are updated in small steps: one big step on a slow frame would
+    // overshoot further each time and explode.
+    const steps = Math.ceil(dt * 240);
+    const h = dt / Math.max(steps, 1);
+    for (let i = 0; i < steps; i++) {
+      rig.dipVel += (-140 * rig.dip - 17 * rig.dipVel) * h;
+      rig.dip += rig.dipVel * h;
+      rig.punchVel += (-420 * rig.punch - 38 * rig.punchVel) * h;
+      rig.punch += rig.punchVel * h;
+    }
     rig.dip = Math.max(-0.5, Math.min(0.2, rig.dip));
 
     // Lean: a touch when strafing, more in a slide.
@@ -120,21 +150,32 @@ export function createCameraRig({ camera, player, input, settings, tuning = { ..
     if (s.mantle) pitchOffset = -Math.sin(Math.PI * s.mantle.t) * 5 * DEG * motion;
 
     // Field of view widens with speed, which sells the sense of going fast.
+    // Aiming down the sights zooms in by the gun's zoom factor.
     let fovTarget = 1;
     if (s.sprinting) fovTarget += (t.sprintFovKick / 100) * motion;
     if (s.mode === 'slide') fovTarget += (t.slideFovKick / 100) * motion;
     rig.fovScale = damp(rig.fovScale, fovTarget, 6, dt);
-    const vfov = verticalFov(Math.min(settings.fov * rig.fovScale, 150));
+    const zoom = 1 + (aiming.zoom - 1) * aiming.amount;
+    const vfov = verticalFov(Math.min((settings.fov * rig.fovScale) / zoom, 150));
     if (Math.abs(camera.fov - vfov) > 0.01) {
       camera.fov = vfov;
       camera.updateProjectionMatrix();
     }
 
+    // Shot punch (a stiff spring) and shake (trauma squared times smooth wobble).
+    rig.time += dt;
+    rig.trauma = Math.max(0, rig.trauma - 1.6 * dt);
+    const shake = rig.trauma * rig.trauma * 1.5 * DEG * motion * t.shake;
+    const wobble = (f, o) => Math.sin(rig.time * f + o) * 0.6 + Math.sin(rig.time * f * 2.3 + o * 1.7) * 0.4;
+    const shakePitch = shake * wobble(31, 0);
+    const shakeYaw = shake * wobble(27, 2);
+    const shakeRoll = shake * wobble(23, 4);
+
     // Look direction comes straight from the mouse (input.yaw/pitch), not from
     // the last tick, so aiming responds the instant you move the mouse.
     const yaw = input.yaw;
     const pitch = input.pitch;
-    camera.rotation.set(pitch + pitchOffset, yaw, rig.roll, 'YXZ');
+    camera.rotation.set(pitch + pitchOffset + rig.punch * motion + shakePitch, yaw + shakeYaw, rig.roll + shakeRoll, 'YXZ');
     camera.position.set(
       feet.x + Math.cos(yaw) * bobX,
       feet.y + rig.eyeY + bobY + rig.dip * motion,
