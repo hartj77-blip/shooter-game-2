@@ -244,3 +244,17 @@ test('difficulty scales how much their bullets hurt', async () => {
   assert.ok(recruit && veteran);
   assert.ok(Math.abs(recruit / veteran - DIFFICULTY.recruit.damage / DIFFICULTY.veteran.damage) < 0.3);
 });
+
+test('a fallen enemy leaves no invisible wall behind (regression: their body used to stay)', async () => {
+  const f = await makeFight({ pieces: [enemy('rifleman', [0, 0, -6], { yaw: SOUTH })], god: true });
+  const e = f.e();
+  f.enemies.options.freeze = true;
+  f.enemies.damage(e, 1000, { owner: 0, zone: 'body', from: f.soldier.state.pos });
+  assert.equal(e.dead, true);
+  f.run(0.2);
+  f.teleport([0, 0, 0], NORTH);
+  f.run(2.5, { moveZ: 1 }); // straight through where they fell
+  assert.ok(f.soldier.state.pos.z < -9, `walked through the spot (z = ${f.soldier.state.pos.z.toFixed(2)})`);
+  // With the bug you slid around an invisible body and came out about 0.8 m to the side.
+  assert.ok(Math.abs(f.soldier.state.pos.x) < 0.2, `without being pushed aside (x = ${f.soldier.state.pos.x.toFixed(2)})`);
+});

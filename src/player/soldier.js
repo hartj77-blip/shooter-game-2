@@ -78,8 +78,9 @@ export function createSoldier({
    * Fires the gun (if it should) and traces every bullet. Bullets go where cmd.yaw and cmd.pitch
    * point (plus spread); an enemy's brain sets those itself, aim error and warning shots included.
    * @param {object} [opts]
-   * @param {boolean} [opts.trace] false: run the gun (ammo, reloads, aiming) but trace no bullets.
-   *        The host does this for other players, whose own browsers trace their shots (net/host.js).
+   * @param {boolean} [opts.trace] false: run the gun (ammo, reloads, aiming) but trace no bullets,
+   *        make no noise and post no events. The co-op host does this for other players: their own
+   *        browsers trace their shots and send them in (net/host.js applies them).
    * @returns {{look:{yaw:number, pitch:number}, shots:Array, hitTargets?:Map}} recoil for the view, and what each shot did
    */
   function act(cmd, dt, { trace = true } = {}) {
@@ -139,6 +140,12 @@ export function createSoldier({
     hitboxes.sync(body.state.pos, body.state.yaw, body.state.crouched);
   }
 
+  /** Back to a saved movement state (co-op prediction), with the hitboxes following. */
+  function restore(saved) {
+    body.restore(saved);
+    hitboxes.sync(body.state.pos, body.state.yaw, body.state.crouched);
+  }
+
   /** Takes the soldier out of the world for good (enemies, when a fight restarts). */
   function remove() {
     hitboxes.remove();
@@ -156,6 +163,7 @@ export function createSoldier({
     move,
     act,
     teleport,
+    restore,
     remove,
     get state() { return body.state; },
   };

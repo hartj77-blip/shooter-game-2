@@ -172,21 +172,35 @@ export function createSim({
   /**
    * One fixed step.
    * @param {number} dt
-   * @param {Map<number, object>|object} commands this tick's command per player (a single command is player 0's)
+   * @param {Map<number, object|object[]>|object} commands this tick's command per player (a single
+   *        command is the first player's). A co-op client's entry is a list: usually one command,
+   *        none while their first ones are on the way, two while the host catches up (net/jitter.js).
+   *        A player with no entry repeats their last command.
    * @param {object} [opts]
    * @param {Set<number>} [opts.remote] players whose shots are traced by their own browsers (co-op clients)
    * @returns {Map<number, object>} each player's act() result (recoil to apply, shots fired)
    */
   function tick(dt, commands, { remote = null } = {}) {
     const cmds = commands instanceof Map ? commands : new Map([[[...team.keys()][0], commands]]);
-    const cmdOf = (p) => {
+    const listFor = (p) => {
+      const given = cmds.get(p.owner);
+      const list = given === undefined ? [p.lastCmd] : Array.isArray(given) ? given : [given];
+      if (!list.length) return [idleCommand(p.lastCmd.yaw, p.lastCmd.pitch)];
+      p.lastCmd = list[list.length - 1];
       // Downed players can look around, nothing else.
-      const c = cmds.get(p.owner) ?? p.lastCmd;
-      p.lastCmd = c;
-      return p.health.state.down || p.health.state.bleeding || p.health.state.dead ? idleCommand(c.yaw, c.pitch) : c;
+      const out = p.health.state.down || p.health.state.bleeding || p.health.state.dead;
+      return out ? list.map((c) => idleCommand(c.yaw, c.pitch)) : list;
     };
     const now = new Map();
-    for (const p of team.values()) now.set(p.owner, cmdOf(p));
+    for (const p of team.values()) {
+      const list = listFor(p);
+      // Catching up on a co-op client's backlog: the extra commands run first, in order.
+      for (let i = 0; i < list.length - 1; i++) {
+        p.soldier.move(list[i], dt);
+        p.soldier.act(list[i], dt, { trace: false });
+      }
+      now.set(p.owner, list[list.length - 1]);
+    }
     for (const p of team.values()) p.soldier.move(now.get(p.owner), dt);
     enemies?.move(dt);
     targets.update(dt);
@@ -222,6 +236,7 @@ export function createSim({
     def, level, world, registry, targets, nav, cover, noise, events,
     get enemies() { return enemies; },
     encounter, course, team,
+    damage, // who gets hurt by a player's bullet (the co-op host applies clients' hits through it)
     player: (owner) => team.get(owner) ?? null,
     addPlayer,
     removePlayer,

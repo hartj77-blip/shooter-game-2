@@ -5,7 +5,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeSim, tap } from '../support/sim.js';
-import { DEFAULT_TUNING, BODY } from '../../src/player/controller.js';
+import { DEFAULT_TUNING, BODY, createPlayer } from '../../src/player/controller.js';
+import { idleCommand } from '../../src/core/input.js';
+import { SIM_DT } from '../../src/core/loop.js';
 
 const near = (actual, expected, tolerance, what) =>
   assert.ok(Math.abs(actual - expected) <= tolerance, `${what}: expected ${expected} ± ${tolerance}, got ${actual.toFixed(3)}`);
@@ -273,4 +275,23 @@ test('the same commands always give exactly the same result (determinism)', asyn
   b.run(4, script);
   assert.deepEqual(a.state.pos, b.state.pos);
   assert.deepEqual(a.state.vel, b.state.vel);
+});
+
+test('you climb ledges, not people: jumping right in front of a crouching soldier never starts a climb (regression)', async () => {
+  const sim = await makeSim();
+  // Someone crouching 1.5 m ahead: about as tall as a crate you could climb.
+  const other = createPlayer({ world: sim.world, spawn: { pos: [0, 0, -1.5], yaw: 0 }, events: sim.events, owner: 1 });
+  sim.settle();
+  const crouch = () => {
+    other.update({ ...idleCommand(0), crouch: true }, SIM_DT);
+    sim.world.step();
+  };
+  for (let i = 0; i < 30; i++) crouch();
+  // Walk up against them, then press jump.
+  for (let i = 0; i < 90; i++) {
+    sim.player.update({ ...idleCommand(0), moveZ: 1, jump: i === 50, jumpHeld: i >= 50 && i < 60 }, SIM_DT);
+    crouch();
+    assert.notEqual(sim.state.mode, 'mantle', `tick ${i}: climbing onto someone`);
+  }
+  // (A plain jump that lands on their back is allowed: plenty of co-op games let you.)
 });

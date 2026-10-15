@@ -6,12 +6,13 @@
 //   HITBOX     the head, body and limb boxes that bullets actually hit
 //
 // Each kind of question only "sees" some of them:
-//   MOVE    walking, standing up, mantling, ground checks: world + characters
+//   MOVE    walking, standing up, ground checks: world + characters
 //           (you can't walk through a wall or a person, and your own hitboxes never trip you)
 //   BULLET  shots: world + hitboxes (the fat movement cylinder would catch bullets
 //           meant to whistle past someone's head)
 //   SIGHT   enemy eyesight and hearing checks: world only (soldiers don't hide each other)
-//   LEVEL   mapping the level for enemies (the same as SIGHT, under a clearer name)
+//   LEVEL   the level's own shapes: mapping it for enemies, and finding ledges to climb
+//           (the same as SIGHT, under a clearer name; nobody climbs onto someone's head)
 //
 // Rapier packs a group into one 32-bit number: the top 16 bits say which groups
 // a collider is a member of, the bottom 16 say which groups it's willing to meet.
