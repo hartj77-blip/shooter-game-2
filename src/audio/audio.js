@@ -27,6 +27,7 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
   let master, sfx, ui, reverbIn;
   let voices = 0;
   const lastPlayed = new Map();
+  const ears = { x: 0, y: 0, z: 0 }; // where the listener is (for distance effects)
 
   /** Downloads every sound file. Call during loading; reports progress 0..1. */
   async function preload(onProgress = () => {}) {
@@ -126,11 +127,19 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     click: [0.04, (t) => (Math.random() * 2 - 1) * Math.exp(-t * 160)],
     ring: [0.9, (t) => (tone(1350)(t) + 0.5 * tone(2710)(t)) * Math.exp(-t * 5) * 0.6],
     thud: [0.08, (t) => (Math.random() * 2 - 1) * Math.exp(-t * 60) * 0.7],
+    // A bullet passing your ear: a short hiss with a falling whistle.
+    whizz: [0.2, (t) => {
+      const env = Math.sin(Math.PI * Math.min(1, t / 0.2)) ** 2;
+      return ((Math.random() * 2 - 1) * 0.55 + Math.sin(2 * Math.PI * (2600 - 3500 * t) * t) * 0.45) * env;
+    }],
+    heartbeat: [0.5, (t) => tone(52)(t) * (Math.exp(-t * 28) + (t > 0.17 ? 0.7 * Math.exp(-(t - 0.17) * 30) : 0))],
+    radio: [0.1, (t) => (Math.sign(Math.sin(2 * Math.PI * 1150 * t)) * 0.25 + (Math.random() * 2 - 1) * 0.35) * Math.exp(-t * 35)],
+    laser: [0.28, (t) => tone(900 + 1600 * t)(t) * Math.min(1, t * 40) * Math.min(1, (0.28 - t) * 30) * 0.5],
   };
   const fallbackFor = (name) =>
     /rifle|smg|shotgun|pistol/.test(name) && !/reload/.test(name) ? 'shot'
       : name.startsWith('ding') ? 'ring'
-        : /hit_|step|land/.test(name) ? 'thud' : 'click';
+        : /hit_|step|land|hurt|bodyfall/.test(name) ? 'thud' : 'click';
 
   function bufferFor(entry, name) {
     const key = entry.synth ?? entry.files[Math.floor(Math.random() * entry.files.length)];
@@ -146,7 +155,8 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
   /**
    * Plays a sound from the bank.
    * @param {string} name   key in SOUNDS
-   * @param {object} [opts] { position: {x,y,z} for 3D sounds, volume, rate, delay (seconds) }
+   * @param {object} [opts] { position: {x,y,z} for 3D sounds, volume, rate, delay (seconds),
+   *                          spatial: place it in the world even if the bank entry doesn't (an enemy's gun) }
    */
   function play(name, opts = {}) {
     if (!ctx || ctx.state !== 'running') return;
@@ -169,7 +179,17 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     source.connect(gain);
 
     let out = gain;
-    if (entry.spatial && opts.position) {
+    if ((opts.spatial ?? entry.spatial) && opts.position) {
+      // Far-away sounds lose their treble (air soaks up high notes): a distant
+      // gunshot is a dull thump, a close one a sharp crack.
+      const d = Math.hypot(opts.position.x - ears.x, opts.position.y - ears.y, opts.position.z - ears.z);
+      if (d > 15) {
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = Math.max(700, 18000 / (1 + (d - 15) / 10));
+        out.connect(lp);
+        out = lp;
+      }
       const p = ctx.createPanner();
       p.panningModel = 'HRTF';
       p.distanceModel = 'inverse';
@@ -177,7 +197,7 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
       p.rolloffFactor = 1.1;
       p.maxDistance = 120;
       setPosition(p, opts.position);
-      gain.connect(p);
+      out.connect(p);
       out = p;
     }
     out.connect(entry.bus === 'ui' ? ui : sfx);
@@ -212,6 +232,7 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     const fwd = [-e[8], -e[9], -e[10]];
     const up = [e[4], e[5], e[6]];
     const pos = camera.position;
+    ears.x = pos.x; ears.y = pos.y; ears.z = pos.z;
     if (l.positionX) {
       l.positionX.value = pos.x; l.positionY.value = pos.y; l.positionZ.value = pos.z;
       l.forwardX.value = fwd[0]; l.forwardY.value = fwd[1]; l.forwardZ.value = fwd[2];

@@ -12,6 +12,11 @@ const LABELS = {
   crouchMode:   { label: 'Crouch', names: { hold: 'Hold C', toggle: 'Press C to toggle' } },
   sprintMode:   { label: 'Sprint', names: { hold: 'Hold Shift', toggle: 'Press Shift to toggle' } },
   aimMode:      { label: 'Aim down sights', names: { hold: 'Hold right mouse', toggle: 'Click right mouse to toggle' } },
+  difficulty:   {
+    label: 'Difficulty',
+    names: { recruit: 'Recruit: forgiving', regular: 'Regular', veteran: 'Veteran: they hit hard and react fast' },
+    help: 'How much enemy bullets hurt, how fast enemies react and aim, and how many can shoot at you at once.',
+  },
   adsSensitivity: { label: 'Aiming sensitivity', step: 0.05, format: (v) => `${Math.round(v * 100)}%`, help: '100% keeps the same feel as normal look, adjusted for the zoom.' },
   masterVolume: { label: 'Master volume', step: 0.05, format: (v) => `${Math.round(v * 100)}%` },
   sfxVolume:    { label: 'Effects volume', step: 0.05, format: (v) => `${Math.round(v * 100)}%` },

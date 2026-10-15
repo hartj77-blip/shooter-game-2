@@ -72,9 +72,9 @@ export const ROLES = {
 };
 
 export const DIFFICULTY = {
-  recruit: { name: 'Recruit', damage: 0.4, reaction: 1.35, aim: 1.4, tokens: 1, awareness: 0.75 },
-  regular: { name: 'Regular', damage: 0.6, reaction: 1, aim: 1, tokens: 2, awareness: 1 },
-  veteran: { name: 'Veteran', damage: 0.85, reaction: 0.75, aim: 0.75, tokens: 3, awareness: 1.3 },
+  recruit: { name: 'Recruit', damage: 0.3, reaction: 1.35, aim: 1.4, tokens: 1, awareness: 0.75 },
+  regular: { name: 'Regular', damage: 0.45, reaction: 1, aim: 1, tokens: 2, awareness: 1 },
+  veteran: { name: 'Veteran', damage: 0.7, reaction: 0.75, aim: 0.75, tokens: 3, awareness: 1.3 },
 };
 
 // How noticing works (ai/senses.js). Awareness fills from 0 to 1; at 1 you're spotted.
