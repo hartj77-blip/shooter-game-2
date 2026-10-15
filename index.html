@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Fireteam</title>
-<meta name="description" content="A co-op first-person shooter for the browser. Milestone 2: guns, a firing range and a timed kill house.">
+<meta name="description" content="A co-op first-person shooter for the browser. Milestone 3: enemy soldiers who see, hear, take cover and flank, in a walled compound.">
 <meta name="theme-color" content="#14170f">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314170f'/%3E%3Cpath d='M16 6v20M6 16h20' stroke='%23e8b14a' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='6' fill='none' stroke='%23e8b14a' stroke-width='2.5'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="src/ui/style.css">
@@ -28,7 +28,10 @@
 <canvas id="view" aria-label="Game view"></canvas>
 
 <div id="hud" class="hud" hidden>
+  <div id="hurt" class="hurt" aria-hidden="true"></div>
+  <div id="dirs" class="dirs" aria-hidden="true"></div>
   <div id="crosshair" class="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+  <div id="health" class="health" hidden><i id="healthFill"></i></div>
   <div id="readout" class="readout">
     <span id="rSpeed">0.0</span><small>m/s</small>
     <em id="rMode">WALK</em>
@@ -52,7 +55,14 @@
     <dl id="resultsList"></dl>
   </div>
   <div id="toast" class="toast" aria-live="polite"></div>
+  <div id="feed" class="feed" aria-live="polite"></div>
+  <div id="subs" class="subs" aria-live="polite"></div>
   <div id="dmgNums" class="dmg-nums"></div>
+  <div id="down" class="down" hidden>
+    <div class="down-title">You're down</div>
+    <div id="downInfo" class="down-info"></div>
+    <div class="down-hint">Press <kbd>R</kbd> to try again</div>
+  </div>
 </div>
 
 <section id="loading" class="screen">
@@ -66,8 +76,15 @@
 <section id="title" class="screen" hidden>
   <div class="card">
     <div class="brand">FIRETEAM</div>
-    <p class="tag">Milestone 2 &middot; Gunfeel</p>
-    <p class="lede">The training ground. Move like a pro, then head to the firing range and the timed kill house. Enemies arrive in the next milestone.</p>
+    <p class="tag">Milestone 3 &middot; Enemies</p>
+    <div class="maps" role="radiogroup" aria-label="Map">
+      <button id="mapProving" class="map" type="button" role="radio" data-map="proving-ground">
+        <b>Proving Ground</b><span>Practise: movement course, firing range, timed kill house.</span>
+      </button>
+      <button id="mapCompound" class="map" type="button" role="radio" data-map="compound">
+        <b>The Compound</b><span>Clear a walled compound held by 16 soldiers. They see, hear, take cover and flank.</span>
+      </button>
+    </div>
     <div class="actions">
       <button id="btnDeploy" class="primary" type="button">Deploy</button>
       <button id="btnSettingsT" type="button">Settings</button>
@@ -96,6 +113,7 @@
     <div class="stack">
       <button id="btnResume" class="primary" type="button">Resume</button>
       <button id="btnRespawn" type="button">Back to spawn</button>
+      <button id="btnMaps" type="button">Change map</button>
       <button id="btnSettingsP" type="button">Settings</button>
       <button id="btnQuit" type="button">Quit to title</button>
     </div>

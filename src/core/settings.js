@@ -19,6 +19,7 @@ export const SETTINGS_SCHEMA = {
   sprintMode:   { default: 'hold', options: ['hold', 'toggle'] },
   aimMode:      { default: 'hold', options: ['hold', 'toggle'] },
   adsSensitivity: { default: 1.0,  min: 0.2, max: 2 },   // mouse speed while aiming, relative to normal
+  difficulty:   { default: 'regular', options: ['recruit', 'regular', 'veteran'] }, // enemy damage, reactions, aim
   masterVolume: { default: 0.8,    min: 0,   max: 1 },
   sfxVolume:    { default: 1.0,    min: 0,   max: 1 },
   reduceMotion: { default: false },                       // turns off head bob and camera tilt

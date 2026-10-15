@@ -14,6 +14,9 @@ export const SURFACES = {
   steel:    { resistance: Infinity, sound: 'ding',         dust: '#c9ccd0', sparks: true },
   wood:     { resistance: 1,        sound: 'hit_wood',     dust: '#a0794a', sparks: false },
   target:   { resistance: Infinity, sound: 'hit_paper',    dust: '#e9e2cf', sparks: false },
+  // A soldier's hitboxes. Stylized: a puff of uniform fabric, not gore.
+  flesh:    { resistance: Infinity, sound: 'hit_flesh',    dust: '#5a4a3e', sparks: false },
+  sandbag:  { resistance: Infinity, sound: 'hit_dirt',     dust: '#a89470', sparks: false },
 };
 
 // Which surface each level material is made of.
@@ -29,6 +32,10 @@ export const MATERIAL_SURFACE = {
   crate: 'wood',
   plank: 'wood',
   steel: 'steel',
+  container: 'metal',
+  sandbag: 'sandbag',
+  roof: 'concrete',
+  floor: 'concrete',
 };
 
 export function createSurfaceRegistry() {

@@ -38,6 +38,14 @@ export const SOUNDS = {
   step_concrete:  { files: files('step_concrete', 5), volume: 0.28, pitch: 0.1 },
   step_wood:      { files: files('step_wood', 5), volume: 0.3, pitch: 0.1 },
   land:           { files: files('land', 2), volume: 0.45, pitch: 0.08 },
+  // Milestone 3: soldiers.
+  hit_flesh:      { files: files('hit_flesh', 3), volume: 0.6, pitch: 0.1, spatial: true },
+  hurt:           { files: files('hurt', 2), volume: 0.75, pitch: 0.08 },
+  bodyfall:       { files: files('bodyfall', 3), volume: 0.7, pitch: 0.08, spatial: true },
+  whizz:          { synth: 'whizz', volume: 0.55, pitch: 0.15, spatial: true },
+  heartbeat:      { synth: 'heartbeat', volume: 0.5, pitch: 0.02 },
+  radio:          { synth: 'radio', volume: 0.3, pitch: 0.05, spatial: true },
+  laser:          { synth: 'laser', volume: 0.4, pitch: 0.02, spatial: true },
   // Interface sounds are made by code (see audio.js), so they have no files.
   hitmarker:      { synth: 'tick', volume: 0.35, pitch: 0.03, bus: 'ui' },
   kill:           { synth: 'kill', volume: 0.45, pitch: 0.02, bus: 'ui' },

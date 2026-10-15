@@ -16,6 +16,7 @@
 
 import { RAPIER, IDENTITY_ROTATION } from '../world/physics.js';
 import { events as gameEvents } from '../core/events.js';
+import { MOVE, CHARACTER_GROUPS } from '../world/groups.js';
 
 const deg = (d) => (d * Math.PI) / 180;
 
@@ -72,14 +73,19 @@ export const NO_MODS = Object.freeze({ speedScale: 1, canSprint: true });
  * @param {{pos:number[], yaw:number}} opts.spawn
  * @param {object} [opts.tuning]  defaults to a copy of DEFAULT_TUNING
  * @param {object} [opts.events]  event bus, defaults to the shared one
+ * @param {number|string} [opts.owner] who this body belongs to (0 = you); added to every event
  */
-export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, events = gameEvents }) {
+export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, events = gameEvents, owner = 0 }) {
+  // Every event says whose body it was, so the camera only dips when *you* land.
+  const emit = (name, data) => events.emit(name, { owner, ...data });
   const r = BODY.radius;
   const rim = BODY.rim;
   // Rapier measures a rounded cylinder without its rounded rim, so subtract it.
   const halfOf = (height) => height / 2 - rim;
 
-  const collider = world.createCollider(RAPIER.ColliderDesc.roundCylinder(halfOf(BODY.standHeight), r - rim, rim));
+  const collider = world.createCollider(
+    RAPIER.ColliderDesc.roundCylinder(halfOf(BODY.standHeight), r - rim, rim).setCollisionGroups(CHARACTER_GROUPS),
+  );
 
   // Rapier's kinematic character controller: it moves our capsule and handles
   // sliding along walls, climbing slopes and stepping up stairs.
@@ -143,7 +149,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
 
   /** Is anything (other than us) in the way of this capsule at this position? */
   function blocked(probe, center) {
-    return world.intersectionWithShape(center, IDENTITY_ROTATION, probe, undefined, undefined, collider) !== null;
+    return world.intersectionWithShape(center, IDENTITY_ROTATION, probe, undefined, MOVE, collider) !== null;
   }
 
   function setCrouched(on, force = false) {
@@ -160,7 +166,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     }
     state.crouched = on;
     state.pos = feet;
-    if (feetShift) events.emit('player:crouch-air', { feetShift });
+    if (feetShift) emit('player:crouch-air', { feetShift });
     collider.setHalfHeight(halfOf(to));
     syncCollider();
     return true;
@@ -172,13 +178,17 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
   // acceleration pushes you towards the speed you want. The balance between the
   // two is what makes movement feel heavy or snappy.
 
-  function applyFriction(friction, stopSpeed, dt) {
+  // `stopSpeed` makes friction act at least that strongly, so you stop crisply
+  // instead of creeping. It only applies when you've let go of the keys: while
+  // you're pushing, a slow walk (a gamepad stick half-pushed, an enemy on patrol)
+  // would otherwise be cancelled out by it and barely move at all.
+  function applyFriction(friction, stopSpeed, dt, pushing = false) {
     const speed = horizSpeed();
     if (speed < 1e-4) {
       state.vel.x = state.vel.z = 0;
       return;
     }
-    const drop = Math.max(speed, stopSpeed) * friction * dt;
+    const drop = (pushing ? speed : Math.max(speed, stopSpeed)) * friction * dt;
     const scale = Math.max(speed - drop, 0) / speed;
     state.vel.x *= scale;
     state.vel.z *= scale;
@@ -220,7 +230,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
       const oz = state.pos.z + dirZ * probe;
       const down = world.castRayAndGetNormal(
         new RAPIER.Ray({ x: ox, y: top, z: oz }, { x: 0, y: -1, z: 0 }),
-        top - (feetY + t.mantleMin), true, undefined, undefined, collider,
+        top - (feetY + t.mantleMin), true, undefined, MOVE, collider,
       );
       if (!down) continue;
       if (down.timeOfImpact < 1e-3) return null; // the stick started inside a wall: too tall to climb
@@ -231,7 +241,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
       // There must be an actual wall face in front of us, just below the ledge.
       const wall = world.castRay(
         new RAPIER.Ray({ x: center.x, y: ledgeY - 0.12, z: center.z }, { x: dirX, y: 0, z: dirZ }),
-        probe + 0.05, true, undefined, undefined, collider,
+        probe + 0.05, true, undefined, MOVE, collider,
       );
       if (!wall) continue;
 
@@ -242,7 +252,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
       let ty = ledgeY;
       const onTop = world.castRay(
         new RAPIER.Ray({ x: tx, y: ledgeY + 0.3, z: tz }, { x: 0, y: -1, z: 0 }),
-        0.45, true, undefined, undefined, collider,
+        0.45, true, undefined, MOVE, collider,
       );
       if (onTop) ty = ledgeY + 0.3 - onTop.timeOfImpact;
       else { tx = ox; tz = oz; } // thin wall: land where the stick touched instead
@@ -259,7 +269,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
       if (headroom > 0) {
         const up = world.castRay(
           new RAPIER.Ray({ x: center.x, y: feetY + height() - 0.05, z: center.z }, { x: 0, y: 1, z: 0 }),
-          headroom + 0.05, true, undefined, undefined, collider,
+          headroom + 0.05, true, undefined, MOVE, collider,
         );
         if (up) continue;
       }
@@ -283,7 +293,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     state.mode = 'mantle';
     state.vel = { x: 0, y: 0, z: 0 };
     state.jumpBuffer = 0;
-    events.emit('player:mantle', { height: ledge.height });
+    emit('player:mantle', { height: ledge.height });
   }
 
   const easeOut = (k) => 1 - (1 - k) ** 3;
@@ -321,7 +331,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     state.mode = 'slide';
     state.slideTime = 0;
     setCrouched(true, true);
-    events.emit('player:slide', {});
+    emit('player:slide', {});
   }
 
   function endSlide() {
@@ -333,7 +343,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
   function groundNormal() {
     const hit = world.castRayAndGetNormal(
       new RAPIER.Ray({ x: state.pos.x, y: state.pos.y + 0.2, z: state.pos.z }, { x: 0, y: -1, z: 0 }),
-      0.6, true, undefined, undefined, collider,
+      0.6, true, undefined, MOVE, collider,
     );
     return hit ? hit.normal : { x: 0, y: 1, z: 0 };
   }
@@ -370,6 +380,9 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     const wishLen = Math.hypot(wx, wz);
     if (wishLen > 1e-6) { wx /= wishLen; wz /= wishLen; }
     const moving = wishLen > 1e-6;
+    // How hard the stick is pushed: keys are always "all the way" (1); a gamepad
+    // stick, or an enemy strolling on patrol, can ask for less.
+    const pace = Math.min(1, Math.hypot(cmd.moveX, cmd.moveZ));
 
     // Crouching. Sliding keeps you crouched. Standing up needs headroom.
     const wantCrouch = cmd.crouch || state.mode === 'slide';
@@ -403,14 +416,14 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
       state.coyote = 0;
       state.jumpBuffer = 0;
       state.takeoffSpeed = horizSpeed();
-      events.emit('player:jump', {});
+      emit('player:jump', {});
     }
 
     if (state.mode === 'ground') {
       let wishSpeed = state.crouched ? t.crouchSpeed : state.sprinting ? t.sprintSpeed : t.walkSpeed;
       if (cmd.moveZ < 0) wishSpeed *= t.backwardScale;
-      wishSpeed *= mods.speedScale;
-      applyFriction(t.friction, t.stopSpeed, dt);
+      wishSpeed *= mods.speedScale * pace;
+      applyFriction(t.friction, t.stopSpeed, dt, moving);
       if (moving) accelerate(wx, wz, wishSpeed, t.groundAccel, dt);
       state.vel.y = GROUND_STICK;
     } else if (state.mode === 'slide') {
@@ -467,7 +480,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     const c = { ...base };
     const go = (d) => {
       collider.setTranslation(c);
-      kcc.computeColliderMovement(collider, d);
+      kcc.computeColliderMovement(collider, d, undefined, MOVE);
       const m = kcc.computedMovement();
       c.x += m.x; c.y += m.y; c.z += m.z;
       return m;
@@ -499,7 +512,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
   function move(cmd, dt) {
     const t = tuning;
     const desired = { x: state.vel.x * dt, y: state.vel.y * dt, z: state.vel.z * dt };
-    kcc.computeColliderMovement(collider, desired);
+    kcc.computeColliderMovement(collider, desired, undefined, MOVE);
     let moved = { ...kcc.computedMovement() };
     let grounded = kcc.computedGrounded();
     const normals = [];
@@ -554,7 +567,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
       } else {
         state.mode = 'ground';
       }
-      events.emit('player:land', { speed: impact });
+      emit('player:land', { speed: impact });
     } else if (!grounded && wasGrounded) {
       // Walked or slid off an edge.
       if (state.mode === 'ground' || state.mode === 'slide') {
@@ -572,13 +585,21 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
 
   teleport(spawn.pos, spawn.yaw);
 
+  /** Takes the body out of the physics world for good. */
+  function remove() {
+    world.removeCharacterController(kcc);
+    world.removeCollider(collider, false);
+  }
+
   return {
     state,
     prev,
     tuning,
     collider,
+    owner,
     update,
     teleport,
+    remove,
     height,
     eyeHeight: () => height() - BODY.eyeBelowTop,
   };
