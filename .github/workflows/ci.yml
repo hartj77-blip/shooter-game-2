@@ -1,0 +1,39 @@
+# Continuous integration: GitHub runs every test on every pull request and on main.
+# A red cross here means something broke; the logs say what.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Install the test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke test
+        run: npm run smoke
+
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: test-results/
+          if-no-files-found: ignore
