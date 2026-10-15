@@ -22,6 +22,13 @@ export const PALETTE = {
   post:     { base: '#5a5e53', line: '#61655a', edge: '#6d7165' },
   plank:    { base: '#9a7a4e', line: '#a3835a', edge: '#b39468' },
   steel:    { base: '#4e5358', line: '#565b60', edge: '#62676c' },
+  // The Compound (milestone 3).
+  container:      { base: '#5d6b4c', line: '#667456', edge: '#738263' },
+  container_red:  { base: '#7d3f30', line: '#874839', edge: '#985747' },
+  container_blue: { base: '#3e5a72', line: '#47637b', edge: '#55728a' },
+  sandbag:  { base: '#9b8a66', line: '#a3926e', edge: '#b0a07c' },
+  floor:    { base: '#7f7a6e', line: '#888378', edge: '#959084' },
+  roof:     { base: '#5e5a52', line: '#66625a', edge: '#726e65' },
 };
 
 const SIZE = 256; // pixels per 1 m square

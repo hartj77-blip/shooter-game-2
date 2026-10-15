@@ -76,15 +76,19 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
     rig.trauma = Math.min(1, rig.trauma + kick.shake * k);
   });
 
-  events.on('player:land', ({ speed }) => {
-    if (speed < 2.5) return;
+  const mine = (e) => (e.owner ?? 0) === 0; // only your own body moves your camera
+  events.on('player:land', (e) => {
+    const { speed } = e;
+    if (!mine(e) || speed < 2.5) return;
     rig.dipVel -= Math.min(speed, 22) * 0.035 * tuning.landDip;
   });
-  events.on('player:mantle', () => {
+  events.on('player:mantle', (e) => {
+    if (!mine(e)) return;
     rig.dipVel -= 0.25 * tuning.landDip;
   });
-  events.on('player:crouch-air', ({ feetShift }) => {
-    rig.eyeY -= feetShift; // your feet moved but your head didn't: keep the eyes where they were
+  events.on('player:crouch-air', (e) => {
+    if (!mine(e)) return;
+    rig.eyeY -= e.feetShift; // your feet moved but your head didn't: keep the eyes where they were
   });
 
   const feet = new THREE.Vector3();
