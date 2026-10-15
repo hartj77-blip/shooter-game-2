@@ -2,9 +2,12 @@
 //
 // A level file (see levels/) is just a list of pieces with sizes and positions.
 // expandPiece() turns each piece into plain shape descriptions:
-//   solids  things you can stand on and bump into (they get a mesh AND a collider)
-//   paint   flat decoration on the floor (mesh only, you walk straight over it)
-//   signs   text panels (mesh only)
+//   solids    things you can stand on and bump into (they get a mesh AND a collider)
+//   paint     flat decoration on the floor (mesh only, you walk straight over it)
+//   signs     text panels (mesh only)
+//   targets   things to shoot (src/world/targets.js brings them to life)
+//   triggers  invisible boxes that notice when you walk in (start and finish pads)
+//   racks     tables showing the guns (drawn by the presentation code)
 // The physics side (world/level.js) and the drawing side (render/level-view.js)
 // both read these same descriptions, so what you see always matches what you hit.
 //
@@ -94,6 +97,65 @@ const expanders = {
     return { paint: [{ size: p.size, center: [p.at[0], p.at[1] + 0.006, p.at[2]], rotY: p.rotY ?? 0, color: p.color }] };
   },
 
+  // A straight wall from `from` to `to` (both [x, z]), with optional openings:
+  //   openings: [{ at: metres from `from` to the opening's middle, width, bottom, top }]
+  // A door is an opening with bottom 0; a window has a sill (bottom > 0).
+  wall(p) {
+    const [x1, z1] = p.from;
+    const [x2, z2] = p.to;
+    const length = Math.hypot(x2 - x1, z2 - z1);
+    const rotY = Math.atan2(-(z2 - z1), x2 - x1); // turns local +X to point along the wall
+    const mid = [(x1 + x2) / 2, p.base ?? 0, (z1 + z2) / 2];
+    const height = p.height ?? 2.6;
+    const thick = p.thick ?? 0.3;
+    const mat = p.mat ?? 'concrete';
+    const solids = [];
+    const part = (s0, s1, y0, y1) => {
+      if (s1 - s0 < 0.01 || y1 - y0 < 0.01) return;
+      const c = placePoint([(s0 + s1) / 2 - length / 2, (y0 + y1) / 2, 0], mid, rotY);
+      solids.push(box([s1 - s0, y1 - y0, thick], c, rotY, mat));
+    };
+    let cursor = 0;
+    for (const o of [...(p.openings ?? [])].sort((a, b) => a.at - b.at)) {
+      const s0 = o.at - o.width / 2;
+      const s1 = o.at + o.width / 2;
+      part(cursor, s0, 0, height);
+      part(s0, s1, 0, o.bottom ?? 0);
+      part(s0, s1, o.top ?? height, height);
+      cursor = s1;
+    }
+    part(cursor, length, 0, height);
+    return { solids };
+  },
+
+  // Something to shoot. kind: 'paper' | 'popup' | 'hostage' | 'steel' | 'mover'.
+  // `at` is the ground point under it; rotY 0 means it faces south (towards +Z).
+  target(p) {
+    return { targets: [{ ...p, rotY: p.rotY ?? 0 }] };
+  },
+
+  // An invisible box that notices when you're inside it. `at` is its ground centre.
+  trigger(p) {
+    const [w, h, d] = p.size;
+    return {
+      triggers: [{
+        id: p.id,
+        min: [p.at[0] - w / 2, p.at[1], p.at[2] - d / 2],
+        max: [p.at[0] + w / 2, p.at[1] + h, p.at[2] + d / 2],
+      }],
+      paint: p.paint ? [{ size: [w, d], center: [p.at[0], p.at[1] + 0.006, p.at[2]], rotY: 0, color: p.paint }] : [],
+    };
+  },
+
+  // A table with the guns laid out on it.
+  rack(p) {
+    const size = p.size ?? [3, 0.9, 0.8];
+    return {
+      solids: [box(size, [p.at[0], p.at[1] + size[1] / 2, p.at[2]], p.rotY ?? 0, 'plank')],
+      racks: [{ at: [p.at[0], p.at[1] + size[1], p.at[2]], rotY: p.rotY ?? 0, width: size[0], weapons: p.weapons }],
+    };
+  },
+
   // A text panel. `at` is the centre of the panel. Lying flat on the floor if `floor` is set.
   sign(p) {
     const out = { signs: [{ ...p, rotY: p.rotY ?? 0, size: p.size ?? [2, 1] }] };
@@ -110,17 +172,20 @@ export function expandPiece(piece) {
   const fn = expanders[piece.type];
   if (!fn) throw new Error(`Unknown level piece type "${piece.type}"`);
   const out = fn(piece);
-  return { solids: out.solids ?? [], paint: out.paint ?? [], signs: out.signs ?? [] };
+  const result = {};
+  for (const key of KINDS) result[key] = out[key] ?? [];
+  return result;
 }
+
+const KINDS = ['solids', 'paint', 'signs', 'targets', 'triggers', 'racks'];
 
 /** Expands a whole level definition. */
 export function expandLevel(def) {
-  const all = { solids: [], paint: [], signs: [] };
+  const all = {};
+  for (const key of KINDS) all[key] = [];
   for (const piece of def.pieces) {
     const e = expandPiece(piece);
-    all.solids.push(...e.solids);
-    all.paint.push(...e.paint);
-    all.signs.push(...e.signs);
+    for (const key of KINDS) all[key].push(...e[key]);
   }
   return all;
 }

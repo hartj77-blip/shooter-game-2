@@ -17,6 +17,10 @@ export const SETTINGS_SCHEMA = {
   fov:          { default: 100,    min: 70,  max: 120 },  // horizontal field of view in degrees (at 16:9)
   crouchMode:   { default: 'hold', options: ['hold', 'toggle'] },
   sprintMode:   { default: 'hold', options: ['hold', 'toggle'] },
+  aimMode:      { default: 'hold', options: ['hold', 'toggle'] },
+  adsSensitivity: { default: 1.0,  min: 0.2, max: 2 },   // mouse speed while aiming, relative to normal
+  masterVolume: { default: 0.8,    min: 0,   max: 1 },
+  sfxVolume:    { default: 1.0,    min: 0,   max: 1 },
   reduceMotion: { default: false },                       // turns off head bob and camera tilt
   showFps:      { default: false },
   showReadout:  { default: true },                        // speed and movement state, bottom left

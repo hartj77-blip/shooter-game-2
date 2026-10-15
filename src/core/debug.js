@@ -9,6 +9,37 @@ import GUI from 'lil-gui';
 import * as THREE from 'three';
 import { DEFAULT_TUNING, BODY } from '../player/controller.js';
 import { DEFAULT_CAMERA_TUNING } from '../player/camera.js';
+import { WEAPONS } from '../weapons/weapons-data.js';
+
+// A copy of the weapon table as it was at the start, for "Reset everything".
+const DEFAULT_WEAPONS = structuredClone(WEAPONS);
+
+// Weapon sliders: [path inside the weapon row, min, max, step, label]
+const WEAPON_ROWS = [
+  ['rpm', 30, 1500, 5, 'Rounds per minute'],
+  ['damage.near', 1, 150, 1, 'Damage close'],
+  ['damage.far', 1, 150, 1, 'Damage far'],
+  ['damage.nearRange', 1, 100, 1, 'Drop-off starts (m)'],
+  ['damage.farRange', 1, 200, 1, 'Drop-off ends (m)'],
+  ['spread.hip', 0, 10, 0.05, 'Hip spread (°)'],
+  ['spread.ads', 0, 6, 0.01, 'Aimed spread (°)'],
+  ['spread.perShot', 0, 2, 0.01, 'Bloom per shot (°)'],
+  ['spread.max', 0, 10, 0.1, 'Max bloom (°)'],
+  ['spread.recovery', 0, 40, 0.5, 'Bloom recovery (°/s)'],
+  ['recoil.pitch', 0, 6, 0.02, 'Recoil up (°)'],
+  ['recoil.yawRandom', 0, 2, 0.01, 'Recoil sideways jitter (°)'],
+  ['recoil.recover', 0, 1, 0.05, 'Recoil drift back (share)'],
+  ['ads.zoom', 1, 3, 0.05, 'Aim zoom'],
+  ['ads.time', 0.05, 0.6, 0.01, 'Aim time (s)'],
+  ['ads.move', 0.2, 1, 0.01, 'Aimed move speed'],
+  ['penetration', 0, 2, 0.05, 'Penetration (m of wood)'],
+];
+
+function holder(obj, path) {
+  const keys = path.split('.');
+  const last = keys.pop();
+  return [keys.reduce((o, k) => o[k], obj), last];
+}
 
 // [key, min, max, step, label]
 const MOVEMENT = [
@@ -50,13 +81,15 @@ const CAMERA = [
   ['sprintFovKick', 0, 25, 0.5, 'Sprint FOV kick (%)'],
   ['slideFovKick', 0, 30, 0.5, 'Slide FOV kick (%)'],
   ['crouchSmoothing', 2, 40, 1, 'Crouch smoothing'],
+  ['shotPunch', 0, 3, 0.05, 'Shot jolt'],
+  ['shake', 0, 3, 0.05, 'Camera shake'],
 ];
 
 function addSliders(folder, target, rows) {
   for (const [key, min, max, step, label] of rows) folder.add(target, key, min, max, step).name(label);
 }
 
-export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, visible = false }) {
+export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, arsenal, effects, hud, visible = false }) {
   const gui = new GUI({ title: 'Tuning panel  ·  ` to hide' });
   gui.domElement.classList.add('tuning');
 
@@ -82,6 +115,19 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, v
   const viewsFolder = gui.addFolder('Debug views').close();
   viewsFolder.add(rig.tuning, 'thirdPerson').name('Third-person camera');
   viewsFolder.add(views, 'colliders').name('Show colliders');
+
+  // ---- weapons
+  const weapons = gui.addFolder('Weapons').close();
+  if (arsenal) weapons.add(arsenal.options, 'infiniteAmmo').name('Infinite spare ammo');
+  if (effects) weapons.add(effects.options, 'showPaths').name('Show bullet paths');
+  if (hud) weapons.add(hud.options, 'damageNumbers').name('Show damage numbers');
+  for (const def of Object.values(WEAPONS)) {
+    const f = weapons.addFolder(def.name).close();
+    for (const [path, min, max, step, label] of WEAPON_ROWS) {
+      const [obj, key] = holder(def, path);
+      f.add(obj, key, min, max, step).name(label);
+    }
+  }
 
   // What the physics engine sees: every collider drawn as lines.
   const lines = new THREE.LineSegments(
@@ -109,12 +155,26 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, v
     reset() {
       Object.assign(player.tuning, DEFAULT_TUNING);
       Object.assign(rig.tuning, DEFAULT_CAMERA_TUNING);
+      for (const [id, def] of Object.entries(WEAPONS)) {
+        for (const [path] of WEAPON_ROWS) {
+          const [obj, key] = holder(def, path);
+          const [orig] = holder(DEFAULT_WEAPONS[id], path);
+          obj[key] = orig[key];
+        }
+      }
       loop.timeScale = 1;
       loop.paused = false;
       gui.controllersRecursive().forEach((c) => c.updateDisplay());
     },
     async copy() {
-      const text = JSON.stringify({ movement: player.tuning, camera: rig.tuning }, null, 2);
+      const guns = {};
+      for (const [id, def] of Object.entries(WEAPONS)) {
+        guns[id] = Object.fromEntries(WEAPON_ROWS.map(([path]) => {
+          const [obj, key] = holder(def, path);
+          return [path, obj[key]];
+        }));
+      }
+      const text = JSON.stringify({ movement: player.tuning, camera: rig.tuning, weapons: guns }, null, 2);
       try {
         await navigator.clipboard.writeText(text);
         copyButton.name('Copied!');

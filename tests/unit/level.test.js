@@ -48,3 +48,25 @@ test('the mantle wall heights match their labels', async () => {
     assert.ok(Math.abs(10 - hit.timeOfImpact - h) < 1e-3, `block at z=${z} should be ${h} m`);
   }
 });
+
+test('the kill house has 10 hostiles, 3 hostages, and start and finish pads', async () => {
+  const { expandLevel } = await import('../../src/world/kit.js');
+  const e = expandLevel(provingGround);
+  const kh = e.targets.filter((t) => t.group === 'killhouse');
+  assert.equal(kh.filter((t) => t.kind === 'popup').length, 10);
+  assert.equal(kh.filter((t) => t.kind === 'hostage').length, 3);
+  assert.deepEqual(e.triggers.map((t) => t.id).sort(), ['killhouse:finish', 'killhouse:start']);
+});
+
+test('walls with a door leave a gap you can walk through', async () => {
+  await initPhysics();
+  const world = createPhysicsWorld();
+  buildLevel({ spawn: { pos: [0, 0, 0], yaw: 0 }, pieces: [
+    { type: 'box', size: [40, 1, 40], at: [0, -1, 0], mat: 'ground' },
+    { type: 'wall', from: [-5, -3], to: [5, -3], openings: [{ at: 5, width: 1.3, bottom: 0, top: 2.2 }] },
+  ] }, world);
+  const ray = (x, y) => world.castRay(new RAPIER.Ray({ x, y, z: 0 }, { x: 0, y: 0, z: -1 }), 10, true);
+  assert.equal(ray(0, 1), null, 'straight through the doorway');
+  assert.ok(ray(0, 2.4), 'the wall above the door');
+  assert.ok(ray(2, 1), 'the wall beside the door');
+});
