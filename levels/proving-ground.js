@@ -5,10 +5,10 @@
 //
 // Layout, seen from above (north is up, you spawn in the middle facing north):
 //
-//                 [ sprint lane, 60 m ]          [ tower + slide hill ]
-//     [mantle   ] [ crouch tunnel ]   ARCH       [ steps and ramps    ]
+//                 [ sprint lane, 60 m ]          [ tower + slide hill ]   [ firing ]
+//     [mantle   ] [ crouch tunnel ]   ARCH       [ steps and ramps    ]   [ range  ]
 //     [ wall    ]              (spawn)
-//                           [ jump gaps ]
+//   [ kill house ]          [ jump gaps ]
 //
 // Facing guide for signs (rotY): 0 = readable from the south, PI = from the north,
 // PI/2 = from the east, -PI/2 = from the west.
@@ -42,8 +42,8 @@ add(
   { type: 'sign', at: [0, 3.0, -7], size: [5.2, 1.0], title: 'PROVING GROUND', lines: ['Sprint lane: hold SHIFT to sprint, press C to slide'] },
   { type: 'sign', floor: true, at: [0, 0, -3.6], size: [3.6, 0.5], title: 'PRESS ` (UNDER ESC) FOR THE TUNING PANEL', plain: true },
 
-  { type: 'sign', at: [-4.6, 1.5, -3], size: [2.2, 0.9], post: true, arrow: 'left', title: 'MANTLE WALL', lines: ['Crouch tunnel'] },
-  { type: 'sign', at: [4.6, 1.5, -3], size: [2.2, 0.9], post: true, arrow: 'right', title: 'STEPS & RAMPS', lines: ['Tower, slide hill'] },
+  { type: 'sign', at: [-4.6, 1.5, -3], size: [2.2, 0.9], post: true, arrow: 'left', title: 'MANTLE WALL', lines: ['Crouch tunnel, kill house'] },
+  { type: 'sign', at: [4.6, 1.5, -3], size: [2.2, 0.9], post: true, arrow: 'right', title: 'STEPS & RAMPS', lines: ['Tower, firing range'] },
 
   // A few obstacles to play with right away.
   { type: 'box', size: [1, 1, 1], at: [6, 0, 4], mat: 'crate' },
@@ -138,6 +138,82 @@ for (const gap of gaps) {
   platLength = gap === gaps.at(-1) ? 6 : 4;
   add({ type: 'box', size: [4, PLAT_H, platLength], at: [0, 0, z + platLength / 2], mat: 'concrete' });
 }
+
+// ---------------------------------------------------------------- firing range (east)
+// Stand behind the benches and shoot north. Lanes are 7 m wide, from x = 34 to 62.
+const BENCH_Z = -6.6;
+const RANGE_Z = (metres) => BENCH_Z - 0.4 - metres; // distance from the firing line
+const LANES = [37.5, 44.5, 51.5, 58.5];
+add(
+  { type: 'rack', at: [LANES[0], 0, BENCH_Z], size: [4.5, 0.95, 0.7], weapons: ['carbine', 'smg', 'shotgun', 'pistol'] },
+  ...LANES.slice(1).map((x) => ({ type: 'box', size: [4.5, 0.95, 0.7], at: [x, 0, BENCH_Z], mat: 'plank' })),
+  ...[34, 41, 48, 55, 62].map((x) => ({ type: 'paint', size: [0.1, 52], at: [x, 0, BENCH_Z - 26], color: '#6a6f60' })),
+  { type: 'box', size: [32, 3, 4], at: [48, 0, RANGE_Z(56)], mat: 'ground' }, // earth bank behind the targets
+  { type: 'sign', at: [31.4, 1.6, -4], size: [2.8, 1.2], post: true, title: 'FIRING RANGE', lines: ['Paper drops and pops back up. Steel rings.', '1–4 swap guns · R reload · right mouse aims'] },
+);
+for (const m of [10, 25, 35, 50]) {
+  add({ type: 'sign', floor: true, at: [33, 0, RANGE_Z(m) + 0.6], size: [1.6, 0.6], title: `${m} m`, plain: true });
+}
+add(
+  { type: 'target', kind: 'paper', at: [LANES[0], 0, RANGE_Z(10)] },
+  { type: 'target', kind: 'paper', at: [LANES[1], 0, RANGE_Z(10)] },
+  { type: 'target', kind: 'paper', at: [LANES[1], 0, RANGE_Z(25)] },
+  { type: 'target', kind: 'paper', at: [LANES[2], 0, RANGE_Z(25)] },
+  { type: 'target', kind: 'steel', at: [56.5, 0, RANGE_Z(25)] },
+  { type: 'target', kind: 'steel', at: [58.5, 0, RANGE_Z(25)] },
+  { type: 'target', kind: 'steel', at: [60.5, 0, RANGE_Z(25)] },
+  { type: 'target', kind: 'mover', at: [36, 0, RANGE_Z(35)], to: [60, 0, RANGE_Z(35)], speed: 2.2 },
+  { type: 'target', kind: 'paper', at: [LANES[0], 0, RANGE_Z(50)] },
+  { type: 'target', kind: 'paper', at: [LANES[2], 0, RANGE_Z(50)] },
+  { type: 'target', kind: 'steel', at: [LANES[3], 0, RANGE_Z(50)] },
+);
+
+// ---------------------------------------------------------------- kill house (south-west)
+// Four rooms. Enter through the north door, clear every room, leave by the south door.
+//
+//   x: -46 ............ -34 ............ -22
+//   z 16  [ room 1 (NW) ] | [ room 2 (NE) ]   <- entrance door in the north wall
+//   z 24  ---door-----------------door-----
+//         [ room 3 (SW) ] : [ room 4 (SE) ]   (":" is a thin wooden wall bullets go through)
+//   z 36  ---exit door----------------------
+const KH = 'killhouse';
+const DOOR = { width: 1.3, bottom: 0, top: 2.2 };
+const WINDOW = { width: 1.6, bottom: 1.0, top: 2.0 };
+const W = PI / 2;
+add(
+  { type: 'wall', from: [-46, 16], to: [-22, 16], openings: [{ at: 16, ...DOOR }] },
+  { type: 'wall', from: [-46, 36], to: [-22, 36], openings: [{ at: 6, ...DOOR }] },
+  { type: 'wall', from: [-46, 16], to: [-46, 36], openings: [{ at: 11, ...WINDOW }] },
+  { type: 'wall', from: [-22, 16], to: [-22, 36], openings: [{ at: 5, ...WINDOW }] },
+  { type: 'wall', from: [-46, 24], to: [-22, 24], openings: [{ at: 6, ...DOOR }, { at: 18, ...DOOR }] },
+  { type: 'wall', from: [-34, 16], to: [-34, 24], openings: [{ at: 4, ...DOOR }] },
+  { type: 'wall', from: [-34, 24], to: [-34, 36], thick: 0.12, mat: 'plank', openings: [{ at: 6, ...DOOR }] },
+  { type: 'box', size: [5, 1.0, 0.3], at: [-28, 0, 31], mat: 'concrete' },
+  { type: 'box', size: [1, 1, 1], at: [-38, 0, 22.4], mat: 'crate' },
+
+  { type: 'trigger', id: `${KH}:start`, at: [-30, 0, 12.5], size: [3, 3, 3], paint: '#4f7a3a' },
+  { type: 'trigger', id: `${KH}:finish`, at: [-40, 0, 39], size: [3, 3, 3], paint: '#b8862f' },
+  { type: 'sign', at: [-34.2, 1.7, 12.5], rotY: PI, size: [3.2, 1.2], post: true, title: 'KILL HOUSE', lines: ['Stand on the green pad. The timer starts when you step off.', 'Shoot every target, not the hostages. Finish on the amber pad.'] },
+  { type: 'sign', at: [-34.2, 1.7, 12.5], rotY: 0, size: [3.2, 1.2], title: 'KILL HOUSE', lines: ['Entrance: north door'] },
+
+  // Room 2 (north-east): you come in here, heading south.
+  { type: 'target', kind: 'popup', group: KH, at: [-24, 0, 18.5], rotY: -W },
+  { type: 'target', kind: 'popup', group: KH, at: [-25.5, 0, 22.8], rotY: PI },
+  { type: 'target', kind: 'hostage', group: KH, at: [-31.5, 0, 22.8], rotY: PI },
+  // Room 1 (north-west): through the door in the middle wall, heading west.
+  { type: 'target', kind: 'popup', group: KH, at: [-44.6, 0, 17.6], rotY: W },
+  { type: 'target', kind: 'popup', group: KH, at: [-44.6, 0, 22.2], rotY: W },
+  { type: 'target', kind: 'hostage', group: KH, at: [-41, 0, 19.8], rotY: W },
+  // Room 4 (south-east): through the right-hand door, heading south.
+  { type: 'target', kind: 'popup', group: KH, at: [-24, 0, 34.6], rotY: PI },
+  { type: 'target', kind: 'popup', group: KH, at: [-31, 0, 34.6], rotY: PI },
+  { type: 'target', kind: 'popup', group: KH, at: [-33.3, 0, 26.5], rotY: W },
+  // Room 3 (south-west): through the wooden wall's door, heading west.
+  { type: 'target', kind: 'popup', group: KH, at: [-45, 0, 26], rotY: W },
+  { type: 'target', kind: 'popup', group: KH, at: [-45, 0, 34], rotY: W },
+  { type: 'target', kind: 'hostage', group: KH, at: [-42, 0, 30.4], rotY: W },
+  { type: 'target', kind: 'popup', group: KH, at: [-38, 0, 35], rotY: PI },
+);
 
 export default {
   name: 'Proving Ground',

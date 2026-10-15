@@ -34,8 +34,8 @@ Each milestone ends with something playable on GitHub Pages, a lesson in `docs/l
 |---|---|---|---|
 | M0 | Setup | Repo structure, pinned libraries, tests, CI, this document | **Done** |
 | M1 | Move like a pro | Fixed-timestep loop, mouse look, walk/sprint/crouch/jump/slide/mantle, the Proving Ground, tuning panel | **Done** |
-| M2 | Gunfeel | Hitscan rifle, recoil, spread, aim down sights, viewmodel, effects, sound; then pistol, SMG, shotgun | Next |
-| M3 | Enemies | Hit zones, AI soldiers with senses, state-machine brains, pathfinding, cover, flanking, ragdolls | |
+| M2 | Gunfeel | Four guns (carbine, SMG, pump shotgun, pistol), recoil, spread, aim down sights, viewmodel, effects, real sound, firing range, timed kill house | **Done** |
+| M3 | Enemies | AI soldiers with senses, state-machine brains, pathfinding, cover, flanking, ragdolls (hit zones already exist on targets) | Next |
 | M4 | Co-op | Lobby, room codes, host-run game, snapshots, interpolation, prediction, revive, pings, voice | |
 | M5 | Missions | Objectives, the director, reinforcements, success and fail, debrief | |
 | M6 | Art pass | Stylized kit, animated characters, lighting, post-processing, quality presets | |
@@ -60,6 +60,21 @@ These are the defaults in `DEFAULT_TUNING` (`src/player/controller.js`). Tests c
 | Slide | +2 m/s boost, steady slow-down, speeds up downhill | A fast, flashy way to reach cover |
 | Coyote time / jump buffer | 0.12 s / 0.15 s | Forgiveness players feel but never see |
 
+## Weapons (M2)
+
+The numbers live in `src/weapons/weapons-data.js`; tests check fire rates, reload times and damage against them.
+
+| Slot | Gun | Fires | Rate | Damage near → far | Mag | Reload (part / empty) | Aim zoom | Role |
+|---|---|---|---|---|---|---|---|---|
+| 1 | K4 Carbine | auto | 750/min | 30 → 22 (25–60 m) | 30 | 1.9 / 2.35 s | 1.35× | All-rounder, red dot |
+| 2 | Vanta SMG | auto | 900/min | 24 → 15 (12–30 m) | 32 | 1.6 / 2.0 s | 1.25× | Close range, fast handling |
+| 3 | Breacher 12 | pump | 70/min | 8 × 14 → 4 (6–20 m) | 6 | shell by shell | 1.15× | Room clearing |
+| 4 | P9 Sidearm | semi | per click | 26 → 18 (15–40 m) | 15 | 1.45 / 1.7 s | 1.2× | Fastest swap |
+
+Hit zones: head ×2 (shotgun ×1.5), body ×1, limbs ×0.75. Bullets punch through thin wood (not crates, concrete or steel). Spread is seeded, so every computer agrees where bullets go.
+
+**Kill house:** 10 hostile pop-ups and 3 hostages across four rooms. The timer starts when you step off the green pad and stops on the amber pad once every hostile is down. Each hostage hit adds 5 s. Best time is saved in the browser.
+
 ## Controls
 
 | Action | Mouse and keyboard |
@@ -69,6 +84,10 @@ These are the defaults in `DEFAULT_TUNING` (`src/player/controller.js`). Tests c
 | Sprint | Shift (hold or toggle) |
 | Jump / climb | Space |
 | Crouch / slide | C (hold or toggle) |
+| Fire | Left mouse |
+| Aim down sights | Right mouse (hold or toggle) |
+| Reload | R |
+| Switch gun | 1–4, mouse wheel, Q for the last gun |
 | Tuning panel | `` ` `` |
 | Pause | Esc |
 
@@ -81,9 +100,9 @@ Gamepad and touch controls arrive in M8. Key rebinding arrives with full setting
 - **Readability first.** Enemies must stand out from backgrounds at a distance. Shadows are soft, so they never hide a threat completely.
 - **Grey-box until M6.** Gameplay is proven with the grid-textured kit before any real art goes in.
 
-## Audio direction (from M2)
+## Audio direction
 
-Punchy, slightly exaggerated weapon sounds; clear directional footsteps; distant gunfire with echo; music that rises with combat intensity. Everything important you hear also has a visual cue, for players who can't hear it.
+Punchy weapon sounds from real CC0 recordings, with a short echo; every play slightly varied in pitch so automatic fire never sounds robotic; positional impacts; footsteps that change with the surface. Still to come: distant gunfire for other players' guns, music that rises with combat intensity, and a visual cue for every important sound for players who can't hear it.
 
 ## Accessibility (ongoing)
 
@@ -99,6 +118,7 @@ Already in: reduce camera motion, hold or toggle for crouch and sprint, adjustab
 
 ## Open questions
 
-- Should ADS (aim down sights) slow movement as much as in Call of Duty, or less? Decide in M2 playtesting.
+- ~~How much should aiming slow you down?~~ Decided in M2: to 60–75% of normal speed depending on the gun (`ads.move`), and you can't sprint while aiming.
+- Should guns have a limited spare-ammo pool in missions, with ammo crates? The training ground uses infinite spare magazines for now. Decide in M5.
 - Friendly fire: off, on, or an option? Decide in M4.
 - Do downed players bleed out, or wait indefinitely while a teammate lives? Decide in M5.
