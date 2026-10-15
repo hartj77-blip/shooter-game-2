@@ -1,8 +1,11 @@
 // An encounter: "clear the Compound". The game rules around a fight.
 //
-//   ready --leave the start area--> running --every hostile down--> cleared
-//                                      │
-//                                      └──you go down──> down --restart--> ready
+//   ready --someone leaves the start area--> running --every hostile down--> cleared
+//                                               │
+//                                               └──everyone's down──> down --restart--> ready
+//
+// Solo, "everyone" is just you. In co-op, downed players can be revived
+// (game/revive.js), so the squad is only out when nobody is left standing.
 //
 // It times the run and counts your shots, hits, headshots, kills and the
 // damage you took, for the results card. Your best time is saved in the browser
@@ -18,11 +21,14 @@ const inside = (box, p) =>
  * @param {string} opts.id         record name (e.g. 'compound')
  * @param {object} [opts.start]    trigger box { min, max }: the timer starts when you leave it (no box: at once)
  * @param {object} opts.enemies    ai/enemies.js
- * @param {object} opts.health     player/health.js
+ * @param {object} [opts.health]   player/health.js, for solo play
+ * @param {Function} [opts.squad]  () => every player's health (co-op); replaces `health`
  * @param {object} opts.records    createRecords() from game/course.js
  * @param {Function} [opts.emit]
  */
-export function createEncounter({ id, start, enemies, health, records, emit = () => {} }) {
+export function createEncounter({ id, start, enemies, health = null, squad = null, records, emit = () => {} }) {
+  const healths = squad ?? (() => [health]);
+  const standing = (h) => !h.state.down && !h.state.bleeding && !h.state.dead;
   const enc = {
     id,
     state: 'ready',
@@ -46,10 +52,11 @@ export function createEncounter({ id, start, enemies, health, records, emit = ()
     emit('encounter:ready', { id, best: records.best(id), total: enc.total });
   }
 
-  /** @param {{x,y,z}} feet your feet position */
+  /** @param {{x,y,z}|Array<{x,y,z}>} feet every player's feet position */
   function update(dt, feet) {
+    const all = Array.isArray(feet) ? feet : [feet];
     if (enc.state === 'ready') {
-      if (!start || !inside(start, feet)) {
+      if (!start || all.some((f) => !inside(start, f))) {
         enc.state = 'running';
         emit('encounter:start', { id, total: enc.total });
       }
@@ -57,7 +64,8 @@ export function createEncounter({ id, start, enemies, health, records, emit = ()
     }
     if (enc.state !== 'running') return;
     enc.time += dt;
-    if (health.state.down) {
+    const team = healths();
+    if (team.length && !team.some(standing)) {
       enc.state = 'down';
       emit('encounter:down', { id, time: enc.time, kills: enc.kills, total: enc.total });
       return;
@@ -73,7 +81,7 @@ export function createEncounter({ id, start, enemies, health, records, emit = ()
         accuracy: enc.shots ? Math.min(1, enc.hits / enc.shots) : 0,
         shots: enc.shots,
         hits: enc.hits,
-        damageTaken: Math.round(health.state.taken),
+        damageTaken: Math.round(team.reduce((sum, h) => sum + h.state.taken, 0)),
         best: records.best(id),
         previous,
         record,

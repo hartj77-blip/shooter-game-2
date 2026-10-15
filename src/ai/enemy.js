@@ -176,8 +176,8 @@ export function command(e, ai, dt) {
 
   // ---- 2. Where to look and aim.
   const eye = e.eye();
-  const p = ai.player;
-  if (S.visible) {
+  const p = e.target; // the player this enemy is fighting (null until it picks one)
+  if (S.visible && p) {
     // Track you with a little delay: strafing really does make you harder to hit.
     if (!m.track) m.track = { ...p.chest };
     const k = 1 - Math.exp(-dt / def.aim.lag);
@@ -208,7 +208,7 @@ export function command(e, ai, dt) {
     const settle = clamp(m.exposure / def.aim.settle, 0, 1);
     let err = (def.aim.start + (def.aim.end - def.aim.start) * settle) * ai.difficulty.aim;
     if (moving) err *= 1.35;
-    if (p.sprinting) err *= 1.2;
+    if (p?.sprinting) err *= 1.2;
     m.errTimer -= dt;
     if (m.errTimer <= 0) {
       m.errTimer = 0.3;
@@ -271,7 +271,7 @@ function trigger(e, ai, dt, aimedWithin, sprinting) {
   const S = e.senses;
   const def = e.def;
   const I = e.intent;
-  const p = ai.player;
+  const p = e.target;
   const gun = e.soldier.arsenal.current;
   const off = { fire: false, firePressed: false };
 
@@ -283,7 +283,7 @@ function trigger(e, ai, dt, aimedWithin, sprinting) {
 
   const canSee = S.visible && S.clearShot;
   const suppressing = !S.visible && S.unseenFor < def.suppress && m.track && e.inCombat;
-  const want = I.fireOk && I.aim && (canSee || suppressing) && !p.down && !sprinting && gun.status === 'ready';
+  const want = I.fireOk && I.aim && (canSee || suppressing) && !!p && !p.down && !sprinting && gun.status === 'ready';
   const ready = m.reaction >= needed || (suppressing && m.reaction > 0);
   const aimed = aimedWithin < 6 * DEG;
 

@@ -77,6 +77,12 @@ export const DIFFICULTY = {
   veteran: { name: 'Veteran', damage: 0.7, reaction: 0.75, aim: 0.75, tokens: 3, awareness: 1.3 },
 };
 
+// More players means a fight that's over too fast, so enemies get a little
+// tougher for each extra player (index = number of players - 1).
+export const PLAYER_SCALING = {
+  health: [1, 1.25, 1.45, 1.6],
+};
+
 // How noticing works (ai/senses.js). Awareness fills from 0 to 1; at 1 you're spotted.
 export const AWARENESS = {
   rate: 1.9,          // per second, for someone in plain view, close, in the middle of the vision cone

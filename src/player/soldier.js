@@ -32,13 +32,15 @@ import { NOISE } from '../ai/noise.js';
  * @param {object} [opts.entity]  what the hitboxes say they belong to (defaults to { kind: 'player', owner })
  * @param {boolean} [opts.flatZones] no headshot bonus on this soldier (used for you, against enemy fire)
  * @param {object} [opts.noise]   noise board (ai/noise.js): gunshots and footsteps go here for enemies to hear
+ * @param {Function} [opts.passThrough] (what the collider is) => true if this soldier's bullets fly
+ *                                 straight through it (teammates, with friendly fire off)
  * @param {object} [opts.events]  event bus
  * @param {number} [opts.seed]    random seed for bullet spread
  * @param {number|string} [opts.owner] who this is (0 = you)
  */
 export function createSoldier({
   world, spawn, registry, targets = null, damage = null, entity = null, flatZones = false, noise = null,
-  events = gameEvents, seed = 1, owner = 0, loadout, options, tuning,
+  passThrough = null, events = gameEvents, seed = 1, owner = 0, loadout, options, tuning,
 }) {
   const body = createPlayer({ world, spawn, events, owner, ...(tuning ? { tuning } : {}) });
   const rng = createRandom(seed);
@@ -54,6 +56,7 @@ export function createSoldier({
 
   /** Is this collider part of me? Bullets I fire pass through my own body. */
   const owns = (collider) => collider.handle === body.collider.handle || hitboxes.owns(collider);
+  const skip = passThrough ? (c) => owns(c) || passThrough(registry.get(c)) : owns;
 
   function move(cmd, dt) {
     const wasGrounded = body.state.grounded;
@@ -74,19 +77,22 @@ export function createSoldier({
   /**
    * Fires the gun (if it should) and traces every bullet. Bullets go where cmd.yaw and cmd.pitch
    * point (plus spread); an enemy's brain sets those itself, aim error and warning shots included.
+   * @param {object} [opts]
+   * @param {boolean} [opts.trace] false: run the gun (ammo, reloads, aiming) but trace no bullets.
+   *        The host does this for other players, whose own browsers trace their shots (net/host.js).
    * @returns {{look:{yaw:number, pitch:number}, shots:Array, hitTargets?:Map}} recoil for the view, and what each shot did
    */
-  function act(cmd, dt) {
+  function act(cmd, dt, { trace = true } = {}) {
     const s = body.state;
     const eye = { x: s.pos.x, y: s.pos.y + body.eyeHeight(), z: s.pos.z };
     const { shots, look } = arsenal.update(cmd, dt, { ...s, eye, walkSpeed: body.tuning.walkSpeed });
-    if (!shots.length) return { look, shots };
+    if (!shots.length || !trace) return { look, shots: [] };
 
     const def = shots[0].weapon;
     const traced = [];
     const hitTargets = new Map(); // one entry per target per trigger pull (for hit markers and scoring)
     for (const shot of shots) {
-      const { hits, end } = traceShot(world, registry, shot, owns);
+      const { hits, end } = traceShot(world, registry, shot, skip);
       traced.push({ ...shot, hits, end });
       for (const h of hits) {
         events.emit('bullet:impact', {
