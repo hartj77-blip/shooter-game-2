@@ -35,8 +35,8 @@ Each milestone ends with something playable on GitHub Pages, a lesson in `docs/l
 | M0 | Setup | Repo structure, pinned libraries, tests, CI, this document | **Done** |
 | M1 | Move like a pro | Fixed-timestep loop, mouse look, walk/sprint/crouch/jump/slide/mantle, the Proving Ground, tuning panel | **Done** |
 | M2 | Gunfeel | Four guns (carbine, SMG, pump shotgun, pistol), recoil, spread, aim down sights, viewmodel, effects, real sound, firing range, timed kill house | **Done** |
-| M3 | Enemies | AI soldiers with senses, state-machine brains, pathfinding, cover, flanking, ragdolls (hit zones already exist on targets) | Next |
-| M4 | Co-op | Lobby, room codes, host-run game, snapshots, interpolation, prediction, revive, pings, voice | |
+| M3 | Enemies | Enemy soldiers (Rifleman, Rusher, Marksman) with sight, hearing and awareness, state-machine brains, squads, a nav grid with A*, cover and flanking, fairness rules, ragdolls, health that recovers, the Compound map, difficulty | **Done** |
+| M4 | Co-op | Lobby, room codes, host-run game, snapshots, interpolation, prediction, revive, pings, voice | Next |
 | M5 | Missions | Objectives, the director, reinforcements, success and fail, debrief | |
 | M6 | Art pass | Stylized kit, animated characters, lighting, post-processing, quality presets | |
 | M7 | Progression | XP, unlocks, attachments, loadouts, support call-ins, saved progress | |
@@ -75,6 +75,32 @@ Hit zones: head ×2 (shotgun ×1.5), body ×1, limbs ×0.75. Bullets punch throu
 
 **Kill house:** 10 hostile pop-ups and 3 hostages across four rooms. The timer starts when you step off the green pad and stops on the amber pad once every hostile is down. Each hostage hit adds 5 s. Best time is saved in the browser.
 
+## Enemies (M3)
+
+The numbers live in `src/ai/enemy-data.js` (and the tuning panel's AI section). One brain runs every role; only the numbers differ.
+
+| Role | Gun | Health | Sees | Reaction | Aim error (start → settled) | Likes to fight at | Style |
+|---|---|---|---|---|---|---|---|
+| Rifleman | K4 Carbine | 100 | 60 m, 120° | 0.45 s | 4.5° → 1.1° over 1.6 s | 22 m | Cover, peek, bursts of 3–6, sometimes flanks |
+| Rusher | Vanta SMG | 90 | 45 m, 130° | 0.35 s | 6° → 2.2° over 1.1 s | 7 m | Sprints, charges, flanks, fires on the move |
+| Marksman | R7 Marksman Rifle (enemy only) | 80 | 95 m, 90° | 0.6 s | 3° → 0.3° over 2.2 s | 45 m | Holds a perch; laser on you for 1.1 s before each heavy shot (70 damage before difficulty) |
+
+**Fairness rules:** reaction time, aim that settles only while they keep you in sight, a short tracking delay (so moving helps), a warning burst over your head first, attack tokens (only N may shoot at you at once), the Marksman's laser and tone, and callouts as subtitles. Squads share your last known position, never your real one.
+
+**Difficulty** (Settings):
+
+| | Enemy damage | Reactions | Aim error | Shooting at once | Noticing you |
+|---|---|---|---|---|---|
+| Recruit | 30% | ×1.35 | ×1.4 | 1 (+ a Marksman) | ×0.75 |
+| Regular | 45% | ×1 | ×1 | 2 (+ a Marksman) | ×1 |
+| Veteran | 70% | ×0.75 | ×0.75 | 3 (+ a Marksman) | ×1.3 |
+
+Measured on Regular, standing in the open at the Compound gate: down after 4.9 s (2.1 s after the first hit); strafing, 10.9 s. Recruit about twice as long, Veteran 2.5 s.
+
+**Your health:** 100. Recovery starts 4.5 s after the last hit, at 22 per second. At 0 you're down; R restarts the fight. Enemies get no headshot bonus on you.
+
+**The Compound:** a walled compound about 72 × 60 m inside the wall. It has a two-storey house with a balcony, a warehouse, barracks, a guard tower and a courtyard of containers and sandbags. You start behind a berm where nobody can see you (a test checks this). There are three ways in: the gate, a breach in the east wall, and a drain in the west wall that only you can crawl through. 16 enemies in 6 squads; clear them all for a time and a results card. Best time is saved in the browser.
+
 ## Controls
 
 | Action | Mouse and keyboard |
@@ -91,7 +117,7 @@ Hit zones: head ×2 (shotgun ×1.5), body ×1, limbs ×0.75. Bullets punch throu
 | Tuning panel | `` ` `` |
 | Pause | Esc |
 
-Gamepad and touch controls arrive in M8. Key rebinding arrives with full settings in M8.
+When you're down in the Compound, R starts the fight again. Gamepad and touch controls arrive in M8. Key rebinding arrives with full settings in M8.
 
 ## Art direction
 
@@ -102,11 +128,11 @@ Gamepad and touch controls arrive in M8. Key rebinding arrives with full setting
 
 ## Audio direction
 
-Punchy weapon sounds from real CC0 recordings, with a short echo; every play slightly varied in pitch so automatic fire never sounds robotic; positional impacts; footsteps that change with the surface. Still to come: distant gunfire for other players' guns, music that rises with combat intensity, and a visual cue for every important sound for players who can't hear it.
+Punchy weapon sounds from real CC0 recordings, with a short echo; every play slightly varied in pitch so automatic fire never sounds robotic; positional impacts; footsteps that change with the surface. Since M3: enemy gunfire and footsteps placed in 3D and duller with distance (far sounds lose their treble), bullet whizzes past your ear, a heartbeat at low health, a radio click with every callout, and a tone with the Marksman's laser. Still to come: recorded voices for callouts, music that rises with combat intensity.
 
 ## Accessibility (ongoing)
 
-Already in: reduce camera motion, hold or toggle for crouch and sprint, adjustable field of view and sensitivity. Coming: key rebinding, colour-blind-safe markers, subtitles for important sounds, aim assist on gamepad and touch.
+Already in: reduce camera motion, hold or toggle for crouch, sprint and aiming, adjustable field of view and sensitivity, difficulty levels, subtitles for enemy callouts, and an on-screen arrow for every threat you might only hear (damage direction, someone noticing you, a laser on you). Coming: key rebinding, colour-blind-safe markers, aim assist on gamepad and touch.
 
 ## Tech overview
 
@@ -122,3 +148,6 @@ Already in: reduce camera motion, hold or toggle for crouch and sprint, adjustab
 - Should guns have a limited spare-ammo pool in missions, with ammo crates? The training ground uses infinite spare magazines for now. Decide in M5.
 - Friendly fire: off, on, or an option? Decide in M4.
 - Do downed players bleed out, or wait indefinitely while a teammate lives? Decide in M5.
+- Should enemies vault low walls and drop off ledges? The nav grid has no "jump links" yet, so they walk round. Decide when a map needs it.
+- Grenades (yours and theirs) to flush enemies out of cover? Probably M7 (loadouts) or M5 (missions).
+- When you go down in a solo mission: restart the whole fight (as now), or a checkpoint? Decide in M5.
