@@ -79,6 +79,8 @@ const expanders = {
 
   // A flight of stairs climbing north (before rotation). Each step is a solid
   // column down to the ground, so there are no gaps underneath to fall into.
+  // Make steps (`run`) at least 0.35 m deep if enemies should use them: shallower
+  // steps are too steep for their route-finding (src/ai/nav-grid.js).
   stairs(p) {
     const rotY = p.rotY ?? 0;
     const mat = p.mat ?? 'stairs';
