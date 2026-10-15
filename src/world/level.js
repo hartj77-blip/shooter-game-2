@@ -6,14 +6,19 @@
 
 import { RAPIER, quatY } from './physics.js';
 import { expandLevel, wedgePoints } from './kit.js';
+import { MATERIAL_SURFACE } from './surfaces.js';
 
 /**
  * Adds a collider to the physics world for every solid in the level.
+ * @param {object} [registry] if given, remembers what each collider is made of (for bullets)
  * @returns {{ spawn: {pos:number[], yaw:number}, expanded: ReturnType<typeof expandLevel> }}
  */
-export function buildLevel(def, world) {
+export function buildLevel(def, world, registry) {
   const expanded = expandLevel(def);
-  for (const solid of expanded.solids) world.createCollider(colliderFor(solid));
+  for (const solid of expanded.solids) {
+    const collider = world.createCollider(colliderFor(solid));
+    registry?.set(collider, { surface: MATERIAL_SURFACE[solid.mat] ?? 'concrete' });
+  }
   // Rapier files new colliders into its search index during a step. Do one now,
   // so ray casts can find the level straight away.
   world.step();

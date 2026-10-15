@@ -13,11 +13,15 @@ This repo is a browser co-op FPS built as a **learning project**. The owner is l
 
 - **No build step.** Plain ES modules with the import map in `index.html`. Bare imports (`'three'`, `'@dimforge/rapier3d-compat'`, `'lil-gui'`) resolve through that map, in the browser and in tests (`tests/support/importmap-hooks.js` reads the same map).
 - **Vendored, pinned libraries** in `vendor/`. Never load scripts from CDNs at runtime. Record versions and licences in `CREDITS.md`.
-- **Simulation is separate from presentation.** `src/player/controller.js`, `src/world/*` and `src/core/{loop,input,events,fsm,settings}.js` must run in Node with no DOM or three.js renderer. Drawing, camera feel, HUD and sound only read simulation state.
+- **Simulation is separate from presentation.** `src/player/{controller,soldier}.js`, `src/world/*`, `src/weapons/*`, `src/game/*` and `src/core/{loop,input,events,fsm,settings,random}.js` must run in Node with no DOM or three.js renderer. Drawing, camera feel, HUD and sound only read simulation state.
 - **Input becomes commands.** Simulation reads command objects, never the keyboard. Keep it deterministic (same commands give the same result; there's a test).
 - **Data-driven tuning.** Feel-related numbers live in tuning tables (`DEFAULT_TUNING`, `DEFAULT_CAMERA_TUNING`) with sliders in `src/core/debug.js`. Levels are data in `levels/`.
 - **Units:** metres, seconds, radians in code (degrees in UI). Y is up, north is -Z.
 - **Comments explain why**, in plain English. Each file starts with a short header saying what it does and what it talks to.
+- **One tick, in order** (see `src/main.js`): `soldier.move` → `targets.update` → `world.step()` → `soldier.act` (shots traced) → `course.update`. New colliders are only found by rays after a `world.step()`.
+- **Events connect simulation to presentation** (`weapon:fire`, `bullet:impact`, `target:hit`, `course:*`...). Viewmodel, effects, audio and HUD listen; they never change the simulation.
+- **Springs in presentation code must be sub-stepped** (small fixed steps per frame). One big step on a slow frame explodes them; lesson 6 tells the story.
+- **Assets must be CC0** (or similarly free) and credited in `CREDITS.md`. Check the licence on each source page before downloading. Sounds are rebuilt with `tools/build-sounds.py`; every sound needs a synthesized fallback.
 
 ## Checks before pushing
 

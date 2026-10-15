@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Fireteam</title>
-<meta name="description" content="A co-op first-person shooter for the browser. Milestone 1: the movement proving ground.">
+<meta name="description" content="A co-op first-person shooter for the browser. Milestone 2: guns, a firing range and a timed kill house.">
 <meta name="theme-color" content="#14170f">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314170f'/%3E%3Cpath d='M16 6v20M6 16h20' stroke='%23e8b14a' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='6' fill='none' stroke='%23e8b14a' stroke-width='2.5'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="src/ui/style.css">
@@ -33,8 +33,26 @@
     <span id="rSpeed">0.0</span><small>m/s</small>
     <em id="rMode">WALK</em>
   </div>
+  <div id="hitmarker" class="hitmarker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
   <div id="hint" class="hint" aria-live="polite"></div>
   <div id="fps" class="fps" hidden></div>
+  <div id="weaponPanel" class="weapon-panel">
+    <div id="slots" class="slots"></div>
+    <div id="wName" class="w-name"></div>
+    <div class="ammo"><b id="ammoMag">0</b><span id="ammoReserve"></span></div>
+    <div id="ammoHint" class="ammo-hint"></div>
+  </div>
+  <div id="course" class="course" hidden>
+    <div id="courseTitle" class="course-title">KILL HOUSE</div>
+    <div id="courseTime" class="course-time">0:00.00</div>
+    <div id="courseInfo" class="course-info"></div>
+  </div>
+  <div id="results" class="results" hidden>
+    <div class="results-title" id="resultsTitle">Course complete</div>
+    <dl id="resultsList"></dl>
+  </div>
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <div id="dmgNums" class="dmg-nums"></div>
 </div>
 
 <section id="loading" class="screen">
@@ -48,8 +66,8 @@
 <section id="title" class="screen" hidden>
   <div class="card">
     <div class="brand">FIRETEAM</div>
-    <p class="tag">Milestone 1 &middot; Proving Ground</p>
-    <p class="lede">A movement sandbox. No enemies yet: just you, a training course, and the feel of moving like a pro.</p>
+    <p class="tag">Milestone 2 &middot; Gunfeel</p>
+    <p class="lede">The training ground. Move like a pro, then head to the firing range and the timed kill house. Enemies arrive in the next milestone.</p>
     <div class="actions">
       <button id="btnDeploy" class="primary" type="button">Deploy</button>
       <button id="btnSettingsT" type="button">Settings</button>
@@ -61,6 +79,10 @@
       <dt>Shift</dt><dd>Sprint</dd>
       <dt>Space</dt><dd>Jump &middot; climb ledges</dd>
       <dt>C</dt><dd>Crouch &middot; slide while sprinting</dd>
+      <dt>Left mouse</dt><dd>Fire</dd>
+      <dt>Right mouse</dt><dd>Aim down sights</dd>
+      <dt>R</dt><dd>Reload</dd>
+      <dt>1&ndash;4 &middot; wheel &middot; Q</dt><dd>Switch gun &middot; last gun</dd>
       <dt>~ `</dt><dd>Tuning panel (the key under Esc)</dd>
       <dt>Esc</dt><dd>Pause</dd>
     </dl>
