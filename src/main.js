@@ -134,7 +134,8 @@ async function boot() {
     return targets.damage(victim, amount);
   };
   const soldier = createSoldier({
-    world, registry, targets, damage, noise, seed,
+    world, registry, targets, damage, seed,
+    noise: nav ? noise : null, // only maps with enemies need to hear you (nothing would clear the board otherwise)
     flatZones: true, // enemies don't get headshot bonuses on you
     spawn: level.spawn,
     options: { infiniteAmmo: true }, // spare magazines are unlimited for now (see the design doc's open questions)
