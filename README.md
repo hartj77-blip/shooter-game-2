@@ -72,7 +72,8 @@ GitHub runs both on every pull request (`.github/workflows/ci.yml`).
 
 ```
 index.html        the page, the import map, menus and HUD
-src/main.js       boots everything and runs the game flow
+src/main.js       the app shell: boots everything and runs the game flow
+src/mission.js    one map, built and torn down without a page reload
 src/core/         game loop, input, events, settings, state machine, seeded random, tuning panel
 src/world/        physics (Rapier), collision groups, the level kit, level building, surfaces, targets
 src/weapons/      the weapon table, guns, the arsenal, hitscan

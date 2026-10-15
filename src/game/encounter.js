@@ -43,11 +43,19 @@ export function createEncounter({ id, start, enemies, health = null, squad = nul
     update,
     onShot,
     onHit,
+    onDown,
+    onRevive,
     reset,
+    players: new Map(), // owner -> that player's own numbers, for the results card
+  };
+  const stat = (owner) => {
+    if (!enc.players.has(owner)) enc.players.set(owner, { shots: 0, hits: 0, headshots: 0, kills: 0, downs: 0, revives: 0 });
+    return enc.players.get(owner);
   };
 
   function reset() {
     Object.assign(enc, { state: 'ready', time: 0, shots: 0, hits: 0, headshots: 0, kills: 0, result: null });
+    enc.players.clear();
     enc.total = enemies.list.length;
     emit('encounter:ready', { id, best: records.best(id), total: enc.total });
   }
@@ -82,6 +90,7 @@ export function createEncounter({ id, start, enemies, health = null, squad = nul
         shots: enc.shots,
         hits: enc.hits,
         damageTaken: Math.round(team.reduce((sum, h) => sum + h.state.taken, 0)),
+        players: [...enc.players].map(([owner, s]) => ({ owner, ...s, accuracy: s.shots ? Math.min(1, s.hits / s.shots) : 0 })),
         best: records.best(id),
         previous,
         record,
@@ -92,17 +101,25 @@ export function createEncounter({ id, start, enemies, health = null, squad = nul
   }
 
   /** One trigger pull. */
-  function onShot() {
-    if (enc.state === 'running' || enc.state === 'ready') enc.shots++;
+  function onShot(owner = 0) {
+    if (enc.state !== 'running' && enc.state !== 'ready') return;
+    enc.shots++;
+    stat(owner).shots++;
   }
 
   /** A trigger pull hit an enemy (once per enemy per pull). */
-  function onHit({ headshot = false, killed = false } = {}) {
+  function onHit({ owner = 0, headshot = false, killed = false } = {}) {
     if (enc.state !== 'running' && enc.state !== 'ready') return;
+    const s = stat(owner);
     enc.hits++;
-    if (headshot) enc.headshots++;
-    if (killed) enc.kills++;
+    s.hits++;
+    if (headshot) { enc.headshots++; s.headshots++; }
+    if (killed) { enc.kills++; s.kills++; }
   }
+
+  /** Co-op: someone went down, or got someone back up (game/revive.js). */
+  function onDown(owner) { if (enc.state === 'running') stat(owner).downs++; }
+  function onRevive(owner) { if (enc.state === 'running') stat(owner).revives++; }
 
   reset();
   return enc;

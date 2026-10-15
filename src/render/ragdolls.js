@@ -155,5 +155,10 @@ export function createRagdolls(scene, levelDef) {
     clear() {
       while (active.length) remove(active.pop());
     },
+    /** The mission is over: free the pretend world (Rapier's memory isn't garbage-collected). */
+    dispose() {
+      this.clear();
+      world.free();
+    },
   };
 }
