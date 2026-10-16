@@ -40,7 +40,7 @@ Each milestone ends with something playable on GitHub Pages, a lesson in `docs/l
 | M5 | Missions | The Harbour map, four missions (rescue, intel, sabotage, hold the line) with extraction by helicopter, the director and reinforcements, checkpoints and retry, limited ammo and crates, grenades, the hostage, explosions, the debrief | **Done** |
 | M6 | Art pass | Stylized kit, animated characters, lighting, post-processing, quality presets | Next |
 | M7 | Progression | XP, unlocks, attachments, loadouts, support call-ins, saved progress | |
-| M8 | Polish | Audio mix, HUD, full settings, gamepad, touch, loading, performance | |
+| M8 | Polish | Audio mix, HUD, full settings, touch, loading, performance (controllers arrived early, in M6) | |
 | M9 | Content | Three or more maps, five mission types, modifiers, difficulty, release | |
 
 ## Movement targets (M1)
@@ -176,7 +176,7 @@ Measured: the Harbour builds and maps (130,000 walkable cells) in 0.9 s in Node,
 | Tuning panel | `` ` `` |
 | Pause | Esc |
 
-When you're down in a solo fight, R starts it again. In co-op the host presses R once the whole squad is down. In a mission, R retries from the last checkpoint instead (also when the hostage dies while you're standing). Gamepad and touch controls arrive in M8. Key rebinding arrives with full settings in M8.
+When you're down in a solo fight, R starts it again. In co-op the host presses R once the whole squad is down. In a mission, R retries from the last checkpoint instead (also when the hostage dies while you're standing). Controllers work too (since M6): see the controller table on the title screen and `core/gamepad.js`; on a controller, X does what R and F do (tap to reload, hold to use). Touch controls arrive in M8. Key and button rebinding arrives with full settings in M8.
 
 ## Art direction
 

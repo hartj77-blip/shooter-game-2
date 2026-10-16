@@ -44,6 +44,9 @@ button {
 }
 button:hover { background: rgba(231, 227, 212, 0.14); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Using a controller in the menus: always show where the focus is. */
+body.pad :is(button, select, input):focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.controls-pad summary { cursor: pointer; margin: 0.6rem 0 0.3rem; color: var(--muted, #9aa08f); }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 button.primary:hover { filter: brightness(1.08); }
 

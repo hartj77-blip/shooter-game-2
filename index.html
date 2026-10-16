@@ -82,7 +82,7 @@
   <div id="down" class="down" hidden>
     <div class="down-title">You're down</div>
     <div id="downInfo" class="down-info"></div>
-    <div class="down-hint">Press <kbd>R</kbd> to try again</div>
+    <div class="down-hint">Press <kbd id="downKey">R</kbd> to try again</div>
   </div>
 </div>
 
@@ -133,7 +133,7 @@
       <span>Callsign</span>
       <input id="callsign" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Your name in co-op games">
     </label>
-    <div id="touchNote" class="note" hidden>This build needs a mouse and keyboard. Touch controls arrive in a later milestone.</div>
+    <div id="touchNote" class="note" hidden>This build needs a mouse and keyboard, or a controller. Touch controls arrive in a later milestone.</div>
     <dl class="controls">
       <dt>W A S D</dt><dd>Move</dd>
       <dt>Mouse</dt><dd>Look</dd>
@@ -150,6 +150,20 @@
       <dt>~ `</dt><dd>Tuning panel (the key under Esc)</dd>
       <dt>Esc</dt><dd>Pause</dd>
     </dl>
+    <details class="controls-pad">
+      <summary>Controller (Xbox names; on PlayStation A = &times;, B = &#9675;, X = &#9633;, Y = &#9651;)</summary>
+      <dl class="controls">
+        <dt>Left stick &middot; click</dt><dd>Move &middot; sprint</dd>
+        <dt>Right stick</dt><dd>Look</dd>
+        <dt>RT &middot; LT</dt><dd>Fire &middot; aim down sights</dd>
+        <dt>A &middot; B</dt><dd>Jump &middot; crouch</dd>
+        <dt>X</dt><dd>Tap: reload &middot; hold: use, revive</dd>
+        <dt>Y &middot; D-pad &larr; &rarr;</dt><dd>Last gun &middot; switch gun</dd>
+        <dt>RB &middot; LB</dt><dd>Grenade &middot; ping</dd>
+        <dt>D-pad &uarr;</dt><dd>Co-op: squad radio (hold)</dd>
+        <dt>Start</dt><dd>Play &middot; pause</dd>
+      </dl>
+    </details>
     <p class="foot muted">Learning as we build: read the lessons in <a href="https://github.com/hartj77-blip/shooter-game-2/tree/main/docs/lessons" target="_blank" rel="noopener">docs/lessons</a>.</p>
   </div>
 </section>
