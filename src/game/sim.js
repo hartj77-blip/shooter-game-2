@@ -85,7 +85,8 @@ export function createSim({
   const level = buildLevel(def, world, registry);
   const targets = createTargets(world, registry, level.expanded.targets);
   const trigger = (id) => level.expanded.triggers.find((t) => t.id === id) ?? null;
-  const hasEnemies = level.expanded.enemies.length > 0;
+  // A mission can start with nobody in the level and have them all arrive later.
+  const hasEnemies = level.expanded.enemies.length > 0 || !!def.mission;
 
   let nav = null, cover = null, noise = null, enemies = null;
   if (hasEnemies) {

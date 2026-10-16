@@ -13,6 +13,9 @@
 //                         └──▶ fight   (no cover nearby: strafe and shoot)
 //             lost you for a while ─▶ hunt (go where you were last seen) ─▶ search
 //
+//   reinforcements start in advance (run in along their route, eyes open), then
+//   are radioed where the squad is and go into combat
+//
 // The brain only decides INTENT: where to go, how fast, which stance, what to
 // look at, whether shooting is OK. ai/enemy.js turns that into a command each
 // tick (walking the path, turning, pulling the trigger), the same kind of
@@ -106,6 +109,22 @@ export function createBrain(e, ai) {
     go(e.home());
   }
 
+  /**
+   * Reinforcements at the end of their route: from now on this is home, and
+   * "command" radios them where the nearest player is (roughly: they still
+   * have to find you).
+   */
+  function arrive() {
+    const end = e.advance[e.advance.length - 1];
+    e.spawn = { pos: { ...end }, yaw: e.motor.yaw };
+    e.advance = null;
+    const P = ai.nearestTarget?.(e.pos);
+    if (!P) { go(e.home()); return; }
+    ai.bark(e, 'arrive');
+    ai.report(e, P.pos, false, P.owner);
+    enterCombat({ seen: false });
+  }
+
   const lowAmmo = () => {
     const g = e.soldier.arsenal.current;
     return g.mag <= Math.ceil(g.def.mag * 0.4);
@@ -157,6 +176,26 @@ export function createBrain(e, ai) {
           const yaw = e.spawn.yaw + rng.range(-50, 50) * DEG;
           I.look = { x: e.pos.x - Math.sin(yaw) * 5, y: e.pos.y + 1.5, z: e.pos.z - Math.cos(yaw) * 5 };
         }
+      },
+    },
+
+    // Reinforcements running in along their route (they still notice you on the way).
+    advance: {
+      enter() {
+        calmIntent();
+        e.alert = 'calm';
+        I.pace = 'run';
+        I.look = null;
+        I.dest = e.advance[e.advanceIndex];
+        if (rng.next() < 0.5) ai.bark(e, 'inbound');
+      },
+      update() {
+        if (calmChecks()) return;
+        if (e.arrived || e.pathFailed) {
+          e.advanceIndex++;
+          if (e.advanceIndex < e.advance.length) I.dest = e.advance[e.advanceIndex];
+          else arrive();
+        } else if (t > 45) arrive();
       },
     },
 

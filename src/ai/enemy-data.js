@@ -112,4 +112,7 @@ export const BARKS = {
   hit: ["I'm hit!", 'Taking fire!'],
   manDown: ['Man down!', "We've got one down!"],
   laser: ['Got a shot lined up.'],
+  // Reinforcements (game/director.js): on the way in, and arriving.
+  inbound: ['Moving up!', 'On our way!', 'Reinforcements moving in!'],
+  arrive: ['In position. Where are they?', "We're here!", 'Spread out, find them!'],
 };
