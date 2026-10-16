@@ -14,14 +14,10 @@
 // Like the rest of the HUD it only reads state and listens to events. Callsigns
 // come from other players, so they only ever reach the page as text.
 
-import * as THREE from 'three';
 import { SLOT_COLORS } from '../net/room.js';
 import { PING } from '../game/pings.js';
 import { REVIVE } from '../game/revive.js';
 import { ROLES } from '../ai/enemy-data.js';
-
-const EDGE = 60;   // px: markers off screen stay this far inside the sides...
-const BOTTOM = 130; // ...and clear of the speed readout and gun panel at the bottom
 
 /**
  * @param {object} opts
@@ -30,16 +26,14 @@ const BOTTOM = 130; // ...and clear of the speed readout and gun panel at the bo
  * @param {object} opts.events
  * @param {object} opts.hud       ui/hud.js (for feed lines)
  * @param {boolean} opts.hosting  are we the host (who restarts a failed mission)?
+ * @param {object} opts.markers   ui/markers.js createMarkers (shared with the objective HUD)
+ * @param {object} opts.ring      ui/markers.js createRing (shared too)
  * @param {() => object|null} [opts.voice] net/voice.js, for "who's talking" and your radio light
  */
-export function createSquadHud({ session, camera, events, hud, hosting, voice = () => null }) {
+export function createSquadHud({ session, camera, events, hud, hosting, markers, ring, voice = () => null }) {
   const el = (id) => document.getElementById(id);
   const squad = el('squad');
   const radioLight = el('radioLight');
-  const marks = el('marks');
-  const ring = el('ring');
-  const ringFill = el('ringFill');
-  const ringText = el('ringText');
   const down = el('coopDown');
   const downTitle = el('coopDownTitle');
   const downInfo = el('coopDownInfo');
@@ -123,49 +117,10 @@ export function createSquadHud({ session, camera, events, hud, hosting, voice = 
     for (const [owner, r] of rows) if (!keep.has(owner)) { r.li.remove(); rows.delete(owner); }
   }
 
-  // ---- markers
-  const pool = [];
-  let used = 0;
-  const v3 = new THREE.Vector3();
-  /** A marker at a world position. `stick`: off screen, hold it at the edge (otherwise hide it). */
-  function mark(cls, pos, text, sub = '', color = null, stick = true) {
-    let m = pool[used];
-    if (!m) {
-      const d = document.createElement('div');
-      const label = document.createElement('span');
-      const small = document.createElement('small');
-      d.append(label, small);
-      marks.append(d);
-      m = { d, label, small, key: '' };
-      pool.push(m);
-    }
-    used++;
-    v3.set(pos.x, pos.y, pos.z).project(camera);
-    const behind = v3.z > 1;
-    let x = (v3.x + 1) / 2;
-    let y = (1 - v3.y) / 2;
-    if (behind) { x = 1 - x; y = 1; } // behind you: show it along the bottom edge, on the side it's on
-    const w = innerWidth, h = innerHeight;
-    const off = behind || x < 0 || x > 1 || y < 0 || y > 1;
-    if (off && !stick) { used--; return; }
-    const px = Math.min(w - EDGE, Math.max(EDGE, x * w));
-    const py = Math.min(h - BOTTOM, Math.max(EDGE + 20, y * h));
-    const key = `${cls}|${text}|${sub}|${color}|${off}`;
-    if (m.key !== key) {
-      m.key = key;
-      m.d.className = `mark ${cls}${off ? ' edge' : ''}`;
-      m.label.textContent = text;
-      m.small.textContent = sub;
-      if (color) m.d.style.setProperty('--c', color);
-      else m.d.style.removeProperty('--c');
-    }
-    m.d.hidden = false;
-    m.d.style.transform = `translate(${px.toFixed(0)}px, ${py.toFixed(0)}px) translate(-50%, -100%)`;
-  }
-  const metres = (p) => `${Math.round(camera.position.distanceTo(v3.set(p.x, p.y, p.z)))} m`;
+  // ---- markers (ui/markers.js: shared with the objective HUD)
+  const { mark, metres } = markers;
 
   function updateMarks(dt, list) {
-    used = 0;
     const me3 = session.local.soldier.state.pos;
     const standing = !session.local.health.state.down && !session.local.health.state.dead;
     for (const { owner, view: v } of list) {
@@ -190,29 +145,17 @@ export function createSquadHud({ session, camera, events, hud, hosting, voice = 
       const by = owner === me ? 'You' : nameOf(owner);
       mark(`ping ${p.kind}`, { x: at.x, y: at.y + (p.kind === 'place' ? 0.4 : 0), z: at.z }, p.kind === 'enemy' ? 'Enemy' : 'Here', `${metres(at)} · ${by}`);
     }
-    for (let i = used; i < pool.length; i++) pool[i].d.hidden = true;
   }
 
-  // ---- the ring, and your own situation
+  // ---- the ring (shared, ui/markers.js), and your own situation
   function updateRing(list) {
     const mine = list.find((x) => x.owner === me).view;
-    let progress = 0;
-    let text = '';
     if (mine.bleeding && mine.reviving > 0) {
-      progress = mine.reviving;
-      text = 'Getting you up';
-    } else {
-      const helping = list.find((x) => x.owner !== me && x.view.reviver === me && x.view.reviving > 0);
-      if (helping) {
-        progress = helping.view.reviving;
-        text = `Reviving ${helping.view.callsign ?? ''}`;
-      }
+      ring.want(mine.reviving, 'Getting you up');
+      return;
     }
-    ring.hidden = progress <= 0;
-    if (!ring.hidden) {
-      ringFill.style.strokeDashoffset = String(176 * (1 - progress));
-      ringText.textContent = text;
-    }
+    const helping = list.find((x) => x.owner !== me && x.view.reviver === me && x.view.reviving > 0);
+    if (helping) ring.want(helping.view.reviving, `Reviving ${helping.view.callsign ?? ''}`);
   }
 
   function updateDown(list, watching) {
@@ -223,8 +166,10 @@ export function createSquadHud({ session, camera, events, hud, hosting, voice = 
       title = 'Mission failed';
       info = `${enc.total - enc.remaining} of ${enc.total} hostiles down`;
       hint = hosting ? 'Press R to restart for everyone' : 'Waiting for the host to restart';
+    } else if (session.operation?.view?.state === 'failed') {
+      title = ''; // a mission: the objective HUD says "Mission failed"
     } else if (mine.dead) {
-      title = 'Out until the next fight';
+      title = session.operation ? 'Out until the next checkpoint' : 'Out until the next fight';
       info = watching ? `Watching ${watching}` : 'Everyone else is down too';
       hint = watching ? 'Click to watch someone else' : '';
     } else if (mine.bleeding) {
@@ -253,8 +198,6 @@ export function createSquadHud({ session, camera, events, hud, hosting, voice = 
     dispose() {
       squad.replaceChildren();
       squad.hidden = true;
-      marks.replaceChildren();
-      ring.hidden = true;
       down.hidden = true;
       radioLight.hidden = true;
     },

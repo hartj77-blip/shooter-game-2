@@ -133,6 +133,47 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
   expect(problems).toEqual([]);
 });
 
+test('the Harbour: a mission loads, you can walk, the objective shows, and it draws in few batches', async ({ page }) => {
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
+  });
+
+  await page.goto('/?map=harbour-rescue&autostart');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 90_000 });
+  await expect(page.locator('#course')).toBeVisible();
+  await expect(page.locator('#course')).toHaveClass(/mission/);
+  await expect(page.locator('#courseInfo')).toHaveText('Find the hostage and free them');
+  // "One of these buildings": a "?" over each place the hostage might be.
+  await expect(page.locator('#marks .mark.search:visible')).toHaveCount(3);
+  await expect(page.locator('#grenades')).toContainText('●●');
+  expect(await page.evaluate(() => window.fireteam.soldier.arsenal.current.reserve)).toBeGreaterThan(0);
+
+  const start = await page.evaluate(() => ({ ...window.fireteam.player.state.pos }));
+  const startTick = await page.evaluate(() => window.fireteam.loop.tick);
+  await page.keyboard.down('KeyW');
+  await page.waitForFunction((t) => window.fireteam.loop.tick > t + 60, startTick, { timeout: 30_000 });
+  await page.keyboard.up('KeyW');
+  const end = await page.evaluate(() => ({ ...window.fireteam.player.state.pos }));
+  expect(Math.hypot(end.x - start.x, end.z - start.z), 'walked').toBeGreaterThan(1.5);
+
+  // DRAW CALLS: how many times one frame asks the graphics card to draw something
+  // (lesson 16). The level is joined into batches per material and 32 m tile; this
+  // catches it being drawn piece by piece again (that was about 365 here).
+  const calls = await page.evaluate(() => {
+    const f = window.fireteam, r = f.view.renderer;
+    r.info.autoReset = false;
+    r.info.reset();
+    r.render(f.view.scene, f.view.camera);
+    r.info.autoReset = true;
+    return r.info.render.calls;
+  });
+  expect(calls).toBeLessThan(260);
+  await page.screenshot({ path: 'test-results/harbour.png' });
+  expect(problems).toEqual([]);
+});
+
 test('changing map needs no page reload, and leaves nothing behind', async ({ page }) => {
   const problems = [];
   page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
@@ -151,9 +192,24 @@ test('changing map needs no page reload, and leaves nothing behind', async ({ pa
       textures: f.view.renderer.info.memory.textures,
       slots: document.querySelectorAll('#slots span').length,
       panels: document.querySelectorAll('.lil-gui.root').length,
+      marks: document.querySelectorAll('#marks > *').length,
+      loops: f.audio.loops,
     };
   });
   const before = await measure();
+
+  // A mission, with the helicopter in the air (its rotor is a looping sound that must stop).
+  await page.click('[data-map="harbour-rescue"]');
+  await page.waitForFunction(() => window.fireteam.map === 'harbour-rescue' && window.fireteam.session?.operation, null, { timeout: 90_000 });
+  await page.evaluate(() => {
+    const sim = window.fireteam.mission.sim;
+    const me = sim.player(0);
+    sim.operation.spots()[0].done(me);                 // the hostage: freed
+    sim.operation.spots().find((s) => s.kind === 'radio').done(me); // the helicopter: called
+    sim.operation.objective.heli.t = 45;               // ...and nearly here
+  });
+  await page.waitForFunction(() => window.fireteam.mission.heli.state.here && window.fireteam.audio.loops === 1, null, { timeout: 30_000 });
+  await page.screenshot({ path: 'test-results/map-harbour.png' });
 
   await page.click('#mapCompound');
   await page.waitForFunction(() => window.fireteam.map === 'compound' && window.fireteam.enemies?.list.length === 16, null, { timeout: 60_000 });
@@ -173,6 +229,8 @@ test('changing map needs no page reload, and leaves nothing behind', async ({ pa
   expect(after.children).toBe(before.children);
   expect(after.slots).toBe(before.slots);
   expect(after.panels).toBe(before.panels);
+  expect(after.marks).toBe(before.marks);
+  expect(after.loops).toBe(0); // no rotor still turning on the practice range
   expect(after.geometries).toBeLessThanOrEqual(before.geometries + 2);
   expect(after.textures).toBeLessThanOrEqual(before.textures + 2);
   expect(problems).toEqual([]);

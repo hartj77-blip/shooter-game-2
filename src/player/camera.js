@@ -100,6 +100,17 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
     rig.trauma = Math.min(1, rig.trauma + 0.18 * k);
   });
 
+  // An explosion shakes everyone nearby, yours or not: harder the closer it is.
+  events.on('explosion', (e) => {
+    const p = player.state.pos;
+    const d = Math.hypot(e.pos.x - p.x, e.pos.y - p.y, e.pos.z - p.z);
+    const reach = e.kind === 'charge' ? 40 : 25;
+    const k = Math.max(0, 1 - d / reach) ** 1.5 * (e.kind === 'charge' ? 1 : 0.85);
+    if (k <= 0) return;
+    rig.trauma = Math.min(1, rig.trauma + k);
+    rig.punchVel += (Math.random() * 2 - 1) * 2 * DEG * 9 * k;
+  });
+
   events.on('player:crouch-air', (e) => {
     if (!mine(e)) return;
     rig.eyeY -= e.feetShift; // your feet moved but your head didn't: keep the eyes where they were

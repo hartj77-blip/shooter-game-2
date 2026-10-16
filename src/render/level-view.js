@@ -1,11 +1,22 @@
 // Level view: builds the meshes you see from the same shape descriptions the
 // physics uses (src/world/kit.js), so the picture always matches the colliders.
+//
+// BATCHING. Every separate mesh costs a DRAW CALL: the computer stops and tells
+// the graphics card "now draw this one, with this material". That's like a
+// shopping trip per item: the travel, not the shopping, takes the time. So the
+// level's pieces are joined into a few big meshes, one per material...
+// but not one for the whole map: per 32 m TILE. A tile behind you, or off to
+// the side, is skipped entirely (CULLING: three.js checks each mesh against
+// what the camera can see), which a single map-wide mesh never could be.
+// The Harbour's 328 pieces become about a hundred meshes this way.
 
 import * as THREE from 'three';
 import { wedgePoints, WEDGE_TRIANGLES } from '../world/kit.js';
 import { signTexture } from './signs.js';
+import { mergeTextured } from './merge.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+export const TILE = 32; // metres: the size of a batch
 
 /**
  * Gives every triangle "planar" texture coordinates measured in world metres,
@@ -47,6 +58,9 @@ export function buildLevelView(expanded, materials) {
   const group = new THREE.Group();
   group.name = 'level';
 
+  // Each piece is built where it stands in the world, then put in its batch:
+  // same material, same tile (by where its middle is).
+  const batches = new Map(); // 'material|tileX|tileZ' -> geometries
   for (const solid of expanded.solids) {
     if (solid.hidden) continue; // invisible walls at the map's edge: felt, not seen
     const geometry = solid.kind === 'box'
@@ -55,10 +69,20 @@ export function buildLevelView(expanded, materials) {
     const position = new THREE.Vector3(...solid.center);
     worldGridUVs(geometry, position, solid.rotY);
     geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, materials[solid.mat] ?? materials.concrete);
-    mesh.position.copy(position);
-    mesh.rotation.y = solid.rotY;
-    mesh.castShadow = solid.mat !== 'ground';
+    geometry.rotateY(solid.rotY);
+    geometry.translate(position.x, position.y, position.z);
+    const mat = materials[solid.mat] ? solid.mat : 'concrete';
+    // (The ground is one huge piece: it gets a batch of its own, whatever tile its middle is in.)
+    const key = mat === 'ground' ? 'ground' : `${mat}|${Math.floor(position.x / TILE)}|${Math.floor(position.z / TILE)}`;
+    if (!batches.has(key)) batches.set(key, { mat, list: [] });
+    batches.get(key).list.push(geometry);
+  }
+  for (const [key, { mat, list }] of batches) {
+    const geometry = mergeTextured(list);
+    for (const g of list) g.dispose();
+    const mesh = new THREE.Mesh(geometry, materials[mat]);
+    mesh.name = key;
+    mesh.castShadow = mat !== 'ground';
     mesh.receiveShadow = true;
     group.add(mesh);
   }

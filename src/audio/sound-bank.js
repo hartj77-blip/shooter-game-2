@@ -11,6 +11,7 @@
 //   bus        'sfx' (most sounds) or 'ui' (interface beeps)
 //   spatial    true = comes from a point in the world (gets louder as you get closer)
 //   reverb     how much echo to add (gunshots ring out)
+//   refDistance  (loops) how close you are before it stops getting louder
 
 const files = (name, n) => Array.from({ length: n }, (_, i) => `${name}_${i + 1}`);
 
@@ -46,6 +47,10 @@ export const SOUNDS = {
   heartbeat:      { synth: 'heartbeat', volume: 0.5, pitch: 0.02 },
   radio:          { synth: 'radio', volume: 0.3, pitch: 0.05, spatial: true },
   laser:          { synth: 'laser', volume: 0.4, pitch: 0.02, spatial: true },
+  // Milestone 5: missions.
+  explosion:      { files: files('explosion', 3), volume: 1.0, pitch: 0.08, spatial: true, reverb: 0.6 },
+  bounce:         { files: files('hit_metal', 3), volume: 0.35, pitch: 0.2, spatial: true },
+  rotor:          { synth: 'rotor', volume: 0.7, spatial: true, refDistance: 12 }, // a loop (audio.loop)
   // Interface sounds are made by code (see audio.js), so they have no files.
   hitmarker:      { synth: 'tick', volume: 0.35, pitch: 0.03, bus: 'ui' },
   kill:           { synth: 'kill', volume: 0.45, pitch: 0.02, bus: 'ui' },
