@@ -102,7 +102,35 @@ export function createEnemy(spec, index, ai) {
     return { x: s.pos.x, y: s.pos.y + e.soldier.body.eyeHeight(), z: s.pos.z };
   };
   e.brain = createBrain(e, ai);
+  Object.defineProperty(e, 'view', { get: () => viewOf(e, ai) });
   return e;
+}
+
+/**
+ * What the drawing, HUD and sound code may know about an enemy: a small, plain
+ * summary. A co-op client builds the same summary from snapshots (net/proxies.js),
+ * so the presentation code works the same on the host and on clients.
+ */
+export function viewOf(e, ai) {
+  const s = e.soldier.state;
+  const m = e.motor;
+  return {
+    id: e.id, owner: e.owner, role: e.role, weapon: e.def.weapon,
+    pos: s.pos, prev: e.soldier.body.prev,
+    yaw: m.yaw, pitch: m.pitch,
+    crouched: s.crouched, speed: s.speed, sprinting: s.sprinting, grounded: s.grounded,
+    ready: e.intent.aim || e.inCombat || e.alert === 'suspicious', // gun raised
+    reloading: e.soldier.arsenal.current.status === 'reloading',
+    alert: e.alert,
+    awareness: e.senses.awareness,
+    inCombat: e.inCombat,
+    fresh: e.inCombat && ai.time - (e.engagedAt ?? -Infinity) < 1.2, // just spotted someone
+    target: e.target?.owner ?? null, // which player it's after
+    sees: e.senses.visible,          // ... and whether it can see them right now
+    laserOn: m.laserOn,
+    laserCharge: e.def.telegraph ? Math.min(1, m.laser / e.def.telegraph) : 0,
+    dead: e.dead,
+  };
 }
 
 // ------------------------------------------------------------------ the motor
@@ -176,8 +204,8 @@ export function command(e, ai, dt) {
 
   // ---- 2. Where to look and aim.
   const eye = e.eye();
-  const p = ai.player;
-  if (S.visible) {
+  const p = e.target; // the player this enemy is fighting (null until it picks one)
+  if (S.visible && p) {
     // Track you with a little delay: strafing really does make you harder to hit.
     if (!m.track) m.track = { ...p.chest };
     const k = 1 - Math.exp(-dt / def.aim.lag);
@@ -208,7 +236,7 @@ export function command(e, ai, dt) {
     const settle = clamp(m.exposure / def.aim.settle, 0, 1);
     let err = (def.aim.start + (def.aim.end - def.aim.start) * settle) * ai.difficulty.aim;
     if (moving) err *= 1.35;
-    if (p.sprinting) err *= 1.2;
+    if (p?.sprinting) err *= 1.2;
     m.errTimer -= dt;
     if (m.errTimer <= 0) {
       m.errTimer = 0.3;
@@ -271,7 +299,7 @@ function trigger(e, ai, dt, aimedWithin, sprinting) {
   const S = e.senses;
   const def = e.def;
   const I = e.intent;
-  const p = ai.player;
+  const p = e.target;
   const gun = e.soldier.arsenal.current;
   const off = { fire: false, firePressed: false };
 
@@ -283,7 +311,7 @@ function trigger(e, ai, dt, aimedWithin, sprinting) {
 
   const canSee = S.visible && S.clearShot;
   const suppressing = !S.visible && S.unseenFor < def.suppress && m.track && e.inCombat;
-  const want = I.fireOk && I.aim && (canSee || suppressing) && !p.down && !sprinting && gun.status === 'ready';
+  const want = I.fireOk && I.aim && (canSee || suppressing) && !!p && !p.down && !sprinting && gun.status === 'ready';
   const ready = m.reaction >= needed || (suppressing && m.reaction > 0);
   const aimed = aimedWithin < 6 * DEG;
 

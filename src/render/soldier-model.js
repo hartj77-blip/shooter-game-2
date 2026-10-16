@@ -24,10 +24,16 @@ import { WEAPONS } from '../weapons/weapons-data.js';
 
 // Enemy colours: dark uniform, khaki plate carrier, warm red accents (art direction:
 // enemies read warm, friends cool) and red-tinted goggles you can spot at range.
+// Teammates: a lighter grey-green uniform with cool blue accents, so you can
+// tell friend from foe at a glance, even at a distance and in the shade.
 export const SOLDIER_COLORS = {
   enemy: {
     uniform: '#3a3d40', vest: '#6a5d48', pouch: '#54493a', helmet: '#2a2d2f', face: '#1d1f21',
     goggles: '#ff6a3d', band: '#d9542c', boots: '#1a1b1c', gloves: '#2b2b2b', pack: '#45403a',
+  },
+  friend: {
+    uniform: '#5d6a5f', vest: '#7c8466', pouch: '#5f664f', helmet: '#4b5548', face: '#2a2c2e',
+    goggles: '#5ec8ff', band: '#3a8fd9', boots: '#24272a', gloves: '#3b3f3c', pack: '#525a4c',
   },
 };
 

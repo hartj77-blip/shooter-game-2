@@ -24,11 +24,18 @@ const LABELS = {
   showReadout:  { label: 'Show speed readout' },
   showFps:      { label: 'Show frame rate' },
   quality:      { label: 'Graphics quality', names: { low: 'Low (fastest)', medium: 'Medium', high: 'High' } },
+  callsign:     { label: 'Callsign', placeholder: 'Your name in co-op games', help: 'Shown to your teammates. Up to 16 characters.' },
+  voiceMode:    {
+    label: 'Voice chat',
+    names: { both: 'Radio (hold V) + nearby voice', radio: 'Push-to-talk only (hold V)', off: 'Off: no microphone, no voices' },
+    help: 'Nearby voice: teammates close to you hear you from where you stand. Wear headphones so nobody hears themselves echo.',
+  },
+  voiceVolume:  { label: 'Voice volume', step: 0.05, format: (v) => `${Math.round(v * 100)}%` },
 };
 
 export function createMenus(settings) {
   const screens = {};
-  for (const id of ['loading', 'title', 'pause', 'settings', 'error']) screens[id] = document.getElementById(id);
+  for (const id of ['loading', 'title', 'join', 'lobby', 'pause', 'settings', 'error']) screens[id] = document.getElementById(id);
   const form = document.getElementById('settingsForm');
   const controls = {};
 
@@ -43,7 +50,16 @@ export function createMenus(settings) {
 
     let input;
     let value;
-    if (typeof rule.default === 'boolean') {
+    if (rule.text) {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = rule.maxLength;
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      if (meta.placeholder) input.placeholder = meta.placeholder;
+      input.addEventListener('change', () => { settings.set(key, input.value); input.value = settings.values[key]; });
+      row.classList.add('setting-text');
+    } else if (typeof rule.default === 'boolean') {
       input = document.createElement('input');
       input.type = 'checkbox';
       input.addEventListener('change', () => settings.set(key, input.checked));

@@ -27,6 +27,10 @@ export const DEFAULT_BINDINGS = {
   slot2:   ['Digit2'],
   slot3:   ['Digit3'],
   slot4:   ['Digit4'],
+  // Co-op.
+  interact: ['KeyF'],            // hold next to a downed teammate to revive them
+  ping:    ['KeyZ', 'Mouse1'],   // Mouse1 = the middle button (the wheel, pressed)
+  radio:   ['KeyV'],             // hold to talk on the squad radio
 };
 
 // Classic shooter sensitivity scale: at sensitivity 1, one mouse "count"
@@ -66,6 +70,8 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
     lockPointer,
     unlockPointer,
     bindings,
+    /** Is this action held right now? (For things outside the simulation, like push-to-talk.) */
+    isHeld: (action) => input.enabled && held.has(action),
   };
 
   function rebuild() {
@@ -190,6 +196,8 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
       slot,
       cycle: Math.sign(wheel),
       lastWeapon: pressed.has('last'),
+      interact: on('interact'),
+      ping: pressed.has('ping'),
     };
     pressed.clear();
     wheel = 0;
@@ -232,5 +240,19 @@ export function idleCommand(yaw = 0, pitch = 0) {
     moveX: 0, moveZ: 0, yaw, pitch,
     jump: false, jumpHeld: false, crouch: false, crouchPressed: false, sprint: false,
     fire: false, firePressed: false, ads: false, reload: false, slot: 0, cycle: 0, lastWeapon: false,
+    interact: false, ping: false,
   };
+}
+
+// The one-off parts of a command: "pressed this tick" rather than "held".
+export const PRESS_FLAGS = ['jump', 'crouchPressed', 'firePressed', 'reload', 'lastWeapon', 'ping'];
+
+/**
+ * The same command without its one-off presses: what to repeat when a new one
+ * hasn't arrived (keep walking, keep the trigger held, but don't jump again).
+ */
+export function heldOnly(cmd) {
+  const c = { ...cmd, slot: 0, cycle: 0 };
+  for (const k of PRESS_FLAGS) c[k] = false;
+  return c;
 }

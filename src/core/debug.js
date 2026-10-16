@@ -265,6 +265,13 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
     gui,
     get visible() { return !gui._hidden; },
     toggle() { gui.show(gui._hidden); },
+    /** Take the panel off the page (the mission is ending; the next one builds its own). */
+    destroy() {
+      gui.destroy();
+      lines.removeFromParent();
+      body.removeFromParent();
+      lines.geometry.dispose();
+    },
     update(alpha) {
       const s = player.state;
       readout.speed = s.speed;

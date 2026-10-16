@@ -15,6 +15,10 @@
 // HEARING reads the noise board (ai/noise.js): gunshots carry far, sprinting
 // footsteps a fair way, walking a little, crouch-walking almost not at all.
 //
+// With several players, each enemy keeps one TARGET: the player it can see
+// (sticking with the one it already had), otherwise nobody until it finds
+// someone. Awareness is about the most noticeable player in view.
+//
 // This runs every 0.1 s per enemy, not every tick, with enemies taking turns.
 // That's "time slicing": nobody notices a tenth of a second, and it divides
 // the cost of all these rays by six.
@@ -62,38 +66,44 @@ function shotIsClear(ai, e, from, to) {
   return !hit || ai.registry.get(hit.collider).target?.kind === 'player';
 }
 
+/** Can enemy `e` (eyes at `eye`) see player `p`? Returns { distance, peripheral } or null. */
+function look(ai, e, eye, p) {
+  for (const point of [p.chest, p.head]) {
+    const vx = point.x - eye.x, vy = point.y - eye.y, vz = point.z - eye.z;
+    const d = Math.hypot(vx, vy, vz);
+    if (d > e.def.sight.range) return null;
+    const yawTo = Math.atan2(-vx, -vz);
+    const off = Math.abs(wrap(yawTo - e.motor.yaw)) / DEG;
+    if (off > e.def.sight.peripheral / 2) return null;
+    if (Math.abs(Math.atan2(vy, Math.hypot(vx, vz))) > 70 * DEG) return null;
+    if (clear(ai.world, eye, point, SIGHT)) return { distance: d, peripheral: off > e.def.sight.fov / 2 };
+  }
+  return null;
+}
+
 /**
  * One look and listen. `dt` is the time since this enemy last sensed (about 0.1 s).
  * @param {object} e   the enemy (ai/enemy.js)
- * @param {object} ai  shared AI context (ai/enemies.js): world, registry, player, noise, time, difficulty
+ * @param {object} ai  shared AI context (ai/enemies.js): world, registry, targets (players), noise, time, difficulty
  */
 export function sense(e, ai, dt) {
   const S = e.senses;
   const def = e.def;
-  const p = ai.player;
   const eye = e.eye();
 
-  // ---- sight
-  let visible = false;
-  let peripheral = false;
-  let distance = Infinity;
-  if (!p.down) {
-    for (const target of [p.chest, p.head]) {
-      const vx = target.x - eye.x, vy = target.y - eye.y, vz = target.z - eye.z;
-      const d = Math.hypot(vx, vy, vz);
-      if (d > def.sight.range) break;
-      const yawTo = Math.atan2(-vx, -vz);
-      const off = Math.abs(wrap(yawTo - e.motor.yaw)) / DEG;
-      if (off > def.sight.peripheral / 2) break;
-      if (Math.abs(Math.atan2(vy, Math.hypot(vx, vz))) > 70 * DEG) break;
-      if (clear(ai.world, eye, target, SIGHT)) {
-        visible = true;
-        peripheral = off > def.sight.fov / 2;
-        distance = d;
-        break;
-      }
-    }
+  // ---- sight: who can I see? Keep my current target if I still can; otherwise the closest.
+  let seen = null;
+  for (const P of ai.targets) {
+    const v = look(ai, e, eye, P);
+    if (!v) continue;
+    if (P === e.target) { seen = { P, ...v }; break; }
+    if (!seen || v.distance < seen.distance) seen = { P, ...v };
   }
+  if (seen) e.target = seen.P;
+  const p = seen?.P ?? null;
+  const visible = !!seen;
+  const peripheral = seen?.peripheral ?? false;
+  const distance = seen?.distance ?? Infinity;
 
   S.visible = visible;
   S.peripheral = peripheral;
@@ -125,7 +135,7 @@ export function sense(e, ai, dt) {
   // ---- hearing
   const ear = eye;
   for (const n of ai.noise.since(S.heardAt)) {
-    if (n.owner !== p.owner) continue; // only the player's noises matter (squads share the rest by radio)
+    if (typeof n.owner !== 'number') continue; // only players' noises matter (squads share the rest by radio)
     const d = Math.hypot(n.pos.x - ear.x, n.pos.y - ear.y, n.pos.z - ear.z);
     let radius = n.radius * def.hearing;
     if (d > radius) continue;
@@ -141,6 +151,7 @@ export function sense(e, ai, dt) {
       kind: n.kind,
       time: ai.time,
       alarm: n.kind === 'gunshot' && d < radius * 0.35, // a gunshot this close: they know roughly where you are
+      owner: n.owner,
       handled: false,
     };
   }
