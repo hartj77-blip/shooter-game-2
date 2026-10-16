@@ -152,3 +152,11 @@ test('over the network: a friend revives a friend, and everyone sees the bleed-o
   assert.ok(g.logs.get(1).some((e) => e.name === 'ping:mark' && e.owner === 2 && e.kind === 'place'));
   g.dispose();
 });
+
+test("catching up on a friend's backlog keeps their pings (regression: a ping in the extra command was lost)", async () => {
+  const s = await squad(2);
+  s.run(0.2);
+  // The host takes two of player 2's commands in one tick (net/jitter.js does this after a hiccup).
+  s.run(SIM_DT, () => new Map([[1, [{ ...idleCommand(0, -0.5), ping: true }, idleCommand(0, -0.5)]]]));
+  assert.ok(s.log.some((e) => e.name === 'ping:mark' && e.owner === 1));
+});

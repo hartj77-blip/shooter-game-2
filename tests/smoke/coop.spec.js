@@ -116,7 +116,8 @@ test('co-op in two tabs: host, join, play the Compound together', async ({ conte
   await expect(friend.locator('#coopDownTitle')).toHaveText("You're down");
   await expect(friend.locator('#coopDownInfo')).toContainText('Bleeding out in');
   await expect(host.locator('#squad')).toContainText('Down');
-  await expect(host.locator('#marks')).toContainText('Hold F to revive', { timeout: 15_000 });
+  // (Markers are reused from a pool and hidden when unused, so only look at visible ones.)
+  await expect(host.locator('#marks .mark.revive', { hasText: 'Hold F to revive' })).toBeVisible({ timeout: 15_000 });
   await host.screenshot({ path: 'test-results/coop-revive.png' });
   await host.keyboard.down('KeyF');
   await host.waitForFunction(() => !window.fireteam.session.sim.player(1).health.state.down, null, { timeout: 30_000 });
@@ -127,7 +128,7 @@ test('co-op in two tabs: host, join, play the Compound together', async ({ conte
   // ---- the friend pings the ground; the host sees the marker
   await friend.evaluate(() => window.fireteam.input.setLook(0, -0.5));
   await friend.keyboard.press('KeyZ');
-  await expect(host.locator('#marks')).toContainText('Here', { timeout: 15_000 });
+  await expect(host.locator('#marks .mark.ping', { hasText: 'Here' })).toBeVisible({ timeout: 15_000 });
 
   // ---- the friend leaves; the host carries on alone
   await friend.evaluate(() => window.fireteam.flow.go('paused'));

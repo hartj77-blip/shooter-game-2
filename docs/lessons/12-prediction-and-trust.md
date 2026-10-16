@@ -59,6 +59,18 @@ Packets bunch up like buses. If the host used each command the instant it arrive
 
 Snapshots also say how full your cushion is, and your browser runs a touch faster or slower (2%) to keep it about two deep. Clocks on different computers never tick at exactly the same speed.
 
+### A real bug: the lost ping
+
+The two-tab browser test failed once on GitHub's computers, and only once. The host never showed the friend's ping. Two clues in the log:
+- A marker said "Hold F to revive", though the friend had already been revived.
+- No ping marker appeared at all.
+
+The first was a red herring. Markers are reused, and a hidden one keeps its old words, which the test was reading. The test now only looks at visible markers.
+
+The second was real. GitHub's test machines are slower, so the host sometimes fell behind and caught up by playing two of the friend's commands in one tick. The *extra* command was moved and fired correctly, but nobody looked at its *ping* press, so a ping that landed in it vanished. Now pings in catch-up commands count too, and a test feeds the simulation two commands at once to prove it.
+
+**Lesson: a test that fails "only sometimes" is telling you something.** Here it was a path (catching up) that only runs when a computer is busy.
+
 ## Favour the shooter
 
 Here's a puzzle. You see an enemy (drawn 0.1 s in the past) and shoot them. On the host, "now", they've already stepped behind a wall. Who's right?
