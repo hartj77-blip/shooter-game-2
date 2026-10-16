@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { buildGun } from './gun-models.js';
 import { events as gameEvents } from '../core/events.js';
 import { damp } from '../player/camera.js';
+import { GRENADE } from '../weapons/grenades.js';
 
 const smooth = (k) => k * k * (3 - 2 * k);
 const clamp01 = (k) => Math.min(1, Math.max(0, k));
@@ -107,6 +108,14 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
   });
   let nextShell = 0;
   const tmp = new THREE.Vector3();
+
+  // The grenade in your other hand while you throw (game logic: weapons/arsenal.js `throwing`).
+  const grenadeInHand = new THREE.Mesh(
+    new THREE.BoxGeometry(0.05, 0.065, 0.05),
+    new THREE.MeshStandardMaterial({ color: '#3c4a2c', roughness: 0.8 }),
+  );
+  grenadeInHand.visible = false;
+  scene.add(grenadeInHand);
 
   function ejectShell(model) {
     const s = shells[nextShell++ % shells.length];
@@ -229,6 +238,22 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
     else if (gun.status === 'stowed') lowered = 1;
     pos.y -= 0.32 * lowered;
     rot.x -= 0.8 * lowered;
+
+    // Throwing a grenade: the gun dips out of the way while your other hand comes
+    // up from below and lets go (at GRENADE.release into the gesture).
+    const thr = ars.state.throwing;
+    if (thr > 0) {
+      const p = 1 - thr / GRENADE.gesture;
+      const dip = Math.sin(Math.PI * Math.min(1, p * 1.15));
+      pos.y -= 0.12 * dip;
+      pos.x += 0.05 * dip;
+      rot.x -= 0.35 * dip;
+      rot.z -= 0.25 * dip;
+      const k = Math.min(1, p / (GRENADE.release / GRENADE.gesture));
+      grenadeInHand.visible = !ars.state.released && (ars.options.infiniteAmmo || ars.state.grenades > 0);
+      grenadeInHand.position.set(-0.16 + 0.1 * k, -0.24 + 0.2 * smooth(k), -0.32 - 0.25 * k);
+      grenadeInHand.rotation.set(k * 2, k, 0);
+    } else grenadeInHand.visible = false;
 
     // Reloading: tilt the gun to show the magazine well, and swap the magazine.
     const r = gun.reload;

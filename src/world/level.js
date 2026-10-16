@@ -7,22 +7,27 @@
 import { RAPIER, quatY } from './physics.js';
 import { expandLevel, wedgePoints } from './kit.js';
 import { MATERIAL_SURFACE } from './surfaces.js';
+import { BOUNDARY_GROUPS } from './groups.js';
 
 /**
  * Adds a collider to the physics world for every solid in the level.
  * @param {object} [registry] if given, remembers what each collider is made of (for bullets)
- * @returns {{ spawn: {pos:number[], yaw:number}, expanded: ReturnType<typeof expandLevel> }}
+ * @returns {{ spawn: {pos:number[], yaw:number}, spawns: Array|null, expanded: ReturnType<typeof expandLevel> }}
  */
 export function buildLevel(def, world, registry) {
   const expanded = expandLevel(def);
   for (const solid of expanded.solids) {
-    const collider = world.createCollider(colliderFor(solid));
+    const desc = colliderFor(solid);
+    // Invisible walls (the edge of the map) only stop movement: bullets and
+    // eyesight pass through, and nobody can climb onto them (world/groups.js).
+    if (solid.boundary) desc.setCollisionGroups(BOUNDARY_GROUPS);
+    const collider = world.createCollider(desc);
     registry?.set(collider, { surface: surfaceOf(solid.mat) });
   }
   // Rapier files new colliders into its search index during a step. Do one now,
   // so ray casts can find the level straight away.
   world.step();
-  return { name: def.name, spawn: def.spawn, nav: def.nav ?? null, expanded };
+  return { name: def.name, spawn: def.spawn, spawns: def.spawns ?? null, nav: def.nav ?? null, expanded };
 }
 
 /** What a level material is made of, for bullets. (Every colour of container is steel.) */

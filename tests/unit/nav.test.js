@@ -135,3 +135,23 @@ test('cover that hides you from the front is useless once you are flanked', asyn
   assert.equal(front.canShoot, true, 'and you can pop up to shoot');
   assert.equal(cover.evaluate(p, { x: 12, y: 1.6, z: 2 }).safe, false, 'not from the side');
 });
+
+test('stairs whose step edges line up exactly with the grid are still climbable (regression)', async () => {
+  // The bug (found building the Harbour's office): to check two neighbouring cells
+  // can be stepped between, a ray drops halfway between them. When halfway is
+  // exactly the crack between two stair steps, the ray slipped through and found
+  // nothing: "a gap", and the top of the stairs was cut off from the bottom.
+  // The very same numbers as the office stairs: the crack between steps 4 and 5
+  // (z = 6) falls exactly halfway between two cells, and in the physics engine's
+  // 32-bit numbers the two steps' faces miss each other by a few ten-millionths
+  // of a metre: enough for a ray to slip between them.
+  const { nav } = await mapOf([
+    { type: 'stairs', at: [47, 0, 7.4], width: 1.6, rise: 0.275, steps: 12, run: 0.35 },
+    { type: 'box', size: [1.6, 3.3, 2], at: [47, 0, 2.2] }, // the floor at the top
+  ], { min: [44, -66], max: [50, 12] });
+  const bottom = nav.nearest(at(47, 9.5));
+  const top = nav.nearest(at(47, 2.2, 3.3), { radius: 1, anyIsland: true });
+  assert.ok(top >= 0 && Math.abs(nav.Y[top] - 3.3) < 0.05, 'the landing is mapped');
+  assert.equal(nav.component[top], nav.component[bottom], 'and joined to the ground');
+  assert.ok(findPath(nav, bottom, top), 'a route up');
+});

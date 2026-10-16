@@ -111,10 +111,17 @@ export function buildNavGrid(world, { min, max, top = 30, bottom = -3 }, opts = 
     if (dy > 2 * cfg.step + 0.02) return false;
     if (dy < 0.02) return true;
     const hi = Math.max(Y[a], Y[b]);
-    const mx = (X[a] + X[b]) / 2, mz = (Z[a] + Z[b]) / 2;
     const start = hi + cfg.step + 0.3;
-    ray.origin = { x: mx, y: start, z: mz };
-    const hit = world.castRay(ray, start - (Math.min(Y[a], Y[b]) - 0.3), true, undefined, LEVEL);
+    // Halfway between them, there should be floor. (If halfway lands exactly on
+    // the crack between two stair steps, the ray can slip through it and find
+    // nothing, so try a few centimetres either side before calling it a gap: a
+    // real bug, lesson 16.)
+    let hit = null;
+    for (const nudge of [0.5, 0.45, 0.55]) {
+      ray.origin = { x: X[a] + (X[b] - X[a]) * nudge, y: start, z: Z[a] + (Z[b] - Z[a]) * nudge };
+      hit = world.castRay(ray, start - (Math.min(Y[a], Y[b]) - 0.3), true, undefined, LEVEL);
+      if (hit) break;
+    }
     if (!hit) return false; // a gap
     const mid = start - hit.timeOfImpact;
     return Math.abs(mid - Y[a]) <= cfg.step + 0.02 && Math.abs(Y[b] - mid) <= cfg.step + 0.02;

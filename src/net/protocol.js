@@ -11,6 +11,8 @@
 //                                       case a packet goes missing (unreliable: fast, may be lost)
 //   fire   { ... }                      shots you fired this tick: where they went, what they hit
 //                                       ("hit claims", checked by the host before it applies them)
+//   throw  { id, origin, vel }          a grenade left your hand (your browser flies it at once;
+//                                       the host checks it and flies its own copy, which decides the blast)
 //   ping   { at }                       for measuring the round trip ("ping" in the latency sense)
 //
 // Host → client
@@ -29,9 +31,12 @@
 // snapshot stays small).
 
 import { LOADOUT } from '../weapons/weapons-data.js';
+import { ROLES } from '../ai/enemy-data.js';
+import { USE_KINDS } from '../game/interact.js';
+import { PHASES } from '../game/objectives.js';
 export { PRESS_FLAGS } from '../core/input.js';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const SNAPSHOT_EVERY = 3;   // ticks between snapshots: 60 / 3 = 20 a second
 export const INTERP_DELAY = 6;     // others are drawn this many ticks (0.1 s) in the past
 export const CMD_REDUNDANCY = 3;   // each command packet carries the last 3 commands
@@ -45,7 +50,7 @@ const fromMrad = (v) => v / 1000;
 // ---------------------------------------------------------------- commands
 
 // On/off buttons packed into one number, one bit each (like a row of light switches).
-const CMD_BITS = ['jump', 'jumpHeld', 'crouch', 'crouchPressed', 'sprint', 'fire', 'firePressed', 'ads', 'reload', 'lastWeapon', 'interact', 'ping'];
+const CMD_BITS = ['jump', 'jumpHeld', 'crouch', 'crouchPressed', 'sprint', 'fire', 'firePressed', 'ads', 'reload', 'lastWeapon', 'interact', 'ping', 'grenade'];
 
 const ANGLE = 1e4; // command angles: a tenth of a milliradian (aim must stay precise)
 
@@ -75,44 +80,65 @@ export const roundCommand = (cmd) => decodeCommand(encodeCommand(0, cmd))[1];
 const P_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'down', 'dead', 'bleeding'];
 const E_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'inCombat', 'fresh', 'sees', 'laserOn', 'dead'];
 const ALERTS = ['calm', 'suspicious', 'combat'];
+const ROLE_LIST = Object.keys(ROLES);
 const ENC_STATES = ['ready', 'running', 'cleared', 'down'];
 const TARGET_STATES = ['up', 'falling', 'down', 'rising'];
 
 const packFlags = (names, v) => names.reduce((bits, k, i) => (v[k] ? bits | (1 << i) : bits), 0);
 const unpackFlags = (names, bits, into) => { names.forEach((k, i) => { into[k] = (bits & (1 << i)) !== 0; }); return into; };
 
-/** One player, as seen by everyone else (and their bleed-out clock and revive progress). */
+/**
+ * One player, as seen by everyone else: where, how, their bleed-out clock, how
+ * far a revive is, and what they're holding F at (a crate, a laptop...).
+ */
 export function encodePlayer(v) {
   return [
     v.owner, cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(P_FLAGS, v), cm(v.speed),
     Math.max(0, LOADOUT.indexOf(v.weapon)), Math.round(v.hp), Math.ceil((v.bleedLeft ?? 0) * 10),
     Math.round((v.reviving ?? 0) * 100), v.reviver ?? -1,
+    v.using ? USE_KINDS.indexOf(v.using) : -1, Math.round((v.useProgress ?? 0) * 100),
   ];
 }
 export function decodePlayer(a) {
-  const [owner, x, y, z, yaw, pitch, flags, speed, gun, hp, bleed = 0, reviving = 0, reviver = -1] = a;
+  const [owner, x, y, z, yaw, pitch, flags, speed, gun, hp, bleed = 0, reviving = 0, reviver = -1, use = -1, useProgress = 0] = a;
   return unpackFlags(P_FLAGS, flags, {
     owner, pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: fromMrad(pitch),
     speed: fromCm(speed), weapon: LOADOUT[gun] ?? LOADOUT[0], hp,
     bleedLeft: bleed / 10, reviving: reviving / 100, reviver: reviver < 0 ? null : reviver,
+    using: USE_KINDS[use] ?? null, useProgress: useProgress / 100,
   });
 }
 
-/** One enemy (by its place in the level's list: both sides build the same list). */
+/**
+ * One enemy, by its number: its place in the host's list. Enemies can arrive in
+ * the middle of a mission (reinforcements), so each row also says what kind of
+ * soldier it is, and a client makes a stand-in the first time it sees a number.
+ */
 export function encodeEnemy(index, v, hp) {
   return [
-    index, cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(E_FLAGS, v), cm(v.speed),
+    index, Math.max(0, ROLE_LIST.indexOf(v.role)),
+    cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(E_FLAGS, v), cm(v.speed),
     Math.max(0, ALERTS.indexOf(v.alert)), Math.round(v.awareness * 100), v.target ?? -1, Math.round(v.laserCharge * 100), Math.max(0, Math.round(hp)),
   ];
 }
 export function decodeEnemy(a) {
-  const [index, x, y, z, yaw, pitch, flags, speed, alert, awareness, target, laser, hp] = a;
+  const [index, role, x, y, z, yaw, pitch, flags, speed, alert, awareness, target, laser, hp] = a;
   return unpackFlags(E_FLAGS, flags, {
-    index, pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: fromMrad(pitch),
+    index, role: ROLE_LIST[role] ?? ROLE_LIST[0], pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: fromMrad(pitch),
     speed: fromCm(speed), alert: ALERTS[alert], awareness: awareness / 100, target: target < 0 ? null : target,
     laserCharge: laser / 100, hp,
   });
 }
+
+/**
+ * An enemy's name, worked out the same way on the host (ai/enemy.js) and on a
+ * client, so it never needs sending: the level's own name for it, or "e" and its number.
+ */
+export const enemyIdFor = (specs, index) => specs[index]?.id ?? `e${index}`;
+
+// A fallen enemy stays in snapshots this long, so every client sees it fall,
+// then leaves them: a long mission's dead don't make every snapshot bigger.
+export const DEAD_KEPT = 1;
 
 /** A practice target: only the things that change (state, tilt, where it is on its rail). */
 export function encodeTarget(index, t) {
@@ -131,6 +157,54 @@ export function decodeEncounter(a) {
   return a ? { state: ENC_STATES[a[0]], time: a[1] / 100, remaining: a[2], total: a[3] } : null;
 }
 
+/**
+ * A mission's state (game/operation.js view): the stage, its phase and progress,
+ * which sites are in play, the drive, the helicopter. The client fills in the
+ * rest (what kind of stage it is, which landing zone) from the mission data.
+ */
+const OP_STATES = ['active', 'complete', 'failed'];
+const OP_REASONS = [null, 'down', 'hostage'];
+const HELI_PHASES = [null, 'inbound', 'landing', 'landed', 'leaving'];
+export function encodeOp(v) {
+  if (!v) return null;
+  return [
+    OP_STATES.indexOf(v.state), Math.round(v.time * 100), v.stage, PHASES.indexOf(v.phase), Math.round(v.progress * 1000),
+    Math.round(v.timer * 10), v.sites, v.done, v.armed, v.contested ? 1 : 0, v.carrier ?? -1,
+    v.drop ? [cm(v.drop.x), cm(v.drop.y), cm(v.drop.z)] : 0,
+    HELI_PHASES.indexOf(v.heli.phase), Math.round(v.heli.t * 100), Math.round(v.heli.inbound ?? 0),
+    v.aboard, v.checkpoint, Math.max(0, OP_REASONS.indexOf(v.reason)),
+  ];
+}
+export function decodeOp(a, mission) {
+  if (!a) return null;
+  const [state, time, stage, phase, progress, timer, sites, done, armed, contested, carrier, drop, heli, heliT, inbound, aboard, checkpoint, reason] = a;
+  const s = mission?.stages?.[stage] ?? null;
+  return {
+    state: OP_STATES[state], time: time / 100, stage, kind: s?.kind ?? null, phase: PHASES[phase] ?? 'done',
+    progress: progress / 1000, timer: timer / 10, sites, done, armed, contested: !!contested, carrier: carrier < 0 ? null : carrier,
+    drop: drop ? { x: fromCm(drop[0]), y: fromCm(drop[1]), z: fromCm(drop[2]) } : null,
+    heli: { phase: HELI_PHASES[heli] ?? null, t: heliT / 100, inbound }, lz: s?.lz ?? null,
+    aboard, checkpoint, reason: OP_REASONS[reason] ?? null,
+  };
+}
+
+/** The hostage (ai/hostage.js view): like a player row, plus "tied up", "aboard" and "waiting". */
+const H_FLAGS = ['crouched', 'sprinting', 'grounded', 'down', 'dead', 'bleeding', 'captive', 'aboard', 'waiting'];
+export function encodeHostage(v) {
+  return [
+    cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), packFlags(H_FLAGS, v), cm(v.speed), Math.round(v.hp),
+    Math.ceil((v.bleedLeft ?? 0) * 10), Math.round((v.reviving ?? 0) * 100), v.reviver ?? -1,
+  ];
+}
+export function decodeHostage(a) {
+  if (!a) return null;
+  const [x, y, z, yaw, flags, speed, hp, bleed, reviving, reviver] = a;
+  return unpackFlags(H_FLAGS, flags, {
+    pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: 0, speed: fromCm(speed), hp,
+    bleedLeft: bleed / 10, reviving: reviving / 100, reviver: reviver < 0 ? null : reviver,
+  });
+}
+
 // ---------------------------------------------------------------- events
 
 // Events the host passes on to clients. Anything else stays on the host
@@ -138,17 +212,22 @@ export function decodeEncounter(a) {
 const SHARED_EVENTS = new Set([
   'weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'bullet:nearmiss', 'player:hurt', 'player:down',
   'player:dead', 'player:revive', 'enemy:down', 'enemy:bark', 'mission:restart', 'ping:mark', 'player:joined', 'player:left',
+  'ammo:resupply', 'grenade:throw', 'explosion', 'player:respawn',
 ]);
+// Whole families of events everyone hears about: the encounter, the kill house,
+// a mission's objectives, the helicopter, the hostage and the reinforcements.
+const FOR_EVERYONE = ['encounter:', 'course:', 'mission:', 'objective:', 'extract:', 'hostage:', 'director:'];
 // Events about your own soldier that your browser already showed when you did it.
-const OWN_ECHO = new Set(['weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit']);
+const OWN_ECHO = new Set(['weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'grenade:throw']);
 // Events only the player they're about needs.
 const PERSONAL = { 'player:hurt': 'owner', 'bullet:nearmiss': 'victim' };
 
 /** Should this event go to player `slot`? */
 export function eventFor(name, data, slot) {
-  if (name.startsWith('encounter:') || name.startsWith('course:')) return true;
+  if (FOR_EVERYONE.some((prefix) => name.startsWith(prefix))) return true;
   if (!SHARED_EVENTS.has(name)) return false;
-  if (OWN_ECHO.has(name) && data.owner === slot) return false;
+  // (Your own grenade's blast is the host's to decide, so its hits come back to you.)
+  if (OWN_ECHO.has(name) && data.owner === slot && !data.area) return false;
   if (PERSONAL[name]) return data[PERSONAL[name]] === slot;
   return true;
 }

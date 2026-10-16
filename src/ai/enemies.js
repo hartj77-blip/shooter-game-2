@@ -5,7 +5,12 @@
 // requests, and what they currently know about the players (1 to 4 of them:
 // each enemy picks one as its target, see ai/senses.js).
 //
-// One tick, in the order main.js calls them:
+// Most enemies are in the level from the start (its `enemy` pieces). More can
+// arrive later: spawn() adds one (reinforcements, sent by game/director.js),
+// and retire() quietly takes one away (a checkpoint remembers who you'd
+// already dealt with).
+//
+// One tick, in the order game/sim.js calls them:
 //   enemies.move(dt)          each enemy's motor makes a command; its soldier moves
 //   ... targets.update, world.step(), your soldier.act ...
 //   enemies.playerShots(shots) your bullets: who did they fly past? (that's being shot at)
@@ -19,7 +24,7 @@
 import { createEnemy, command, afterShots } from './enemy.js';
 import { DIFFICULTY, BARKS, PLAYER_SCALING } from './enemy-data.js';
 import { sense } from './senses.js';
-import { createSquads, createTokens, report, squadMates } from './squad.js';
+import { createSquads, joinSquad, createTokens, report, squadMates } from './squad.js';
 import { route } from './astar.js';
 import { createRandom } from '../core/random.js';
 import { events as gameEvents } from '../core/events.js';
@@ -90,21 +95,74 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     const text = e.rng.pick(BARKS[kind]);
     events.emit('enemy:bark', { id: e.id, owner: e.owner, role: e.role, kind, text, pos: { ...e.pos } });
   };
-  // An enemy's bullet hit something: only players get hurt (no friendly fire between enemies).
+  /** The standing player nearest `pos` (reinforcements are radioed where to look), or null. */
+  ai.nearestTarget = (pos) => {
+    let best = null, bestD = Infinity;
+    for (const P of ai.targets) {
+      const d = Math.hypot(P.pos.x - pos.x, P.pos.z - pos.z);
+      if (d < bestD) { best = P; bestD = d; }
+    }
+    return best;
+  };
+  // An enemy's bullet hit something: only players get hurt (no friendly fire between
+  // enemies), and the hostage, if a stray shot finds them (ai/hostage.js).
   ai.hurt = (shooter, victim, amount, hit) => {
+    if (victim.kind === 'civilian') return victim.damage?.(amount * ai.difficulty.damage, hit.from) ?? { killed: false };
     if (victim.kind !== 'player') return { killed: false };
     const p = recordOf(victim.owner);
     return p ? p.health.damage(amount * ai.difficulty.damage, hit.from) : { killed: false };
   };
 
+  // More players, a little more health each (PLAYER_SCALING in ai/enemy-data.js).
+  const healthScale = () => PLAYER_SCALING.health[Math.min(PLAYER_SCALING.health.length, Math.max(1, ai.players.length)) - 1];
+
   function spawnAll() {
     list = specs.map((spec, i) => createEnemy(spec, i, ai));
-    // More players, a little more health each (PLAYER_SCALING in ai/enemy-data.js).
-    const scale = PLAYER_SCALING.health[Math.min(PLAYER_SCALING.health.length, Math.max(1, ai.players.length)) - 1];
+    const scale = healthScale();
     for (const e of list) { e.health = e.maxHealth = Math.round(e.def.health * scale); }
     squads = createSquads(list);
     ai.alive = list.slice();
     for (const e of list) e.brain.start();
+  }
+
+  /**
+   * A new enemy, now (reinforcements). It joins its squad without disturbing
+   * anyone else's, and its number is the next one in the list.
+   * @param {object} spec   like a level's enemy piece: { role, at, yaw, squad }
+   * @param {object} [opts]
+   * @param {Array}  [opts.route] [[x, z] or [x, z, y], ...]: walk in along these points first (the brain's
+   *        "advance" state), then go looking for the players
+   */
+  function spawn(spec, { route = null } = {}) {
+    const e = createEnemy(spec, list.length, ai);
+    e.health = e.maxHealth = Math.round(e.def.health * healthScale());
+    if (route?.length) e.advance = route.map(([x, z, y = e.spawn.pos.y]) => ({ x, y, z }));
+    joinSquad(squads, e);
+    list.push(e);
+    ai.alive.push(e);
+    e.brain.start();
+    return e;
+  }
+
+  /**
+   * Take an enemy away without a fuss: no "man down", no alarm, no event, no
+   * ragdoll. For checkpoints: the guards you'd already dealt with stay gone.
+   */
+  function retire(e) {
+    if (e.dead) return;
+    e.dead = true;
+    e.retired = true;
+    e.health = 0;
+    e.deadAt = -Infinity; // never in a snapshot (net/host.js)
+    tokens.release(e);
+    for (const [k, v] of taken) if (v === e) taken.delete(k);
+    if (e.squad.flanker === e.id) e.squad.flanker = null;
+    e.brain.kill();
+    ai.alive = ai.alive.filter((o) => o !== e);
+    if (!e.removed) {
+      e.soldier.remove();
+      e.removed = true;
+    }
   }
 
   /** A player as the enemies see it: plain numbers, refreshed every tick. */
@@ -297,14 +355,20 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     events.emit('enemy:down', { id: e.id, enemy: e, role: e.role, headshot: hit.zone === 'head', owner: hit.owner ?? 0, ...e.death });
   }
 
-  /** Back to the start: everyone respawns, nobody knows anything. */
-  function reset() {
+  /**
+   * Back to the start: everyone respawns, nobody knows anything. Reinforcements
+   * are gone.
+   * @param {object} [opts]
+   * @param {number[]} [opts.retired] numbers of the level's enemies to leave out (a checkpoint's)
+   */
+  function reset({ retired = [] } = {}) {
     for (const e of list) if (!e.removed) e.soldier.remove();
     taken.clear();
     tokens.clear();
     queue.length = 0;
     noise.clear();
     spawnAll();
+    for (const i of retired) if (list[i]) retire(list[i]);
   }
 
   spawnAll();
@@ -325,6 +389,8 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     think,
     act,
     damage,
+    spawn,
+    retire,
     reset,
     setDifficulty(name) { ai.difficulty = DIFFICULTY[name] ?? DIFFICULTY.regular; },
   };

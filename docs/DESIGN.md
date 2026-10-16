@@ -37,8 +37,8 @@ Each milestone ends with something playable on GitHub Pages, a lesson in `docs/l
 | M2 | Gunfeel | Four guns (carbine, SMG, pump shotgun, pistol), recoil, spread, aim down sights, viewmodel, effects, real sound, firing range, timed kill house | **Done** |
 | M3 | Enemies | Enemy soldiers (Rifleman, Rusher, Marksman) with sight, hearing and awareness, state-machine brains, squads, a nav grid with A*, cover and flanking, fairness rules, ragdolls, health that recovers, the Compound map, difficulty | **Done** |
 | M4 | Co-op | 1–4 players: lobby, room codes, invite links, host-run game, snapshots, interpolation, prediction and reconciliation, favour-the-shooter hits, bleed out and revive, spectating, pings, squad HUD, voice (radio + nearby), a mission loader | **Done** |
-| M5 | Missions | Objectives, the director, reinforcements, success and fail, debrief | Next |
-| M6 | Art pass | Stylized kit, animated characters, lighting, post-processing, quality presets | |
+| M5 | Missions | The Harbour map, four missions (rescue, intel, sabotage, hold the line) with extraction by helicopter, the director and reinforcements, checkpoints and retry, limited ammo and crates, grenades, the hostage, explosions, the debrief | **Done** |
+| M6 | Art pass | Stylized kit, animated characters, lighting, post-processing, quality presets | Next |
 | M7 | Progression | XP, unlocks, attachments, loadouts, support call-ins, saved progress | |
 | M8 | Polish | Audio mix, HUD, full settings, gamepad, touch, loading, performance | |
 | M9 | Content | Three or more maps, five mission types, modifiers, difficulty, release | |
@@ -126,6 +126,35 @@ Measured: the host's tick with 4 players, 16 enemies and 3 clients takes about 1
 
 If the host leaves, the game ends for everyone ("The host left the game.").
 
+## Missions (M5)
+
+Missions are data (`levels/missions.js`); objectives, checkpoints and results are in `src/game/operation.js` and `src/game/objectives.js`; the director is `src/game/director.js`. Lessons 14–17 explain how.
+
+| Mission | Job | Then |
+|---|---|---|
+| **Lifeline** (rescue) | The hostage is in one of three village buildings. Hold F for 2 s to free them; they follow you | Extract with them from the car park LZ (60 s inbound) |
+| **Dead Drop** (intel) | The laptop is in one of three rooms. Hold F to start a 60 s download; it stalls while enemies are within 7 m and none of you within 12 m. Take the drive | Extract with whoever carries it (it drops where its carrier bleeds out) |
+| **Short Fuse** (sabotage) | Three caches among five possible spots. Hold F for 4 s to plant a charge; 10 s later it blows (11 m, 420 damage) | Extract from the car park LZ |
+| **Last Light** (hold the line) | Switch on the lighthouse radio, then hold the headland for 3 minutes; progress pauses while an enemy is inside (8 m) | The helicopter lands on the headland 20 s later |
+
+Every mission ends with **extraction**: call the helicopter at the LZ's radio, survive the crescendo, board (within 4.5 m of the pad's middle). It leaves when everyone standing is aboard, with the hostage or the drive if that's the job, and nobody bleeding out.
+
+| Thing | Value | Where |
+|---|---|---|
+| The director | Calm 35–45 s; then a wave every 30–48 s of 3/4/5/6 enemies (1–4 players); peak at squad intensity 0.72, then a 20–32 s breather; crescendo: a wave every 14 s | `DIRECTOR`, `levels/missions.js` |
+| Enemies standing at most | 16 / 18 / 21 / 24 (1–4 players), garrison included | `maxAlive` |
+| Fair spawns | At entry points nobody standing can see, at least 35 m from everyone | `director.js` |
+| Spare ammo | Real in missions, infinite on practice maps | `infiniteAmmo` in `src/game/sim.js` |
+| Ammo crates | Hold F for 1 s: spares full and both grenades back. 4 refills per crate, shared; 7 on the Harbour | `SUPPLY`, `crate` pieces |
+| Grenades | 2 per mission (G). 3.2 s fuse, 7 m radius, full damage within 1.5 m, 160 damage; walls block; never hurt the squad | `GRENADE` |
+| Checkpoints | After each step. Retry (R, the host in co-op) keeps guards you dealt with gone, sends reinforcements away, restores ammo and crate refills; bled-out teammates return at the next checkpoint | `operation.js` |
+| The hostage | Follows 3.2 m behind, sprints beyond 8 m, waits beyond 28 m; enemy bullets do half damage, yours pass through; 45 s to revive | `HOSTAGE` |
+| Hold to interact | 1.6 m along the ground, 1.5 m up or down; reviving comes first | `INTERACT` |
+
+**The Harbour** (`levels/harbour.js`): about 170 × 125 m; a fishing village (west), a container yard and car park (centre), warehouses and the harbour office (east), the quay, jetty and lighthouse (north). 16 enemies in squads, 5 entry points, 2 landing zones, 12 objective sites. Landmarks: the cranes, the lighthouse, the chapel's red roof, the white office. Tests check every enemy, site, crate and LZ can be reached from the start, every entry route can be walked, the hostage can walk from each site to the helicopter, and nobody can see where you arrive.
+
+Measured: the Harbour builds and maps (130,000 walkable cells) in 0.9 s in Node, and loads in the browser in about 3 s. The host's tick with 4 players, 24 enemies and the hostage takes 1.75 ms on average (99% under 8.4 ms). A 4-player snapshot at the cap is about 1.8 KB (budget 2.5 KB). Batching the level per material in 32 m tiles takes a Harbour frame from 365 draw calls to 200 on low quality.
+
 ## Controls
 
 | Action | Mouse and keyboard |
@@ -141,12 +170,13 @@ If the host leaves, the game ends for everyone ("The host left the game.").
 | Switch gun | 1–4, mouse wheel, Q for the last gun |
 | Squad radio (co-op) | V (hold) |
 | Ping (co-op) | Z or middle mouse |
-| Revive a teammate (co-op) | F (hold) |
+| Throw a grenade | G |
+| Use (revive, free, plant, download, ammo, radio) | F (hold) |
 | Spectating: next teammate | Left mouse |
 | Tuning panel | `` ` `` |
 | Pause | Esc |
 
-When you're down in a solo fight, R starts it again. In co-op the host presses R once the whole squad is down. Gamepad and touch controls arrive in M8. Key rebinding arrives with full settings in M8.
+When you're down in a solo fight, R starts it again. In co-op the host presses R once the whole squad is down. In a mission, R retries from the last checkpoint instead (also when the hostage dies while you're standing). Gamepad and touch controls arrive in M8. Key rebinding arrives with full settings in M8.
 
 ## Art direction
 
@@ -157,7 +187,7 @@ When you're down in a solo fight, R starts it again. In co-op the host presses R
 
 ## Audio direction
 
-Punchy weapon sounds from real CC0 recordings, with a short echo; every play slightly varied in pitch so automatic fire never sounds robotic; positional impacts; footsteps that change with the surface. Since M3: enemy gunfire and footsteps placed in 3D and duller with distance (far sounds lose their treble), bullet whizzes past your ear, a heartbeat at low health, a radio click with every callout, and a tone with the Marksman's laser. Since M4: voice chat (squad radio through a radio filter, nearby voice placed in 3D), teammates' footsteps and gunfire, a handset click when someone keys the radio. Still to come: recorded voices for callouts, music that rises with combat intensity.
+Punchy weapon sounds from real CC0 recordings, with a short echo; every play slightly varied in pitch so automatic fire never sounds robotic; positional impacts; footsteps that change with the surface. Since M3: enemy gunfire and footsteps placed in 3D and duller with distance (far sounds lose their treble), bullet whizzes past your ear, a heartbeat at low health, a radio click with every callout, and a tone with the Marksman's laser. Since M4: voice chat (squad radio through a radio filter, nearby voice placed in 3D), teammates' footsteps and gunfire, a handset click when someone keys the radio. Since M5: explosions (two CC0 recordings layered: a deep boom and a crunch), grenade bounces, the helicopter's rotor (a generated loop that gets louder as it comes in), chimes for checkpoints and success, and Overlord's radio lines as subtitles. Still to come: recorded voices for callouts, music that rises with combat intensity.
 
 ## Accessibility (ongoing)
 
@@ -174,12 +204,15 @@ Already in: pings and markers so a squad can play without voice, push-to-talk or
 ## Open questions
 
 - ~~How much should aiming slow you down?~~ Decided in M2: to 60–75% of normal speed depending on the gun (`ads.move`), and you can't sprint while aiming.
-- Should guns have a limited spare-ammo pool in missions, with ammo crates? The training ground uses infinite spare magazines for now. Decide in M5.
+- ~~Should guns have a limited spare-ammo pool in missions, with ammo crates?~~ Decided in M5: yes, limited spare ammo in missions, refilled at crates; the practice maps stay infinite.
 - ~~Friendly fire: off, on, or an option?~~ Decided in M4: off.
 - ~~Do downed players bleed out?~~ Decided in M4: yes, after 30 s, unless a teammate revives them; then you spectate until the next fight.
 - When the host leaves, hand the game to another player ("host migration") instead of ending it? Possible, because every client has the level; the hard part is moving the enemies' brains. Later.
 - Some strict networks can't connect even through the free relay. A paid TURN service, or our own? Decide if players hit it.
 - Hits are trusted to each player's browser (favour the shooter). Fine for friends; a public matchmaking mode would need the host to check shots properly (lag compensation).
 - Should enemies vault low walls and drop off ledges? The nav grid has no "jump links" yet, so they walk round. Decide when a map needs it.
-- Grenades (yours and theirs) to flush enemies out of cover? Probably M7 (loadouts) or M5 (missions).
-- When you go down in a solo mission: restart the whole fight (as now), or a checkpoint? Decide in M5.
+- ~~Grenades (yours and theirs) to flush enemies out of cover?~~ Decided in M5: yours, 2 per mission. Enemy grenades later (they'd need their own fairness rules: a warning, a marker, time to run).
+- ~~When you go down in a solo mission: restart the whole fight, or a checkpoint?~~ Decided in M5: retry from the last checkpoint. The practice Compound still restarts the whole fight.
+- Mission length: the target is 8–12 minutes on Regular. A scripted run with frozen enemies takes 2–4 minutes of walking and waiting, so the rest is fighting; tune the director with real squads.
+- Mission props (the caches, the laptop's table, the radios) are drawn but have no colliders, so you can walk through them. Give them colliders in the art pass (M6), on host and clients alike.
+- More missions on the Compound (a raid), and more mission types (escort a convoy, defend a position that moves)? M9.

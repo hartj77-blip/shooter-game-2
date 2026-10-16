@@ -35,7 +35,7 @@ const LABELS = {
 
 export function createMenus(settings) {
   const screens = {};
-  for (const id of ['loading', 'title', 'join', 'lobby', 'pause', 'settings', 'error']) screens[id] = document.getElementById(id);
+  for (const id of ['loading', 'title', 'join', 'lobby', 'debrief', 'pause', 'settings', 'error']) screens[id] = document.getElementById(id);
   const form = document.getElementById('settingsForm');
   const controls = {};
 

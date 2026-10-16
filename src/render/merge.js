@@ -46,6 +46,30 @@ export function mergeGeometries(list) {
   return out;
 }
 
+/**
+ * Joins textured geometries (non-indexed, with positions, normals and UVs, already
+ * placed in the world) into one: the level's batches (render/level-view.js).
+ */
+export function mergeTextured(list) {
+  let count = 0;
+  for (const g of list) count += g.attributes.position.count;
+  const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2);
+  let o = 0;
+  for (const g of list) {
+    pos.set(g.attributes.position.array, o * 3);
+    nor.set(g.attributes.normal.array, o * 3);
+    uv.set(g.attributes.uv.array, o * 2);
+    o += g.attributes.position.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  out.computeBoundingBox();
+  out.computeBoundingSphere();
+  return out;
+}
+
 const m4 = new THREE.Matrix4();
 const q = new THREE.Quaternion();
 const e = new THREE.Euler();

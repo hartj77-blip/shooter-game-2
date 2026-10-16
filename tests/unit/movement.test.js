@@ -295,3 +295,18 @@ test('you climb ledges, not people: jumping right in front of a crouching soldie
   }
   // (A plain jump that lands on their back is allowed: plenty of co-op games let you.)
 });
+
+test('an invisible wall at the edge of the map stops you, but not bullets, eyes or climbing', async () => {
+  const { RAPIER } = await import('../../src/world/physics.js');
+  const { BULLET, SIGHT, LEVEL } = await import('../../src/world/groups.js');
+  const sim = await makeSim([{ type: 'boundary', from: [-10, -3], to: [10, -3], height: 1.3 }]);
+  sim.settle();
+  sim.run(2, { moveZ: 1 });
+  assert.ok(sim.state.pos.z > -3, `stopped at the wall (z = ${sim.state.pos.z.toFixed(2)})`);
+  sim.run(1, (i) => ({ moveZ: 1, jump: i % 20 === 0, jumpHeld: true }));
+  assert.ok(sim.state.pos.z > -3, 'no climbing over it, though a wall that low could be climbed');
+  const ray = new RAPIER.Ray({ x: 0, y: 0.5, z: 0 }, { x: 0, y: 0, z: -1 });
+  for (const [name, group] of [['bullets', BULLET], ['eyes', SIGHT], ['the level map', LEVEL]]) {
+    assert.equal(sim.world.castRay(ray, 20, true, undefined, group), null, `${name} pass through`);
+  }
+});

@@ -1,6 +1,7 @@
 // Drawing soldiers: block soldiers that follow the simulation.
 //
-// Used for the enemies, and (with friendly colours) for your teammates in co-op.
+// Used for the enemies, (with friendly colours) for your teammates in co-op,
+// and (orange, unarmed) for the hostage.
 // For each soldier it reads a small "view" summary (where it is, which way it
 // faces, how fast it moves, crouched or not, gun raised, reloading, alert,
 // laser...) and poses its block soldier to match. On the co-op host those
@@ -53,14 +54,16 @@ function iconTexture(text, color) {
  * @param {object} opts.events
  * @param {object} [opts.colors]  SOLDIER_COLORS.enemy or .friend
  * @param {boolean} [opts.icons]  show "?" and "!" (enemies)
- * @param {string} [opts.downEvent] the event that turns one of these into a ragdoll
+ * @param {string|null} [opts.downEvent] the event that turns one of these into a ragdoll
+ *   (null: never; they just lie down, and vanish while `dead`. The hostage can come back at a checkpoint.)
+ * @param {string} [opts.name]   the group's name in the scene
  */
 export function createSoldiersView({
   scene, source, effects, ragdolls = null, world, registry, camera, events,
-  colors = SOLDIER_COLORS.enemy, icons: showIcons = true, downEvent = 'enemy:down',
+  colors = SOLDIER_COLORS.enemy, icons: showIcons = true, downEvent = 'enemy:down', name = null,
 }) {
   const group = new THREE.Group();
-  group.name = showIcons ? 'enemies' : 'teammates';
+  group.name = name ?? (showIcons ? 'enemies' : 'teammates');
   scene.add(group);
   const views = new Map(); // id -> drawing state
 
@@ -152,7 +155,7 @@ export function createSoldiersView({
     v.flinchVel.x += (Math.random() < 0.5 ? -1 : 1) * 3 * k - 4 * k;
     v.flinchVel.z += (Math.random() * 2 - 1) * 5 * k;
   });
-  events.on(downEvent, (ev) => {
+  if (downEvent) events.on(downEvent, (ev) => {
     const v = views.get(ev.id);
     if (!v || v.dead) return;
     v.dead = true;
