@@ -11,6 +11,8 @@ Third-party code and assets in this repository, with their licences.
 | [PeerJS](https://peerjs.com/) (`peerjs`, the `dist/peerjs.min.js` build) | 1.5.5 | `vendor/peerjs/` | MIT (`vendor/peerjs/LICENSE`). Loaded only when you host or join a co-op game. Its free public broker (`0.peerjs.com`) and relay servers (`turn.peerjs.com`) introduce players to each other |
 | [Barlow and Barlow Condensed](https://github.com/jpt/barlow) fonts | Google Fonts v13 | `assets/fonts/` | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
 | [Playwright](https://playwright.dev/) (tests only, not shipped) | 1.56.1 | `package.json` | Apache-2.0 |
+| [glTF Transform](https://gltf-transform.dev/) (`@gltf-transform/core`, `/functions`; `tools/build-models.mjs` only, not shipped) | 4.5.1 | `package.json` | MIT |
+| [meshoptimizer](https://github.com/zeux/meshoptimizer) (`meshoptimizer`: simplifies the far-away soldier; `tools/build-models.mjs` only, not shipped) | 1.3.0 | `package.json` | MIT |
 
 ## Models
 

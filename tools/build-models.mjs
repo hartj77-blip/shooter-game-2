@@ -19,10 +19,12 @@
 // Usage:
 //   node tools/build-models.mjs --ual1 PATH --ual2 PATH --guns DIR [--out assets/models]
 //
-// Needs the dev dependencies (npm install): @gltf-transform/core and /functions.
+// Needs the dev dependencies (npm install): @gltf-transform/core and /functions,
+// and meshoptimizer (for the soldier's simplified far-away copy).
 
 import { NodeIO, Document } from '@gltf-transform/core';
-import { prune, dedup, resample, weld } from '@gltf-transform/functions';
+import { prune, dedup, resample, weld, simplifyPrimitive } from '@gltf-transform/functions';
+import { MeshoptSimplifier } from 'meshoptimizer';
 import { parseArgs } from 'node:util';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -97,6 +99,29 @@ if (missing.length) throw new Error(`Missing animations: ${missing.join(', ')}`)
 await doc.transform(resample({ tolerance: 1e-4 }), prune(), dedup(), prune());
 // Anything still left over with nothing using it goes too.
 for (const a of root.listAccessors()) if (a.listParents().every((p) => p === root)) a.dispose();
+
+// 4. A simpler copy of the body for soldiers far away ("level of detail"): about
+//    a quarter of the triangles, on the same skeleton, so the same animations
+//    move it. Nobody can tell the difference 20 m away; the graphics card can.
+//    (render/character.js shows one or the other.)
+export const FAR_RATIO = 0.25;
+await MeshoptSimplifier.ready;
+for (const node of root.listNodes().filter((n) => n.getMesh() && n.getSkin())) {
+  const near = node.getMesh();
+  const far = doc.createMesh(`${near.getName()}_far`);
+  for (const prim of near.listPrimitives()) {
+    const copy = doc.createPrimitive().setMaterial(prim.getMaterial()).setMode(prim.getMode());
+    for (const semantic of prim.listSemantics()) copy.setAttribute(semantic, copyAccessor(prim.getAttribute(semantic)));
+    copy.setIndices(copyAccessor(prim.getIndices()));
+    simplifyPrimitive(copy, { simplifier: MeshoptSimplifier, ratio: FAR_RATIO, error: 0.01 });
+    far.addPrimitive(copy);
+  }
+  const farNode = doc.createNode(`${node.getName()}_far`).setMesh(far).setSkin(node.getSkin());
+  for (const parent of node.listParents()) if (parent.propertyType === 'Node' || parent.propertyType === 'Scene') parent.addChild(farNode);
+  const tris = (m) => m.listPrimitives().reduce((n, p) => n + p.getIndices().getCount() / 3, 0);
+  console.log(`${node.getName()}: ${tris(near)} triangles near, ${tris(far)} far`);
+}
+await doc.transform(prune());
 
 fs.mkdirSync(args.out, { recursive: true });
 const file = path.join(args.out, 'soldier.glb');

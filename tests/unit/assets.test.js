@@ -34,6 +34,12 @@ test('the soldier has the clips and bones the animation code uses, and stays sma
     'upperarm_l', 'lowerarm_l', 'hand_l', 'thigh_l', 'calf_l', 'foot_l', 'thigh_r', 'calf_r', 'foot_r']) {
     assert.ok(bones.has(b), `bone ${b} (render/character.js and render/ragdolls.js use it)`);
   }
+  // A simpler copy of the body for far away (level of detail), on the same skeleton.
+  const tris = (name) => j.meshes.find((m) => m.name === name).primitives.reduce((n, p) => n + j.accessors[p.indices].count / 3, 0);
+  const near = tris('Mannequin'), far = tris('Mannequin_far');
+  assert.ok(far < near * 0.3, `far body ${far} triangles, near ${near}`);
+  const skinOf = (name) => j.nodes.find((n) => n.name === name).skin;
+  assert.equal(skinOf('Mannequin_far'), skinOf('Mannequin'));
   const kb = fs.statSync(file).size / 1024;
   assert.ok(kb < 2560, `soldier.glb is ${kb.toFixed(0)} KB (budget 2.5 MB)`);
 });
