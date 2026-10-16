@@ -29,9 +29,10 @@
 // snapshot stays small).
 
 import { LOADOUT } from '../weapons/weapons-data.js';
+import { ROLES } from '../ai/enemy-data.js';
 export { PRESS_FLAGS } from '../core/input.js';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const SNAPSHOT_EVERY = 3;   // ticks between snapshots: 60 / 3 = 20 a second
 export const INTERP_DELAY = 6;     // others are drawn this many ticks (0.1 s) in the past
 export const CMD_REDUNDANCY = 3;   // each command packet carries the last 3 commands
@@ -75,6 +76,7 @@ export const roundCommand = (cmd) => decodeCommand(encodeCommand(0, cmd))[1];
 const P_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'down', 'dead', 'bleeding'];
 const E_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'inCombat', 'fresh', 'sees', 'laserOn', 'dead'];
 const ALERTS = ['calm', 'suspicious', 'combat'];
+const ROLE_LIST = Object.keys(ROLES);
 const ENC_STATES = ['ready', 'running', 'cleared', 'down'];
 const TARGET_STATES = ['up', 'falling', 'down', 'rising'];
 
@@ -98,21 +100,36 @@ export function decodePlayer(a) {
   });
 }
 
-/** One enemy (by its place in the level's list: both sides build the same list). */
+/**
+ * One enemy, by its number: its place in the host's list. Enemies can arrive in
+ * the middle of a mission (reinforcements), so each row also says what kind of
+ * soldier it is, and a client makes a stand-in the first time it sees a number.
+ */
 export function encodeEnemy(index, v, hp) {
   return [
-    index, cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(E_FLAGS, v), cm(v.speed),
+    index, Math.max(0, ROLE_LIST.indexOf(v.role)),
+    cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(E_FLAGS, v), cm(v.speed),
     Math.max(0, ALERTS.indexOf(v.alert)), Math.round(v.awareness * 100), v.target ?? -1, Math.round(v.laserCharge * 100), Math.max(0, Math.round(hp)),
   ];
 }
 export function decodeEnemy(a) {
-  const [index, x, y, z, yaw, pitch, flags, speed, alert, awareness, target, laser, hp] = a;
+  const [index, role, x, y, z, yaw, pitch, flags, speed, alert, awareness, target, laser, hp] = a;
   return unpackFlags(E_FLAGS, flags, {
-    index, pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: fromMrad(pitch),
+    index, role: ROLE_LIST[role] ?? ROLE_LIST[0], pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: fromMrad(pitch),
     speed: fromCm(speed), alert: ALERTS[alert], awareness: awareness / 100, target: target < 0 ? null : target,
     laserCharge: laser / 100, hp,
   });
 }
+
+/**
+ * An enemy's name, worked out the same way on the host (ai/enemy.js) and on a
+ * client, so it never needs sending: the level's own name for it, or "e" and its number.
+ */
+export const enemyIdFor = (specs, index) => specs[index]?.id ?? `e${index}`;
+
+// A fallen enemy stays in snapshots this long, so every client sees it fall,
+// then leaves them: a long mission's dead don't make every snapshot bigger.
+export const DEAD_KEPT = 1;
 
 /** A practice target: only the things that change (state, tilt, where it is on its rail). */
 export function encodeTarget(index, t) {

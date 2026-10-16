@@ -183,6 +183,14 @@ const expanders = {
     return expanders.wall({ ...p, height: p.height ?? 1.0, thick: p.thick ?? 0.6, mat: 'sandbag' });
   },
 
+  // An invisible wall from `from` to `to` ([x, z]) at the edge of the map, say
+  // along a quay: it stops people walking off, but bullets and eyes pass straight
+  // through and nobody can climb it (the BOUNDARY collision group, world/groups.js).
+  boundary(p) {
+    const { solids } = expanders.wall({ ...p, height: p.height ?? 6, thick: p.thick ?? 0.4, mat: 'concrete' });
+    return { solids: solids.map((s) => ({ ...s, hidden: true, boundary: true })) };
+  },
+
   // Where an enemy soldier starts (src/ai/enemies.js). role: 'rifleman' | 'rusher' | 'marksman'.
   //   yaw     which way they face (0 = north)
   //   squad   enemies with the same squad name share what they know

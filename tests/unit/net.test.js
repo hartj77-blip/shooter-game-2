@@ -220,7 +220,9 @@ test('joining a game in progress: the newcomer sees the world as it is', async (
   g.run(1);
   const late = await g.join(2);
   g.run(0.5);
-  assert.equal(late.enemies.list[3].view.dead, true, 'the enemy that died before they came is dead for them too');
+  // (Stand-ins are made when snapshots mention someone, and the fallen leave snapshots after a second.)
+  assert.ok(!late.enemies.list.some((p) => p.id === victim.id && !p.view.dead), 'the enemy that died before they came never stands up for them');
+  assert.equal(late.enemies.list.length, 15, 'they see everyone still standing');
   assert.equal(late.encounter.remaining, 15);
   assert.ok(late.teammates.list.some((m) => m.owner === 1), 'they see the other client');
   assert.ok(g.client(1).teammates.list.some((m) => m.owner === 2), 'and the other client sees them');
@@ -251,6 +253,69 @@ test('the host restarts: everyone is put back at the start', async () => {
   assert.ok(Math.hypot(p.x - x, p.z - z) < 0.5, 'back at their spawn on their own screen');
   assert.ok(g.gap(1) < 0.01);
   g.dispose();
+});
+
+test('restart ghost: news from before a restart never knocks over the new enemy (regression)', async () => {
+  // The bug: an "enemy down" still waiting to be shown (events play 0.1 s behind,
+  // in step with the stand-ins) played after the host restarted, and hid the
+  // brand-new enemy with the same name.
+  const g = await makeCoop({ def: compound, clients: 1, net: { delay: 40 } });
+  g.sim.enemies.options.freeze = true;
+  g.run(1);
+  const victim = g.sim.enemies.list[2];
+  g.sim.enemies.damage(victim, 1000, { owner: 0, zone: 'body', from: victim.pos });
+  g.run(0.1); // the news has reached the client, and waits its turn
+  g.host.restart();
+  g.run(1);
+  const log = g.logs.get(1);
+  const at = log.findIndex((e) => e.name === 'mission:restart');
+  assert.ok(at >= 0, 'the client heard about the restart');
+  assert.ok(!log.slice(at).some((e) => e.name === 'enemy:down'), 'no stale "enemy down" after it');
+  const p = g.client(1).enemies.list.find((x) => x.id === victim.id);
+  assert.ok(p && !p.view.dead, 'the new enemy with that name is standing on the client');
+  assert.equal(g.client(1).enemies.list.length, 16);
+  g.dispose();
+});
+
+test('a fallen enemy leaves the snapshots a moment later (long missions stay small), and stays down on screen', async () => {
+  const g = await makeCoop({ def: compound, clients: 1 });
+  g.sim.enemies.options.freeze = true;
+  g.run(0.5);
+  const victim = g.sim.enemies.list[5];
+  let last = null;
+  g.client(1).link.onMessage((msg) => { if (msg.t === 'snap') last = msg; });
+  g.sim.enemies.damage(victim, 1000, { owner: 0, zone: 'body', from: victim.pos });
+  g.run(0.3);
+  assert.ok(last.e.some((row) => row[0] === 5), 'still there just after falling (so everyone sees it fall)');
+  g.run(1.5);
+  assert.ok(!last.e.some((row) => row[0] === 5), 'gone a second later');
+  assert.equal(last.e.length, 15);
+  const p = g.client(1).enemies.list.find((x) => x.id === victim.id);
+  assert.equal(p.view.dead, true, 'and the client still shows it dead');
+  g.dispose();
+});
+
+test('enemy rows are matched by number: out of order, missing or new, each finds its own stand-in', async () => {
+  await import('../../src/world/physics.js').then((m) => m.initPhysics());
+  const { createClient } = await import('../../src/net/client.js');
+  const { encodeEnemy, encodePlayer } = await import('../../src/net/protocol.js');
+  let deliver = null;
+  const link = { onMessage(fn) { deliver = fn; return () => {}; }, send() {} };
+  const client = createClient({ def: compound, me: 1, link });
+  const row = (index, role, x) => encodeEnemy(index, {
+    role, pos: { x, y: 0, z: 0 }, yaw: 0, pitch: 0, speed: 0, alert: 'calm', awareness: 0, target: null, laserCharge: 0,
+  }, 100);
+  const me = encodePlayer({ owner: 1, pos: { x: 0, y: 0, z: 30 }, yaw: 0, pitch: 0, speed: 0, weapon: 'carbine', hp: 100 });
+  const snap = (tick, e) => deliver({ t: 'snap', tick, p: [me], e, g: [], enc: null, ack: 0, buf: 2 });
+  // Number 20 is beyond the level's own 16: a reinforcement, a Rusher.
+  for (let t = 3; t <= 60; t += 3) snap(t, [row(20, 'rusher', 7), row(4, 'marksman', 4), row(0, 'rifleman', 1)]);
+  for (let i = 0; i < 20; i++) client.step(1 / 60, idleCommand(0));
+  const byId = new Map(client.enemies.list.map((p) => [p.id, p]));
+  assert.deepEqual(client.enemies.list.map((p) => p.index), [0, 4, 20], 'sorted by number, only the ones mentioned');
+  assert.equal(byId.get('e20').role, 'rusher');
+  assert.equal(byId.get('e20').view.weapon, 'smg', 'armed like a Rusher');
+  assert.ok(Math.abs(byId.get(client.enemies.list[1].id).view.pos.x - 4) < 1e-6, 'number 4 is where row 4 says');
+  client.dispose();
 });
 
 // ------------------------------------------------------------------ cost

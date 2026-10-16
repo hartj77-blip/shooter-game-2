@@ -1,12 +1,16 @@
 // Collision groups: a guest list for every kind of physics question.
 //
-// The world holds three kinds of collider:
+// The world holds five kinds of collider:
 //   WORLD      the level and the practice targets (Rapier's default: "member of everything")
 //   CHARACTER  the invisible upright cylinder each soldier moves with
 //   HITBOX     the head, body and limb boxes that bullets actually hit
+//   BOUNDARY   invisible walls at the edge of a map (along a quay, so nobody falls in the sea)
+//   ESCORT     the body of someone you escort (the hostage): they bump into you, you walk
+//              through them, so a follower at your heels never gets in your way (and two
+//              computers never disagree about a bump, lesson 12)
 //
 // Each kind of question only "sees" some of them:
-//   MOVE    walking, standing up, ground checks: world + characters
+//   MOVE    walking, standing up, ground checks: world + characters + boundaries
 //           (you can't walk through a wall or a person, and your own hitboxes never trip you)
 //   BULLET  shots: world + hitboxes (the fat movement cylinder would catch bullets
 //           meant to whistle past someone's head)
@@ -21,6 +25,8 @@
 export const WORLD = 0x0001;
 export const CHARACTER = 0x0002;
 export const HITBOX = 0x0004;
+export const BOUNDARY = 0x0008;
+export const ESCORT = 0x0010;
 
 const ALL = 0xffff;
 
@@ -30,9 +36,11 @@ export const groups = (memberOf, meets) => ((memberOf << 16) | meets) >>> 0;
 // What colliders are.
 export const CHARACTER_GROUPS = groups(CHARACTER, ALL);
 export const HITBOX_GROUPS = groups(HITBOX, ALL);
+export const BOUNDARY_GROUPS = groups(BOUNDARY, ALL);
+export const ESCORT_GROUPS = groups(ESCORT, ALL);
 
 // What questions see.
-export const MOVE = groups(ALL, WORLD | CHARACTER);
+export const MOVE = groups(ALL, WORLD | CHARACTER | BOUNDARY);
 export const BULLET = groups(ALL, WORLD | HITBOX);
 export const SIGHT = groups(ALL, WORLD);
 // The level's own shapes only: used when mapping the level for enemies (ai/nav-grid.js).

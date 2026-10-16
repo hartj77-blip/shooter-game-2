@@ -66,9 +66,12 @@ const GROUND_STICK = -1.5; // small downward push while grounded, so we notice t
 // Rapier measures a rounded cylinder without its rounded rim, so subtract it.
 export const bodyHalfHeight = (height) => height / 2 - BODY.rim;
 
-/** The shape every soldier moves with: a cylinder with rounded edges, `height` tall. */
-export function bodyCollider(height = BODY.standHeight) {
-  return RAPIER.ColliderDesc.roundCylinder(bodyHalfHeight(height), BODY.radius - BODY.rim, BODY.rim).setCollisionGroups(CHARACTER_GROUPS);
+/**
+ * The shape every soldier moves with: a cylinder with rounded edges, `height` tall.
+ * @param {number} [collisionGroups] what it is (world/groups.js): a soldier, or someone you escort
+ */
+export function bodyCollider(height = BODY.standHeight, collisionGroups = CHARACTER_GROUPS) {
+  return RAPIER.ColliderDesc.roundCylinder(bodyHalfHeight(height), BODY.radius - BODY.rim, BODY.rim).setCollisionGroups(collisionGroups);
 }
 
 // How the gun in your hands changes movement this tick (see weapons/arsenal.js).
@@ -82,14 +85,15 @@ export const NO_MODS = Object.freeze({ speedScale: 1, canSprint: true });
  * @param {object} [opts.tuning]  defaults to a copy of DEFAULT_TUNING
  * @param {object} [opts.events]  event bus, defaults to the shared one
  * @param {number|string} [opts.owner] who this body belongs to (0 = you); added to every event
+ * @param {number} [opts.collisionGroups] what the body is (world/groups.js): a soldier unless it's someone you escort
  */
-export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, events = gameEvents, owner = 0 }) {
+export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, events = gameEvents, owner = 0, collisionGroups = CHARACTER_GROUPS }) {
   // Every event says whose body it was, so the camera only dips when *you* land.
   const emit = (name, data) => events.emit(name, { owner, ...data });
   const r = BODY.radius;
   const halfOf = bodyHalfHeight;
 
-  const collider = world.createCollider(bodyCollider(BODY.standHeight));
+  const collider = world.createCollider(bodyCollider(BODY.standHeight, collisionGroups));
 
   // Rapier's kinematic character controller: it moves our capsule and handles
   // sliding along walls, climbing slopes and stepping up stairs.

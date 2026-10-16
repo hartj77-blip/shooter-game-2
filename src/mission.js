@@ -88,7 +88,8 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const { soldier, health } = session.local;
   const player = soldier.body;
   const { world, registry } = session;
-  const hasEnemies = session.enemies.list.length > 0;
+  // (A co-op client meets its enemies through snapshots, so ask the level, not the list.)
+  const hasEnemies = session.level.expanded.enemies.length > 0 || !!def.mission;
 
   // ---------------------------------------------------------------- what you see and hear
   const root = new THREE.Group();
