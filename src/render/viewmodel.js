@@ -67,13 +67,14 @@ function flashTexture() {
   return t;
 }
 
-export function createViewmodel({ soldier, input, settings, cameraRig, worldCamera, sunDir, events = gameEvents, owner = 0 }) {
+export function createViewmodel({ soldier, input, settings, cameraRig, worldCamera, sunDir, mood = () => null, events = gameEvents, owner = 0 }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, worldCamera.aspect, 0.01, 10);
 
   const hemi = new THREE.HemisphereLight('#a9bdd6', '#5a5544', 1.8);
   const sun = new THREE.DirectionalLight('#fff1d6', 2.4);
   scene.add(hemi, sun, sun.target);
+  let litFor = null; // the mood the lights were last set for
 
   const rig = new THREE.Group();
   scene.add(rig);
@@ -213,6 +214,16 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
     inverse.copy(worldCamera.quaternion).invert();
     lightDir.copy(sunDir).applyQuaternion(inverse);
     sun.position.copy(lightDir).multiplyScalar(5);
+    // ...and in the same light as the world (a gun lit like noon at night would glow).
+    const m = mood();
+    if (m && m !== litFor) {
+      litFor = m;
+      sun.color.set(m.sun);
+      sun.intensity = m.sunIntensity * 0.85;
+      hemi.color.set(m.hemiSky);
+      hemi.groundColor.set(m.hemiGround);
+      hemi.intensity = m.hemiIntensity * 0.8;
+    }
 
     // Pose: hip and aim, blended.
     const ads = smooth(ars.state.ads);

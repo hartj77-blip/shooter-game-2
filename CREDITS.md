@@ -5,6 +5,7 @@ Third-party code and assets in this repository, with their licences.
 | What | Version | Where | Licence |
 |---|---|---|---|
 | [three.js](https://threejs.org/) | 0.186.1 | `vendor/three/` | MIT (`vendor/three/LICENSE`) |
+| three.js add-ons (`examples/jsm` from the same npm package): the glTF loader and its helpers, the meshopt decoder, post-processing passes and shaders | 0.186.1 | `vendor/three/addons/` | MIT (`vendor/three/LICENSE`). Only the files we use are copied, with the same folder layout |
 | [Rapier](https://rapier.rs/) (`@dimforge/rapier3d-compat`) | 0.21.0 | `vendor/rapier/` | Apache-2.0 (`vendor/rapier/LICENSE`) |
 | [lil-gui](https://lil-gui.georgealways.com/) | 0.21.0 | `vendor/lil-gui/` | MIT (`vendor/lil-gui/LICENSE.md`) |
 | [PeerJS](https://peerjs.com/) (`peerjs`, the `dist/peerjs.min.js` build) | 1.5.5 | `vendor/peerjs/` | MIT (`vendor/peerjs/LICENSE`). Loaded only when you host or join a co-op game. Its free public broker (`0.peerjs.com`) and relay servers (`turn.peerjs.com`) introduce players to each other |

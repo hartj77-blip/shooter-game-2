@@ -294,6 +294,7 @@ add(
 export default {
   name: 'The Harbour',
   spawn: { pos: [-62, 0, 56], yaw: NORTH },
+  mood: 'golden', // render/moods.js
   sun: { azimuth: deg(-40), elevation: deg(38) },
   nav: { min: [-84, -66], max: [84, 63], top: 20 },
   pieces,

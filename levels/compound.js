@@ -273,6 +273,7 @@ add(
 export default {
   name: 'The Compound',
   spawn: { pos: [-14, 0, 45], yaw: NORTH },
+  mood: 'haze', // render/moods.js
   sun: { azimuth: deg(35), elevation: deg(48) },
   nav: { min: [-46, -42], max: [46, 52] },
   pieces,

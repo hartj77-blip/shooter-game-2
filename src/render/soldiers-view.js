@@ -43,6 +43,19 @@ function iconTexture(text, color) {
 }
 
 /**
+ * Which drawn soldier an event is about. Enemy events name the soldier (`id`);
+ * player events only say whose slot it was (`owner`), so look that up instead.
+ * (Looking up `id` alone meant a teammate who bled out never fell as a ragdoll:
+ * 'player:dead' has no `id`. Lesson 19.)
+ */
+export function viewForEvent(views, ev) {
+  if (ev.id !== undefined && views.has(ev.id)) return views.get(ev.id);
+  if (ev.owner === undefined) return null;
+  for (const v of views.values()) if (v.owner === ev.owner) return v;
+  return null;
+}
+
+/**
  * @param {object} opts
  * @param {THREE.Object3D} opts.scene  where to add the models
  * @param {{list: Array}} opts.source  the soldiers to draw: each has an `id`, an `owner` and a `view` summary
@@ -156,7 +169,7 @@ export function createSoldiersView({
     v.flinchVel.z += (Math.random() * 2 - 1) * 5 * k;
   });
   if (downEvent) events.on(downEvent, (ev) => {
-    const v = views.get(ev.id);
+    const v = viewForEvent(views, ev);
     if (!v || v.dead) return;
     v.dead = true;
     v.icon.visible = false;
