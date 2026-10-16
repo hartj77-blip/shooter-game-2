@@ -200,6 +200,13 @@ export function createVoice({ audio, settings, room, peer = null }) {
     get hasMic() { return !!mic; },
     get linked() { return peer !== null; },
     get radioHeld() { return radioHeld; },
+    /** Each voice link and how it's doing (for debugging connection trouble). */
+    get links() {
+      return [...calls].map(([slot, call]) => ({
+        slot, open: !!call.open, hearing: talkers.has(slot),
+        state: call.peerConnection?.connectionState ?? 'none', ice: call.peerConnection?.iceConnectionState ?? 'none',
+      }));
+    },
 
     /** You're holding V (or not). Tells everyone, with a radio click. */
     setRadio(on) {
