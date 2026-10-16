@@ -81,7 +81,9 @@ export function createEnemy(spec, index, ai) {
       firing: false,
     },
     cmd: idleCommand(yaw, 0),
-    home: () => (e.patrol.length > 1 ? 'patrol' : 'guard'),
+    advance: null,         // reinforcements: the route still to walk in along (ai/enemies.js spawn)
+    advanceIndex: 0,
+    home: () => (e.advance ? 'advance' : e.patrol.length > 1 ? 'patrol' : 'guard'),
   };
 
   e.soldier = createSoldier({
@@ -135,21 +137,26 @@ export function viewOf(e, ai) {
 
 // ------------------------------------------------------------------ the motor
 
-/** This tick's command for enemy `e`, from its intent. */
-export function command(e, ai, dt) {
-  const I = e.intent;
-  const m = e.motor;
-  const S = e.senses;
-  const def = e.def;
-  const s = e.soldier.state;
-  const pos = s.pos;
+/**
+ * Where to walk this tick, from an intent: follow the route to `intent.dest`
+ * (or side-step), keep a little space from the crowd, and notice being stuck.
+ * Shared by enemies and the hostage (ai/hostage.js): anything with an intent,
+ * a path, a motor, a `def.pace` and a position can steer.
+ * @param {object} agent
+ * @param {object} ctx   { crowd (or alive): others to keep clear of, requestPath(agent) }
+ * @returns {{ wx: number, wz: number, pace: number, sprint: boolean }} a world direction and speed
+ */
+export function steer(agent, ctx, dt) {
+  const I = agent.intent;
+  const m = agent.motor;
+  const def = agent.def;
+  const pos = agent.pos;
 
-  // ---- 1. Where to walk.
   let wx = 0, wz = 0, pace = 0, sprint = false;
-  e.arrived = false;
+  agent.arrived = false;
   if (I.dest) {
-    followPath(e, ai);
-    const wp = e.path.points[e.path.index];
+    followPath(agent, ctx);
+    const wp = agent.path.points[agent.path.index];
     if (wp) {
       const dx = wp.x - pos.x, dz = wp.z - pos.z;
       const d = Math.hypot(dx, dz);
@@ -157,9 +164,9 @@ export function command(e, ai, dt) {
       sprint = I.pace === 'sprint';
       pace = I.pace === 'walk' ? def.pace.walk : def.pace.run;
       // Slow down for the last metre so they stop on the spot instead of overshooting.
-      if (e.path.index === e.path.points.length - 1) pace *= clamp(d / 1.2, 0.35, 1);
-    } else if (!e.path.pending) {
-      e.arrived = !e.path.failed;
+      if (agent.path.index === agent.path.points.length - 1) pace *= clamp(d / 1.2, 0.35, 1);
+    } else if (!agent.path.pending) {
+      agent.arrived = !agent.path.failed;
     }
   } else if (I.strafe) {
     // Side-step across the line of fire.
@@ -170,8 +177,8 @@ export function command(e, ai, dt) {
 
   // Don't bunch up: a gentle push away from anyone standing too close.
   let px = 0, pz = 0;
-  for (const o of ai.alive) {
-    if (o === e) continue;
+  for (const o of ctx.crowd ?? ctx.alive) {
+    if (o === agent) continue;
     const dx = pos.x - o.pos.x, dz = pos.z - o.pos.z;
     const d = Math.hypot(dx, dz);
     if (d < 1.1 && d > 1e-4 && Math.abs(pos.y - o.pos.y) < 1.5) {
@@ -192,8 +199,8 @@ export function command(e, ai, dt) {
     if (m.stuckTimer > 1) {
       const moved = Math.hypot(pos.x - m.stuckFrom.x, pos.z - m.stuckFrom.z);
       m.stuckCount = moved < 0.25 ? m.stuckCount + 1 : 0;
-      if (m.stuckCount >= 1 && !e.path.pending) e.path.dest = null; // ask for a fresh route
-      if (m.stuckCount >= 3) { e.path.failed = true; e.pathFailed = true; m.stuckCount = 0; }
+      if (m.stuckCount >= 1 && !agent.path.pending) agent.path.dest = null; // ask for a fresh route
+      if (m.stuckCount >= 3) { agent.path.failed = true; agent.pathFailed = true; m.stuckCount = 0; }
       m.stuckTimer = 0;
       m.stuckFrom = { ...pos };
     }
@@ -201,6 +208,25 @@ export function command(e, ai, dt) {
     m.stuckTimer = 0;
     m.stuckFrom = { ...pos };
   }
+  return { wx, wz, pace, sprint };
+}
+
+/** Walking as keys: a world direction and speed, turned into forward/sideways for the way you face. */
+export function keysFor(yaw, wx, wz, pace) {
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+  return { moveZ: (wx * fx + wz * fz) * pace, moveX: (wx * rx + wz * rz) * pace };
+}
+
+/** This tick's command for enemy `e`, from its intent. */
+export function command(e, ai, dt) {
+  const I = e.intent;
+  const m = e.motor;
+  const S = e.senses;
+  const def = e.def;
+
+  // ---- 1. Where to walk.
+  const { wx, wz, pace, sprint } = steer(e, ai, dt);
 
   // ---- 2. Where to look and aim.
   const eye = e.eye();
@@ -272,10 +298,7 @@ export function command(e, ai, dt) {
   const aimedWithin = Math.abs(wrap(desiredYaw - m.yaw)) + Math.abs(desiredPitch - m.pitch);
 
   // ---- 3. Walking, as keys: world direction -> forward/sideways for the current facing.
-  const fx = -Math.sin(m.yaw), fz = -Math.cos(m.yaw);
-  const rx = Math.cos(m.yaw), rz = -Math.sin(m.yaw);
-  const moveZ = (wx * fx + wz * fz) * pace;
-  const moveX = (wx * rx + wz * rz) * pace;
+  const { moveX, moveZ } = keysFor(m.yaw, wx, wz, pace);
 
   // ---- 4. The trigger.
   const { fire, firePressed } = trigger(e, ai, dt, aimedWithin, sprint && moving);

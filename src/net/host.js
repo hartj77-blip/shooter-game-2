@@ -27,9 +27,11 @@
 
 import { createJitterBuffer } from './jitter.js';
 import {
-  SNAPSHOT_EVERY, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, eventFor, wireEvent,
+  SNAPSHOT_EVERY, DEAD_KEPT, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, encodeOp, encodeHostage,
+  eventFor, wireEvent,
 } from './protocol.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
+import { GRENADE } from '../weapons/grenades.js';
 import { NOISE } from '../ai/noise.js';
 
 const MAX_PULLS = 3;   // trigger pulls one fire message may claim (one tick, plus a little catch-up)
@@ -52,8 +54,25 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
   let tick = 0;
   const commands = new Map();
   const remote = new Set();
+  // Rounds each client has claimed per gun since their last refill (a loose check:
+  // a client keeps its own ammo count, lesson 17).
+  const spent = new Map(); // slot -> Map(weapon id -> rounds)
 
   sim.events.onAny((name, data) => { if (clients.size) pending.push([name, data]); });
+  const lobbed = new Map(); // slot -> grenades thrown since their last refill
+  sim.events.on('ammo:resupply', (e) => { spent.delete(e.owner); lobbed.delete(e.owner); });
+  sim.events.on('mission:restart', () => { spent.clear(); lobbed.clear(); });
+
+  /** Could they really have fired this many? A full load since their last refill, plus a magazine to spare. */
+  function canSpend(slot, def, rounds) {
+    if (sim.infiniteAmmo) return true;
+    if (!spent.has(slot)) spent.set(slot, new Map());
+    const mine = spent.get(slot);
+    const total = (mine.get(def.id) ?? 0) + rounds;
+    if (total > def.mag * 2 + def.reserve) return false;
+    mine.set(def.id, total);
+    return true;
+  }
 
   // ---------------------------------------------------------------- friends coming and going
 
@@ -94,6 +113,8 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
       }
     } else if (msg.t === 'fire') {
       applyFire(slot, msg);
+    } else if (msg.t === 'throw') {
+      applyThrow(slot, msg);
     } else if (msg.t === 'ping') {
       c.link.send({ t: 'pong', at: msg.at }, { reliable: false });
     }
@@ -111,6 +132,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     if (!o || Math.hypot(o.x - s.pos.x, o.y - s.pos.y - 1.5, o.z - s.pos.z) > REACH) return;
     const pulls = Math.min(MAX_PULLS, Math.max(1, msg.pulls | 0));
     const shots = (msg.shots ?? []).slice(0, def.pellets * pulls);
+    if (!canSpend(slot, def, pulls)) return; // out of ammo, by any honest count
 
     // Everyone hears it: enemies through the noise board, players through the event.
     sim.noise?.post({ pos: o, radius: def.noise ?? NOISE.gunshot, kind: 'gunshot', owner: slot });
@@ -140,6 +162,28 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     }
   }
 
+  /**
+   * A client threw a grenade (its own browser decided, the moment G was pressed).
+   * Loose checks again: standing, thrown from about where they are, not more
+   * than they could carry, and no faster than an arm can throw.
+   */
+  function applyThrow(slot, msg) {
+    const p = sim.player(slot);
+    if (!p || !msg.origin || !msg.vel || typeof msg.id !== 'string' || !msg.id.startsWith(`${slot}:`)) return;
+    const h = p.health.state;
+    if (h.down || h.bleeding || h.dead) return;
+    const s = p.soldier.state;
+    const o = msg.origin;
+    if (Math.hypot(o.x - s.pos.x, o.y - s.pos.y - 1.5, o.z - s.pos.z) > REACH) return;
+    if (Math.hypot(msg.vel.x, msg.vel.y, msg.vel.z) > GRENADE.speed * 1.6) return;
+    if (!sim.infiniteAmmo) {
+      const n = (lobbed.get(slot) ?? 0) + 1;
+      if (n > GRENADE.max) return;
+      lobbed.set(slot, n);
+    }
+    sim.throwGrenade(slot, { origin: o, vel: msg.vel, id: msg.id });
+  }
+
   /** An enemy or practice target that can still be hurt, by name. Never a player: friendly fire is off. */
   function findTarget(id) {
     const e = sim.enemies?.list.find((x) => x.id === id);
@@ -149,15 +193,29 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
 
   // ---------------------------------------------------------------- what clients are told
 
+  /** Enemies worth telling clients about: everyone standing, and anyone who fell a moment ago. */
+  function enemyRows() {
+    const en = sim.enemies;
+    if (!en) return [];
+    const rows = [];
+    en.list.forEach((e, i) => {
+      if (!e.dead || en.ai.time - e.deadAt < DEAD_KEPT) rows.push(encodeEnemy(i, e.view, e.health));
+    });
+    return rows;
+  }
+
   /** The parts of a snapshot that are the same for everyone. */
   function snapshotBase() {
     return {
       t: 'snap',
       tick,
       p: [...sim.team.values()].map((p) => encodePlayer(p.view)),
-      e: sim.enemies ? sim.enemies.list.map((e, i) => encodeEnemy(i, e.view, e.health)) : [],
+      e: enemyRows(),
       g: sim.targets.list.map((t, i) => encodeTarget(i, t)),
       enc: encodeEncounter(sim.encounter),
+      ...(sim.supply.list.length ? { cr: sim.supply.save() } : {}), // refills left in each ammo crate
+      ...(sim.operation ? { op: encodeOp(sim.operation.view) } : {}),  // the mission: objectives, helicopter
+      ...(sim.hostage ? { h: encodeHostage(sim.hostage.view) } : {}),
     };
   }
 
@@ -194,6 +252,10 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     targets: sim.targets,
     encounter: sim.encounter,
     course: sim.course,
+    supply: sim.supply,
+    grenades: sim.grenades,
+    operation: sim.operation,
+    get hostage() { return sim.hostage; },
     get local() { return sim.player(me); },
     enemies: sim.enemies ?? { list: [] },
     teammates,
@@ -218,10 +280,22 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
       return outs.get(me);
     },
 
-    /** Everyone back to the start. */
+    /**
+     * Everyone back to the start. The event carries the tick it happened on, so
+     * clients can throw away older news still on its way (net/client.js).
+     */
     restart() {
       sim.reset();
-      sim.events.emit('mission:restart', {});
+      sim.events.emit('mission:restart', { tick: tick + 1 });
+    },
+
+    /**
+     * A mission: back to the last checkpoint (from the start if there's none).
+     * Everyone's browser hears which checkpoint, to put back its own ammo.
+     */
+    retry() {
+      const checkpoint = sim.retry();
+      sim.events.emit('mission:restart', { tick: tick + 1, checkpoint });
     },
 
     /** Just you, back to your spawn (the Proving Ground's "Back to spawn"). */

@@ -35,14 +35,19 @@ import { spawnFor } from '../game/sim.js';
 import { createEvents } from '../core/events.js';
 import { idleCommand } from '../core/input.js';
 import { createProxy, blend } from './proxies.js';
+import { createGrenades } from '../weapons/grenades.js';
 import {
-  INTERP_DELAY, CMD_REDUNDANCY, encodeCommand, roundCommand, decodePlayer, decodeEnemy, decodeTarget, decodeEncounter,
+  INTERP_DELAY, CMD_REDUNDANCY, encodeCommand, roundCommand, decodePlayer, decodeEnemy, decodeTarget, decodeEncounter, enemyIdFor,
+  decodeOp, decodeHostage,
 } from './protocol.js';
 
 const MATCH = 0.01;    // metres: closer than this to the host's answer counts as a match
 const KEEP = 40;       // snapshots kept for interpolation (2 s)
 // Events drawn in step with the proxies (0.1 s behind); the rest play at once.
-const ON_TIMELINE = new Set(['weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'enemy:down', 'enemy:bark', 'player:down', 'player:dead', 'player:revive', 'ping:mark']);
+const ON_TIMELINE = new Set([
+  'weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'enemy:down', 'enemy:bark', 'player:down', 'player:dead',
+  'player:revive', 'ping:mark', 'grenade:throw', 'explosion',
+]);
 const r2 = (v) => Math.round(v * 100) / 100;
 const round = (p) => (p ? { x: r2(p.x), y: r2(p.y), z: r2(p.z) } : null);
 
@@ -81,7 +86,8 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   const spawn = spawnFor(level, me);
   const soldier = createSoldier({
     world, registry, targets, damage: claim, events: quietEvents, owner: me, seed: seed * 101 + me * 7 + 1,
-    flatZones: true, passThrough: (info) => info.target?.kind === 'player', spawn, options: { infiniteAmmo: true },
+    flatZones: true, passThrough: (info) => info.target?.kind === 'player', spawn,
+    options: { infiniteAmmo: !def.mission }, // the same rule as the host's (game/sim.js)
   });
 
   // Your health lives on the host; this mirror shows what the snapshots say.
@@ -100,21 +106,69 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     damage: () => ({ killed: false }),
     reset() {},
   };
-  const local = { owner: me, soldier, health, get callsign() { return callsigns.get(me); }, spawn };
+  const local = { owner: me, soldier, health, get callsign() { return callsigns.get(me); }, spawn, using: null, useProgress: 0 };
 
   // ---------------------------------------------------------------- everyone else (proxies)
-  const enemyList = level.expanded.enemies.map((spec, i) => createProxy({
-    world, registry, id: spec.id ?? `e${i}`, owner: `e${i}`, kind: 'enemy', role: spec.role,
-    weapon: ROLES[spec.role]?.weapon ?? 'carbine', pos: { x: spec.at[0], y: spec.at[1] ?? 0, z: spec.at[2] },
-  }));
-  const enemyById = new Map(enemyList.map((p) => [p.id, p]));
-  const enemies = { list: enemyList };
+  // Enemies get a stand-in the first time a snapshot mentions them, so ones that
+  // arrive mid-mission (reinforcements) work just like the ones the level started with.
+  const specs = level.expanded.enemies;
+  const enemyByIndex = new Map(); // the host's number for it -> proxy
+  const enemyById = new Map();
+  const enemies = { list: [] };
   const mates = new Map(); // owner -> proxy
   const teammates = { list: [] };
 
+  function enemyProxy(index, s) {
+    let p = enemyByIndex.get(index);
+    if (p) return p;
+    p = createProxy({
+      world, registry, id: enemyIdFor(specs, index), owner: `e${index}`, kind: 'enemy', role: s.role,
+      weapon: ROLES[s.role]?.weapon ?? 'carbine', pos: s.pos,
+    });
+    p.index = index;
+    enemyByIndex.set(index, p);
+    enemyById.set(p.id, p);
+    enemies.list = [...enemyByIndex.values()].sort((a, b) => a.index - b.index);
+    p.place(s);
+    return p;
+  }
+
+  function forgetEnemies() {
+    for (const p of enemyByIndex.values()) p.remove();
+    enemyByIndex.clear();
+    enemyById.clear();
+    enemies.list = [];
+  }
+
+  // The ammo crates, as the host last told us (how many refills each has left).
+  const supply = {
+    list: level.expanded.crates.map((c, i) => ({ id: c.id ?? `crate${i}`, pos: { x: c.at[0], y: c.at[1] ?? 0, z: c.at[2] }, left: c.refills ?? 4 })),
+  };
+
+  // Grenades: every one flies here too, with the same code as on the host (they
+  // only bounce off the level, the same on every computer). Yours leave your hand
+  // the moment you throw; everyone else's when the host says, in step with their
+  // stand-ins. The host's explosion is the one that hurts.
+  const exploded = new Set(); // ids of grenades already shown going off here
+  let throws = 0;
+  const grenades = createGrenades({
+    world, emit: quietEvents.emit,
+    onExplode: (g) => {
+      if (g.owner !== me) return; // someone else's: wait for the host's bang (it's on the timeline)
+      exploded.add(g.id);
+      events.emit('explosion', { id: g.id, owner: g.owner, pos: { ...g.pos }, kind: 'grenade', predicted: true });
+    },
+  });
+
+  // A mission's state, as the host last told us (the same `view` the host's HUD reads),
+  // and the hostage, drawn 0.1 s behind like everyone else.
+  const operation = def.mission ? { mission: def.mission, view: null, result: null } : null;
+  let hostage = null;
+  const savedAmmo = new Map(); // checkpoint number -> what you were carrying when it was reached
+
   // The encounter's scoreboard, as the host last told us.
-  const encounter = level.expanded.enemies.length
-    ? { id: def.name, state: 'ready', time: 0, remaining: enemyList.length, total: enemyList.length, result: null, players: new Map() }
+  const encounter = specs.length
+    ? { id: def.name, state: 'ready', time: 0, remaining: specs.length, total: specs.length, result: null, players: new Map() }
     : null;
 
   // ---------------------------------------------------------------- messages
@@ -131,6 +185,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   const correction = { x: 0, y: 0, z: 0 }; // how far the last fix moved you (the camera eases it out)
   let rate = 1;
   let restartPending = false;
+  let restartTick = 0;       // snapshots and events from before the last restart are ignored
 
   const offs = [
     link.onMessage((msg) => inbox.push(msg)),
@@ -140,15 +195,61 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     if (msg.t === 'snap') onSnapshot(msg);
     else if (msg.t === 'ev') {
       for (const [name, data] of msg.list) {
+        if (msg.tick < restartTick) continue; // about the game before the restart
         if (ON_TIMELINE.has(name) && renderTick !== null) timeline.push({ tick: msg.tick, name, data });
         else play(name, data);
       }
     } else if (msg.t === 'pong') stats.rtt = clock() - msg.at;
   }
 
+  /**
+   * The host restarted. Anything older still on its way is about the old game:
+   * an "enemy down" from before the restart must not knock over the new enemy
+   * with the same name (a real bug, lesson 14). So: forget the stand-ins and the
+   * old snapshots and events, and start again from the restart's tick.
+   */
+  function restarted(data) {
+    restartPending = true;
+    // A fresh start: a full load. A checkpoint: what you had when you reached it (your ammo is yours).
+    const saved = data?.checkpoint ? savedAmmo.get(data.checkpoint) : null;
+    if (saved) {
+      soldier.arsenal.load(saved.guns);
+      soldier.arsenal.state.grenades = saved.grenades;
+    } else if (!data?.checkpoint) {
+      soldier.arsenal.rearm();
+      savedAmmo.clear();
+    }
+    grenades.clear();
+    if (operation) operation.result = null;
+    const from = data?.tick ?? 0;
+    for (let i = timeline.length - 1; i >= 0; i--) if (timeline[i].tick < from) timeline.splice(i, 1);
+    for (let i = snaps.length - 1; i >= 0; i--) if (snaps[i].tick < from) snaps.splice(i, 1);
+    restartTick = Math.max(restartTick, from);
+    forgetEnemies();
+    renderTick = null;
+  }
+
   /** Play a host event here, after tidying up anything that needs it. */
   function play(name, data) {
-    if (name === 'mission:restart') restartPending = true;
+    if (name === 'mission:restart') restarted(data);
+    if (name === 'grenade:throw' && data.owner !== me) grenades.spawn(data);
+    if (name === 'explosion') {
+      grenades.remove(data.id);
+      if (exploded.has(data.id)) return; // ours: we showed it already
+    }
+    if (name === 'mission:checkpoint') savedAmmo.set(data.n, { guns: soldier.arsenal.ammo(), grenades: soldier.arsenal.state.grenades });
+    if ((name === 'mission:complete' || name === 'mission:failed') && operation) operation.result = data;
+    if (name === 'player:respawn' && data.owner === me) restartPending = true; // back in: jump to where the host put you
+    if (name === 'ammo:resupply') {
+      // Your ammo is yours: the host says a crate refilled you, so fill your own guns.
+      if (data.owner === me) soldier.arsenal.resupply();
+      const c = supply.list.find((x) => x.id === data.crate);
+      if (c) c.left = data.left;
+    }
+    if (name === 'enemy:down') {
+      const p = enemyById.get(data.id);
+      if (p) p.view.dead = true; // in case every snapshot showing the fall went missing
+    }
     if (name === 'player:joined') callsigns.set(data.owner, data.callsign);
     if (name === 'player:hurt' && data.owner === me) healthState.sinceHit = 0;
     if (name === 'target:hit' && data.kind !== 'enemy' && data.kind !== 'player') {
@@ -162,12 +263,15 @@ export function createClient({ def, me, link, roster = [], events = createEvents
 
   function onSnapshot(msg) {
     if (snaps.length && msg.tick <= snaps[snaps.length - 1].tick) return; // old news (unreliable messages can overtake)
+    if (msg.tick < restartTick) return; // from before a restart
     stats.snapshots++;
     const snap = {
       tick: msg.tick,
       players: new Map(msg.p.map((a) => { const d = decodePlayer(a); return [d.owner, d]; })),
-      enemies: msg.e.map(decodeEnemy),
+      enemies: new Map(msg.e.map((a) => { const d = decodeEnemy(a); return [d.index, d]; })), // by the host's number
+      hostage: msg.h ? decodeHostage(msg.h) : null,
     };
+    if (operation && msg.op) operation.view = decodeOp(msg.op, def.mission);
     snaps.push(snap);
     if (snaps.length > KEEP) snaps.shift();
 
@@ -181,6 +285,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
       t.pos.z = g.z;
       targets.sync(t);
     }
+    if (msg.cr) msg.cr.forEach((left, i) => { if (supply.list[i]) supply.list[i].left = left; });
     const enc = decodeEncounter(msg.enc);
     if (enc && encounter) Object.assign(encounter, enc);
     const mine = snap.players.get(me);
@@ -191,6 +296,8 @@ export function createClient({ def, me, link, roster = [], events = createEvents
         bleedLeft: mine.bleedLeft, reviving: mine.reviving, reviver: mine.reviver,
       });
       if (msg.you) healthState.taken = msg.you.taken;
+      local.using = mine.using; // what the host says you're holding F at (for the progress ring)
+      local.useProgress = mine.useProgress;
     }
     // Keep the host's command cushion about two deep: run a touch faster or slower.
     rate = msg.buf < 1 ? 1.02 : msg.buf > 4 ? 0.98 : 1;
@@ -261,10 +368,25 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     }
     const t = b ? (renderTick - a.tick) / (b.tick - a.tick) : 0;
 
-    enemyList.forEach((p, i) => {
-      const sa = a.enemies[i];
-      if (sa) p.set(blend(sa, b?.enemies[i], t));
-    });
+    // Enemies the snapshot doesn't mention (fallen a while ago) stay as they were.
+    for (const [index, sa] of a.enemies) {
+      const s = blend(sa, b?.enemies.get(index), t);
+      const p = enemyByIndex.get(index);
+      if (p) p.set(s);
+      else enemyProxy(index, s);
+    }
+
+    if (a.hostage) {
+      const s = blend(a.hostage, b?.hostage, t);
+      if (!hostage) {
+        hostage = { id: 'h0', owner: 'h0', kind: 'civilian', view: { id: 'h0', owner: 'h0', role: 'hostage', weapon: null, ...s, prev: { ...s.pos }, pos: { ...s.pos } } };
+      }
+      const v = hostage.view;
+      Object.assign(v.prev, v.pos);
+      Object.assign(v, { ...s, pos: v.pos, prev: v.prev });
+      Object.assign(v.pos, s.pos);
+      v.down = !!(s.down || s.bleeding);
+    }
 
     const present = new Set();
     for (const [owner, sa] of a.players) {
@@ -308,6 +430,13 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     hits = [];
     const result = soldier.act(cmd, dt);
     history.push({ seq, cmd, mods, dt, state: soldier.body.save() });
+    if (result.thrown) {
+      // Your grenade flies now, here; the host is told and flies its own.
+      const id = `${me}:${++throws}`;
+      grenades.spawn({ id, owner: me, ...result.thrown });
+      link.send({ t: 'throw', id, origin: result.thrown.origin, vel: result.thrown.vel });
+    }
+    grenades.update(dt);
     if (history.length > 240) history.shift();
 
     // Tell the host: this command (plus the last few again, in case one got lost).
@@ -355,6 +484,10 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     targets,
     encounter,
     course: null,
+    supply,
+    grenades,
+    operation,
+    get hostage() { return hostage; },
     local,
     enemies,
     teammates,
@@ -367,6 +500,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     get pending() { return history.length; },
     step,
     restart() {},  // only the host can restart a co-op game
+    retry() {},
     respawn() {},
     dispose() {
       for (const off of offs) off();

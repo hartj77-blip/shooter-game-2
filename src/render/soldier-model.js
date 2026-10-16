@@ -35,6 +35,11 @@ export const SOLDIER_COLORS = {
     uniform: '#5d6a5f', vest: '#7c8466', pouch: '#5f664f', helmet: '#4b5548', face: '#2a2c2e',
     goggles: '#5ec8ff', band: '#3a8fd9', boots: '#24272a', gloves: '#3b3f3c', pack: '#525a4c',
   },
+  // The hostage: an orange boiler suit nobody could mistake for a soldier, bare head, no gun.
+  hostage: {
+    uniform: '#d9822b', vest: '#cf7a26', pouch: '#c26f21', helmet: '#3b2a1e', face: '#c69a73',
+    goggles: '#c69a73', band: '#cf7a26', boots: '#3a3532', gloves: '#c69a73', pack: '#cf7a26',
+  },
 };
 
 // Where the joints are (metres, standing).
@@ -60,6 +65,12 @@ function partGeometries(weaponId, colors) {
   const key = `${weaponId}:${JSON.stringify(colors)}`;
   if (geometryCache.has(key)) return geometryCache.get(key);
   const c = colors;
+  if (!weaponId) {
+    // Unarmed (the hostage): no gun, hands tied together in front.
+    const g = unarmedGeometries(c);
+    geometryCache.set(key, g);
+    return g;
+  }
   const def = WEAPONS[weaponId];
   const grip = [0.13, -0.05, -0.2]; // where the gun sits relative to the shoulders
   const gunModel = buildGun(def, { hands: false });
@@ -119,9 +130,37 @@ function partGeometries(weaponId, colors) {
   return g;
 }
 
+/** Body parts for someone with no gun: the same body, arms reaching down to hands tied in front. */
+function unarmedGeometries(c) {
+  const base = partGeometries('pistol', c); // borrow the body (the gun and arms are replaced below)
+  const hands = [0, -0.46, -0.2];
+  const arm = (side) => mergeGeometries([
+    paintedLimb([0.24 * side, 0, 0.0], [0.22 * side, -0.27, -0.04], [0.12, 0.12], c.uniform),
+    paintedLimb([0.22 * side, -0.27, -0.04], [hands[0] + 0.06 * side, hands[1], hands[2]], [0.1, 0.1], c.uniform),
+    paintedBox([0.08, 0.08, 0.1], [hands[0] + 0.05 * side, hands[1], hands[2]], c.gloves),
+  ]);
+  return {
+    ...base,
+    torso: mergeGeometries([
+      paintedBox([0.46, 0.5, 0.27], [0, 0.25, 0], c.uniform),
+      paintedBox([0.48, 0.08, 0.29], [0, 0.02, 0], c.vest),
+    ]),
+    head: mergeGeometries([
+      paintedBox([0.22, 0.24, 0.24], [0, 0.12, 0], c.face),
+      paintedBox([0.24, 0.07, 0.26], [0, 0.25, 0.01], c.helmet), // hair
+      paintedBox([0.16, 0.03, 0.02], [0, 0.13, -0.125], '#2a2420'), // eyes
+    ]),
+    gun: new THREE.BufferGeometry(),
+    armR: arm(1),
+    armL: arm(-1),
+    muzzle: new THREE.Vector3(0, 0, 0),
+    laser: null,
+  };
+}
+
 /**
  * Builds one soldier.
- * @param {{weapon:string, colors?:object}} opts
+ * @param {{weapon:string|null, colors?:object}} opts  `weapon` null: unarmed (the hostage)
  */
 export function buildSoldier({ weapon, colors = SOLDIER_COLORS.enemy }) {
   const geo = partGeometries(weapon, colors);
@@ -167,6 +206,7 @@ export function buildSoldier({ weapon, colors = SOLDIER_COLORS.enemy }) {
   const laser = geo.laser ? group('laser', gun, geo.laser.x, geo.laser.y, geo.laser.z) : null;
 
   const parts = { hips, thighL, shinL, thighR, shinR, torso, head, aim, gun, armL, armR };
+  const unarmed = !weapon;
 
   /**
    * Sets every joint. All inputs are plain numbers, smoothed by the caller.
@@ -198,6 +238,12 @@ export function buildSoldier({ weapon, colors = SOLDIER_COLORS.enemy }) {
     torso.rotation.z = p.flinch.z;
     torso.rotation.y = s * 0.06 * swing;
     head.rotation.x = 0.5 * p.crouch * 0.8 - Math.max(-0.4, Math.min(0.4, p.pitch * 0.4));
+    if (unarmed) {
+      // No gun to hold: the arms just hang in front, following the body's lean.
+      aim.rotation.set(0.4 * p.crouch + 0.1 * swing, 0, 0);
+      aim.position.set(0, SHOULDER, 0);
+      return;
+    }
     // The gun: lowered when calm, raised to aim, across the chest when sprinting.
     const lowered = -0.6 * (1 - p.ready);
     aim.rotation.x = (p.pitch + 0.5 * p.crouch * 0.8) * p.ready + lowered - 0.35 * p.sprint;

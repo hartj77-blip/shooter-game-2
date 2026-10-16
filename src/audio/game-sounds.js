@@ -14,8 +14,9 @@ const EYE = 1.6; // roughly where a standing soldier's head is, for placing thei
  * @param {Array<{list: Array}>} [opts.others] other soldiers (each with a `view`): their footsteps, gear and lasers
  * @param {object} [opts.health]  player/health.js: the heartbeat when you're badly hurt
  * @param {number} [opts.owner]   your player slot
+ * @param {{here:boolean, pos:{x,y,z}}} [opts.helicopter]  render/heli-view.js state: the rotor loop
  */
-export function connectGameSounds({ audio, events, soldier, cameraRig, world, registry, others = [], health = null, owner = 0 }) {
+export function connectGameSounds({ audio, events, soldier, cameraRig, world, registry, others = [], health = null, owner = 0, helicopter = null }) {
   const mine = (e) => (e.owner ?? 0) === owner;
   const viewOf = (who) => {
     for (const src of others) for (const s of src.list) if (s.owner === who) return s.view;
@@ -69,6 +70,19 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
     if (mine(e) && speed > 2) audio.play('land', { volume: Math.min(1, speed / 10) });
   });
 
+  // Missions: bangs, grenades, crates, the big moments.
+  events.on('explosion', (e) => {
+    const big = e.kind === 'charge';
+    audio.play('explosion', { position: e.pos, volume: big ? 1.3 : 1, rate: big ? 0.8 : 1 });
+  });
+  events.on('grenade:bounce', (e) => audio.play('bounce', { position: e.pos, volume: Math.min(1, e.speed / 8), rate: 0.75 }));
+  events.on('grenade:gesture', (e) => { if (mine(e)) audio.play('gear', { volume: 0.5, rate: 1.3 }); });
+  events.on('ammo:resupply', (e) => { if (mine(e)) audio.play('gear', { volume: 0.9, rate: 0.8 }); });
+  events.on('mission:checkpoint', () => audio.play('chime', { volume: 0.7 }));
+  events.on('mission:complete', () => audio.play('chime'));
+  events.on('mission:failed', () => audio.play('buzz'));
+  events.on('objective:planted', () => audio.play('beep', { rate: 1.4 }));
+
   events.on('course:ready', () => audio.play('beep'));
   events.on('course:start', () => audio.play('beep', { rate: 1.5 }));
   events.on('course:finish', () => audio.play('chime'));
@@ -119,14 +133,32 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
     } else heartbeat = 0;
   }
 
+  // The helicopter's rotor: a loop that follows it while it's in the sky (audio.js loop()).
+  let rotor = null;
+  function rotorFrame() {
+    if (helicopter?.here) {
+      rotor ??= audio.loop('rotor');
+      rotor.set({ position: helicopter.pos });
+    } else if (rotor) {
+      rotor.stop();
+      rotor = null;
+    }
+  }
+
   return {
     /** Call once per tick. */
     tick() {
       impactsThisTick = 0;
     },
+    /** Stop anything still playing (the rotor): the mission is ending. */
+    dispose() {
+      rotor?.stop();
+      rotor = null;
+    },
     /** Call once per frame. */
     frame(dt = 1 / 60) {
       othersFrame(dt);
+      rotorFrame();
       const s = soldier.state;
       const step = Math.floor(cameraRig.bobPhase / Math.PI);
       if (step !== lastStep) {

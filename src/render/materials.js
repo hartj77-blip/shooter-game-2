@@ -29,6 +29,12 @@ export const PALETTE = {
   sandbag:  { base: '#9b8a66', line: '#a3926e', edge: '#b0a07c' },
   floor:    { base: '#7f7a6e', line: '#888378', edge: '#959084' },
   roof:     { base: '#5e5a52', line: '#66625a', edge: '#726e65' },
+  // The Harbour (milestone 5).
+  asphalt:   { base: '#45474a', line: '#4c4e51', edge: '#56585b' },
+  quay:      { base: '#7d7a72', line: '#86837b', edge: '#939088' },
+  whitewash: { base: '#c9c3b4', line: '#d0cabc', edge: '#dad4c6' },
+  brick:     { base: '#7a4f3e', line: '#835847', edge: '#926453' },
+  roof_red:  { base: '#8a4a35', line: '#93533e', edge: '#a2604a' },
 };
 
 const SIZE = 256; // pixels per 1 m square

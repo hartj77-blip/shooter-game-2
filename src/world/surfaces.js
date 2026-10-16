@@ -36,6 +36,11 @@ export const MATERIAL_SURFACE = {
   sandbag: 'sandbag',
   roof: 'concrete',
   floor: 'concrete',
+  asphalt: 'concrete',
+  quay: 'concrete',
+  whitewash: 'concrete',
+  brick: 'concrete',
+  roof_red: 'concrete',
 };
 
 export function createSurfaceRegistry() {

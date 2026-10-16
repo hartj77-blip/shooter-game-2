@@ -73,3 +73,12 @@ test('solo play is a host session for one: it pauses, and its step is the simula
   assert.equal(host.teammates.list[0].view.weapon, host.local.soldier.arsenal.current.def.id);
   host.dispose();
 });
+
+test("a level's own spawn spots are used (regression: they used to be ignored)", async () => {
+  await initPhysics();
+  const spawns = [{ pos: [10, 0, 10], yaw: 1 }, { pos: [14, 0, 10], yaw: 2 }];
+  const sim = createSim({ def: { ...provingGround, spawns }, players: [{ owner: 0 }, { owner: 1 }] });
+  assert.deepEqual(sim.player(1).spawn, spawns[1]);
+  assert.ok(Math.abs(sim.player(1).soldier.state.pos.x - 14) < 1e-6);
+  sim.dispose();
+});

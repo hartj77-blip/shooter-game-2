@@ -12,15 +12,15 @@
 // The game flow is a state machine (core/fsm.js):
 //
 //     title --Play solo--> playing <--Esc / Resume--> paused --Quit--> title
-//       │                     ▲
-//       ├─Host co-op──> lobby ┘ (Start; friends' browsers follow)
-//       └─Join co-op──> join ──> lobby
+//       │                     ▲  │
+//       ├─Host co-op──> lobby ┘  └─mission complete──> debrief --Play again--> playing
+//       └─Join co-op──> join ──> lobby                         (or back to the lobby / title)
 //
 // Co-op: a ROOM (net/room.js) is the lobby; the mission plays through a host
 // or client session (net/host.js, net/client.js). Solo play needs none of it.
 //
 // Handy URL options (add them after the address, like ?map=compound&debug):
-//   ?map=NAME   which map: proving-ground (default) or compound
+//   ?map=NAME   which map: proving-ground (default), compound, or a mission (harbour-rescue...)
 //   ?debug      open the tuning panel straight away
 //   ?autostart  skip the title screen (the automated browser test uses this)
 //   ?join=CODE  open the "join" screen with this room code (invite links)
@@ -41,11 +41,15 @@ import { hostRoom, joinRoom, cleanCode } from './net/room.js';
 import { createPeerNet, createLocalNet } from './net/transport.js';
 import { loadPeer } from './net/peer-loader.js';
 import { createLobbyUi } from './ui/lobby.js';
+import { fillDebrief } from './ui/debrief.js';
 import { createVoice } from './net/voice.js';
 import provingGround from '../levels/proving-ground.js';
 import compound from '../levels/compound.js';
+import harbour from '../levels/harbour.js';
+import { missionLevels } from '../levels/missions.js';
 
-const LEVELS = { 'proving-ground': provingGround, compound };
+// Every map you can pick: the practice maps, and each mission (a map with a job attached).
+const LEVELS = { 'proving-ground': provingGround, compound, ...missionLevels({ harbour }) };
 const params = new URLSearchParams(location.search);
 const canvas = document.getElementById('view');
 
@@ -129,6 +133,7 @@ async function boot() {
     title: menuState('title'),
     join: menuState('join', () => el('joinCode').focus()),
     lobby: menuState('lobby'),
+    debrief: menuState('debrief'),
     playing: {
       enter() {
         input.enabled = true;
@@ -163,21 +168,44 @@ async function boot() {
       menus.setLoading(0.72, `Loading ${LEVELS[id].name}…`);
       const old = mission;
       mission = null; // the loop stops touching it straight away
+      clearTimeout(debriefTimer);
       old?.dispose();
       mission = await loadMission({ app, mapId: id, def: LEVELS[id], room: withRoom, onProgress: (k, text) => menus.setLoading(k, text) });
+      watchMission(mission);
       try { localStorage.setItem('fireteam.map', id); } catch { /* not remembered, that's all */ }
       if (params.get('map') !== id) {
         params.set('map', id);
         history.replaceState(null, '', `?${params}`); // a reload stays on this map
       }
       for (const b of document.querySelectorAll('.map')) b.setAttribute('aria-checked', String(b.dataset.map === id));
-      document.getElementById('btnRespawn').textContent = mission.hasEnemies ? 'Restart the fight' : 'Back to spawn';
+      document.getElementById('btnRespawn').textContent = mission.def.mission ? 'Restart the mission' : mission.hasEnemies ? 'Restart the fight' : 'Back to spawn';
       menus.setLoading(1, 'Ready');
       menus.hide('loading');
       const screen = SCREEN[flow.state];
       if (screen) menus.show(screen); // back to where you were
     });
     return busy;
+  }
+
+  // ---------------------------------------------------------------- the debrief
+  // A mission won: give the helicopter a moment to lift off, then show how it went.
+  let debriefTimer = 0;
+  function watchMission(m) {
+    if (!m.def.mission) return;
+    m.events.on('mission:complete', (r) => {
+      clearTimeout(debriefTimer);
+      debriefTimer = setTimeout(() => {
+        if (mission !== m || !(flow.is('playing') || flow.is('paused'))) return;
+        const role = !m.room ? 'solo' : m.room.role === 'host' ? 'host' : 'client';
+        fillDebrief(r, m.def.mission, { nameOf: m.nameOf, role });
+        flow.go('debrief');
+      }, 2500);
+    });
+    // Co-op: the host chose "Play again", so a friend's debrief closes and they're back in.
+    m.events.on('mission:restart', () => {
+      clearTimeout(debriefTimer);
+      if (mission === m && m.room?.role === 'client' && flow.is('debrief')) play();
+    });
   }
 
   async function play() {
@@ -383,6 +411,11 @@ async function boot() {
   on('btnQuit', () => {
     if (!mission.room) { mission.restart(); flow.go('title'); } else if (mission.room.role === 'host') backToLobby(); else leaveCoop();
   });
+
+  // Debrief buttons.
+  on('btnAgain', () => { mission.restart(); play(); });
+  on('btnDebriefLobby', () => { if (mission.room?.role === 'host') backToLobby(); else leaveCoop(); });
+  on('btnDebriefTitle', () => { mission.restart(); flow.go('title'); });
 
   // Co-op buttons.
   on('btnHost', hostCoop);

@@ -12,12 +12,18 @@ import { DEFAULT_CAMERA_TUNING } from '../player/camera.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
 import { ROLES, AWARENESS } from '../ai/enemy-data.js';
 import { NOISE } from '../ai/noise.js';
+import { GRENADE } from '../weapons/grenades.js';
+import { SUPPLY } from '../game/supply.js';
+import { OBJECTIVES } from '../game/objectives.js';
 
 // Copies of the tables as they were at the start, for "Reset everything".
 const DEFAULT_WEAPONS = structuredClone(WEAPONS);
 const DEFAULT_ROLES = structuredClone(ROLES);
 const DEFAULT_AWARENESS = { ...AWARENESS };
 const DEFAULT_NOISE = { ...NOISE };
+const DEFAULT_GRENADE = { ...GRENADE };
+const DEFAULT_SUPPLY = { ...SUPPLY };
+const DEFAULT_OBJECTIVES = { ...OBJECTIVES };
 
 // Enemy role sliders: [path inside the role row, min, max, step, label]
 const ROLE_ROWS = [
@@ -49,6 +55,45 @@ const NOISE_ROWS = [
   ['sprintStep', 0, 40, 0.5, 'Sprinting steps (m)'],
   ['walkStep', 0, 30, 0.5, 'Walking steps (m)'],
   ['crouchStep', 0, 20, 0.5, 'Crouching steps (m)'],
+];
+
+// Missions (milestone 5). The director's sliders change the running director's own
+// copy of its settings (the mission may have changed some), so they act at once.
+const DIRECTOR_ROWS = [
+  ['calm', 0, 120, 1, 'Quiet at the start (s)'],
+  ['gap.0', 5, 120, 1, 'Wave gap, shortest (s)'],
+  ['gap.1', 5, 180, 1, 'Wave gap, longest (s)'],
+  ['crescendoGap', 3, 60, 1, 'Crescendo wave gap (s)'],
+  ['peak', 0.1, 2, 0.01, 'Peak at intensity'],
+  ['relaxBelow', 0, 1, 0.01, 'Relax below intensity'],
+  ['relax.0', 0, 90, 1, 'Breather, shortest (s)'],
+  ['relax.1', 0, 120, 1, 'Breather, longest (s)'],
+  ['minDistance', 10, 80, 1, 'Spawn at least (m) away'],
+  ['hurt', 0, 0.05, 0.001, 'Intensity per damage'],
+  ['fadeAfter', 0, 20, 0.5, 'Intensity fades after (s)'],
+  ['fade', 0, 0.5, 0.01, 'Intensity fade (/s)'],
+];
+// (Co-op: these change only this browser. Grenades fly on every computer, so tune them solo.)
+const GRENADE_ROWS = [
+  ['fuse', 0.5, 8, 0.1, 'Fuse (s)'],
+  ['speed', 4, 30, 0.5, 'Throw speed (m/s)'],
+  ['radius', 1, 15, 0.25, 'Blast radius (m)'],
+  ['inner', 0, 6, 0.25, 'Full damage within (m)'],
+  ['damage', 10, 400, 5, 'Damage'],
+  ['bounce', 0, 1, 0.01, 'Bounciness'],
+  ['grip', 0, 1, 0.01, 'Slide kept per bounce'],
+  ['roll', 0, 40, 0.5, 'Rolling slow-down (m/s²)'],
+];
+const SUPPLY_ROWS = [
+  ['useTime', 0.2, 5, 0.1, 'Crate: hold F (s)'],
+];
+const OBJECTIVE_ROWS = [
+  ['free', 0.2, 8, 0.1, 'Untie the hostage (s)'],
+  ['download', 5, 180, 1, 'Download takes (s)'],
+  ['contest', 0, 20, 0.5, 'Enemies stall it within (m)'],
+  ['plant', 0.5, 10, 0.1, 'Plant a charge (s)'],
+  ['fuse', 2, 30, 0.5, 'Charge fuse (s)'],
+  ['hold', 10, 300, 5, 'Hold the line (s)'],
 ];
 
 // Weapon sliders: [path inside the weapon row, min, max, step, label]
@@ -123,10 +168,16 @@ const CAMERA = [
 ];
 
 function addSliders(folder, target, rows) {
-  for (const [key, min, max, step, label] of rows) folder.add(target, key, min, max, step).name(label);
+  for (const [path, min, max, step, label] of rows) {
+    const [obj, key] = holder(target, path);
+    folder.add(obj, key, min, max, step).name(label);
+  }
 }
 
-export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, arsenal, effects, hud, enemies = null, aiDebug = null, health = null, visible = false }) {
+/**
+ * @param {object} [opts.director] game/director.js (the host's, in a mission): its readout and sliders
+ */
+export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, arsenal, effects, hud, enemies = null, aiDebug = null, health = null, director = null, visible = false }) {
   const gui = new GUI({ title: 'Tuning panel  ·  ` to hide' });
   gui.domElement.classList.add('tuning');
 
@@ -188,6 +239,25 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
   addSliders(ai.addFolder('Noticing').close(), AWARENESS, AWARENESS_ROWS);
   addSliders(ai.addFolder('Hearing').close(), NOISE, NOISE_ROWS);
 
+  // ---- missions: what the director is up to, and the numbers behind missions
+  const missions = gui.addFolder('Missions').close();
+  const dirRead = { phase: '', next: 0, alive: 0, squad: 0, waves: 0, last: '' };
+  let directorDefaults = null;
+  if (director) {
+    const r = missions.addFolder('Director (live)');
+    r.add(dirRead, 'phase').name('Phase').listen().disable();
+    r.add(dirRead, 'next').name('Next wave in (s)').decimals(0).listen().disable();
+    r.add(dirRead, 'alive').name('Enemies standing').listen().disable();
+    r.add(dirRead, 'squad').name('Squad intensity').decimals(2).listen().disable();
+    r.add(dirRead, 'waves').name('Waves sent').listen().disable();
+    r.add(dirRead, 'last').name('Last decision').listen().disable();
+    directorDefaults = structuredClone(director.tuning);
+    addSliders(missions.addFolder('Director').close(), director.tuning, DIRECTOR_ROWS);
+  }
+  addSliders(missions.addFolder('Objectives').close(), OBJECTIVES, OBJECTIVE_ROWS);
+  addSliders(missions.addFolder('Grenades').close(), GRENADE, GRENADE_ROWS);
+  addSliders(missions.addFolder('Ammo crates').close(), SUPPLY, SUPPLY_ROWS);
+
   // What the physics engine sees: every collider drawn as lines.
   const lines = new THREE.LineSegments(
     new THREE.BufferGeometry(),
@@ -230,6 +300,10 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
       }
       Object.assign(AWARENESS, DEFAULT_AWARENESS);
       Object.assign(NOISE, DEFAULT_NOISE);
+      Object.assign(GRENADE, DEFAULT_GRENADE);
+      Object.assign(SUPPLY, DEFAULT_SUPPLY);
+      Object.assign(OBJECTIVES, DEFAULT_OBJECTIVES);
+      if (director) Object.assign(director.tuning, structuredClone(directorDefaults));
       loop.timeScale = 1;
       loop.paused = false;
       gui.controllersRecursive().forEach((c) => c.updateDisplay());
@@ -242,7 +316,10 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
           return [path, obj[key]];
         }));
       }
-      const text = JSON.stringify({ movement: player.tuning, camera: rig.tuning, weapons: guns, roles: ROLES, awareness: AWARENESS, noise: NOISE }, null, 2);
+      const text = JSON.stringify({
+        movement: player.tuning, camera: rig.tuning, weapons: guns, roles: ROLES, awareness: AWARENESS, noise: NOISE,
+        director: director?.tuning, objectives: OBJECTIVES, grenade: GRENADE, supply: SUPPLY,
+      }, null, 2);
       try {
         await navigator.clipboard.writeText(text);
         copyButton.name('Copied!');
@@ -277,6 +354,15 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
       readout.speed = s.speed;
       readout.vertical = s.vel.y;
       readout.mode = s.mode + (s.crouched ? ' (crouched)' : '');
+      if (director && !missions._closed) {
+        const d = director.view;
+        dirRead.phase = d.phase;
+        dirRead.next = d.next;
+        dirRead.alive = d.alive;
+        dirRead.squad = d.squad;
+        dirRead.waves = d.waves;
+        dirRead.last = d.log.at(-1)?.text ?? '';
+      }
 
       lines.visible = views.colliders;
       if (views.colliders) {

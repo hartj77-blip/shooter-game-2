@@ -19,7 +19,7 @@ const MAX_RAGDOLLS = 10;
 const RAG = groups(0x0002, 0x0001); // ragdoll parts touch the level, never each other
 
 // How hard each gun pushes a body when it drops it (newton-seconds).
-const PUSH = { carbine: 40, smg: 30, shotgun: 95, pistol: 28, dmr: 60 };
+const PUSH = { carbine: 40, smg: 30, shotgun: 95, pistol: 28, dmr: 60, grenade: 140 };
 
 const tmpM = new THREE.Matrix4();
 const tmpP = new THREE.Vector3();

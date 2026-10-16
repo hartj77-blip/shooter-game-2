@@ -1,7 +1,8 @@
 // Co-op in two browser tabs, talking over BroadcastChannel (?net=local), so it
 // needs no internet: one tab hosts, the other joins with the room code, they
 // start the Compound together, the friend walks (the host sees it) and shoots
-// an enemy (it goes down on both screens).
+// an enemy (it goes down on both screens). Then a mission: the friend frees
+// the hostage, and both screens see them follow.
 
 import { test, expect } from '@playwright/test';
 
@@ -140,6 +141,87 @@ test('co-op in two tabs: host, join, play the Compound together', async ({ conte
   await host.waitForFunction(() => window.fireteam.session.clients.size === 0, null, { timeout: 15_000 });
   await expect(friend.locator('#title')).toBeVisible();
 
+  expect(problems).toEqual([]);
+});
+
+test('co-op mission: two tabs start Lifeline, the friend frees the hostage, both screens see them follow', async ({ context }) => {
+  test.setTimeout(240_000);
+  const problems = [];
+  const host = await context.newPage();
+  const friend = await context.newPage();
+  watch(host, 'host', problems);
+  watch(friend, 'friend', problems);
+
+  await host.goto('/?net=local&map=harbour-rescue&nolock');
+  await host.waitForFunction(() => window.fireteam?.ready, null, { timeout: 90_000 });
+  await host.click('#btnHost');
+  await expect(host.locator('#roomCode')).toHaveText(/^[A-Z]{5}$/, { timeout: 10_000 });
+  await expect(host.locator('#lobbyMap')).toHaveValue('harbour-rescue');
+  const code = await host.locator('#roomCode').textContent();
+  await friend.goto(`/?net=local&map=proving-ground&nolock&join=${code}`);
+  await friend.waitForFunction(() => window.fireteam?.ready, null, { timeout: 60_000 });
+  await friend.click('#btnJoinGo');
+  await expect(host.locator('#roster li:not(.empty)')).toHaveCount(2);
+
+  await host.click('#btnStart');
+  await host.waitForFunction(() => window.fireteam.session?.clients?.size === 1, null, { timeout: 90_000 });
+  await friend.waitForFunction(() => window.fireteam.session?.role === 'client' && window.fireteam.session.stats.snapshots > 10, null, { timeout: 90_000 });
+  // The friend's screen knows the mission: the same objective, and a hostage to find.
+  await expect(friend.locator('#courseInfo')).toHaveText('Find the hostage and free them', { timeout: 15_000 });
+  await friend.waitForFunction(() => window.fireteam.session.hostage?.view.captive, null, { timeout: 15_000 });
+
+  // Put the friend in front of the hostage (enemies frozen: this is about the rescue).
+  await host.evaluate(() => {
+    const f = window.fireteam;
+    f.enemies.options.freeze = true;
+    const p = f.session.sim.player(1);
+    p.health.godMode = true;
+    const sim = f.session.sim;
+    window.heldAt = sim.level.expanded.sites[sim.operation.view.sites[0]]; // where they're held (this game's pick)
+    const h = sim.hostage.view;
+    p.soldier.teleport([h.pos.x - Math.sin(h.yaw) * 1.1, h.pos.y, h.pos.z - Math.cos(h.yaw) * 1.1], h.yaw + Math.PI);
+  });
+  await friend.waitForFunction(() => {
+    const s = window.fireteam.session;
+    const h = s.hostage.view.pos, me = s.local.soldier.state.pos;
+    return Math.hypot(me.x - h.x, me.z - h.z) < 1.6;
+  }, null, { timeout: 15_000 });
+  await expect(friend.locator('#prompt')).toHaveText('Hold F: Free the hostage', { timeout: 15_000 });
+  await friend.screenshot({ path: 'test-results/coop-mission-hostage.png' });
+
+  // Hold F: the host decides it's done; both screens hear about it.
+  await friend.keyboard.down('KeyF');
+  await host.waitForFunction(() => !window.fireteam.session.sim.hostage.view.captive, null, { timeout: 30_000 });
+  await friend.keyboard.up('KeyF');
+  expect(await host.evaluate(() => window.fireteam.session.sim.hostage.leader)).toBe(1);
+  await expect(host.locator('#feed')).toContainText('freed the hostage');
+  await expect(friend.locator('#feed')).toContainText('You freed the hostage');
+  await expect(friend.locator('#courseInfo')).toContainText('call the helicopter', { timeout: 15_000 });
+  await friend.waitForFunction(() => window.fireteam.session.hostage.view.captive === false, null, { timeout: 15_000 });
+
+  // The friend heads outside; the hostage follows (on the host, and so on the friend's screen).
+  // (The hostage's building is picked at random each game, so don't walk blind: a wall
+  // within a few metres would leave them "close enough" and standing still. Go to the
+  // building's safe spot outside, which the map's tests prove can be reached.)
+  const from = await host.evaluate(() => {
+    const f = window.fireteam;
+    const sim = f.session.sim;
+    const site = window.heldAt;
+    const [x, z, yaw, y = 0] = site.safe;
+    sim.player(1).soldier.teleport([x, y, z], yaw);
+    return { ...sim.hostage.view.pos };
+  });
+  await host.waitForFunction((b) => {
+    const p = window.fireteam.session.sim.hostage.view.pos;
+    return Math.hypot(p.x - b.x, p.z - b.z) > 1;
+  }, from, { timeout: 45_000 });
+  await friend.waitForFunction((b) => {
+    const p = window.fireteam.session.hostage.view.pos;
+    return Math.hypot(p.x - b.x, p.z - b.z) > 0.5;
+  }, from, { timeout: 15_000 });
+  expect(await friend.evaluate(() => window.fireteam.mission.hostageView.views.size)).toBe(1);
+  await friend.screenshot({ path: 'test-results/coop-mission-follow.png' });
+  await host.screenshot({ path: 'test-results/coop-mission-host.png' });
   expect(problems).toEqual([]);
 });
 

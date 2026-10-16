@@ -1,5 +1,5 @@
-// World effects: tracers, bullet holes, dust, sparks and splinters, and the
-// muzzle light that flashes on nearby walls.
+// World effects: tracers, bullet holes, dust, sparks and splinters, the
+// muzzle light that flashes on nearby walls, and explosions.
 //
 // Everything here uses object pools: a fixed number of each effect is made
 // once, at the start, and reused, oldest first. Making and throwing away
@@ -107,6 +107,28 @@ export function createEffects(scene, { showPaths = false } = {}) {
     return debrisMats.get(color);
   };
 
+  // ---- explosions: a fireball (glowing puffs that swell and fade fast) and the
+  // smoke it leaves (dark puffs that rise slowly and linger)
+  const fireMat = new THREE.SpriteMaterial({ map: puffTex, color: '#ffae4a', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, toneMapped: false });
+  const fires = pool(24, () => {
+    const s = new THREE.Sprite(fireMat.clone());
+    s.visible = false;
+    s.userData = { life: 0, max: 1, size: 1, vel: new THREE.Vector3() };
+    group.add(s);
+    return s;
+  });
+  const smokes = pool(40, () => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, color: '#3b3936', transparent: true, depthWrite: false }));
+    s.visible = false;
+    s.userData = { life: 0, max: 1, size: 1, vel: new THREE.Vector3() };
+    group.add(s);
+    return s;
+  });
+  const boomLight = new THREE.PointLight('#ff9a3c', 0, 32, 2);
+  scene.add(boomLight);
+  let boomTime = 0;
+  const BOOM_LIGHT = 0.35; // seconds the flash lasts
+
   // ---- the muzzle light (one, reused)
   const light = new THREE.PointLight('#ffb35c', 0, 9, 2);
   scene.add(light);
@@ -200,7 +222,80 @@ export function createEffects(scene, { showPaths = false } = {}) {
     }
   }
 
+  /**
+   * Something blew up (a grenade, a demolition charge).
+   * @param {{x,y,z}} pos
+   * @param {{radius?:number, kind?:string}} [opts]
+   */
+  function explosion(pos, { radius = 7, kind = 'grenade' } = {}) {
+    const big = kind === 'charge' ? 1.8 : 1;
+    boomLight.position.set(pos.x, pos.y + 1, pos.z);
+    boomTime = BOOM_LIGHT;
+    const rand = () => Math.random() * 2 - 1;
+    for (let i = 0; i < 8; i++) {
+      const f = fires.take();
+      f.position.set(pos.x + rand() * 0.4 * big, pos.y + 0.4 + Math.random() * 0.8 * big, pos.z + rand() * 0.4 * big);
+      f.userData.vel.set(rand() * 2.5, 1 + Math.random() * 3, rand() * 2.5).multiplyScalar(big);
+      f.userData.life = f.userData.max = 0.3 + Math.random() * 0.25;
+      f.userData.size = (1.6 + Math.random() * 1.6) * big * (radius / 7);
+      f.material.rotation = Math.random() * Math.PI * 2;
+      f.visible = true;
+    }
+    for (let i = 0; i < 10; i++) {
+      const sm = smokes.take();
+      sm.position.set(pos.x + rand() * 0.8 * big, pos.y + 0.3 + Math.random() * 1.2 * big, pos.z + rand() * 0.8 * big);
+      sm.userData.vel.set(rand() * 0.8, 0.5 + Math.random() * 0.9, rand() * 0.8);
+      sm.userData.life = sm.userData.max = (2.5 + Math.random() * 2) * big;
+      sm.userData.size = (2 + Math.random() * 2) * big;
+      sm.material.rotation = Math.random() * Math.PI * 2;
+      sm.visible = true;
+    }
+    // Debris: chunks of dirt and a few sparks, thrown up and out.
+    for (let i = 0; i < 18; i++) {
+      const b = bits.take();
+      const spark = i % 3 === 0;
+      b.position.set(pos.x, pos.y + 0.2, pos.z);
+      b.material = spark ? sparkMat : debrisMat(i % 2 ? '#4a4038' : '#2a2724');
+      b.userData.vel.set(rand(), 0.6 + Math.random(), rand()).normalize().multiplyScalar((6 + Math.random() * 8) * big);
+      b.userData.life = 0.6 + Math.random() * 0.9;
+      const size = spark ? 0.03 : 0.05 + Math.random() * 0.08;
+      b.scale.set(size, size, spark ? 0.15 : size);
+      b.lookAt(tmp.copy(b.position).add(b.userData.vel));
+      b.visible = true;
+    }
+    // A scorch mark on the ground.
+    const h = holes.take();
+    h.position.set(pos.x, pos.y + 0.01, pos.z);
+    h.lookAt(tmp.set(pos.x, pos.y + 1, pos.z));
+    h.rotateZ(Math.random() * Math.PI * 2);
+    h.scale.setScalar(2.2 * big);
+    h.visible = true;
+  }
+
   function update(dt) {
+    for (const f of fires.items) {
+      if (!f.visible) continue;
+      const u = f.userData;
+      u.life -= dt;
+      if (u.life <= 0) { f.visible = false; continue; }
+      const k = 1 - u.life / u.max;
+      f.scale.setScalar(u.size * (0.4 + 0.6 * Math.sqrt(k)));
+      f.material.opacity = 1 - k * k;
+      f.position.addScaledVector(u.vel, dt);
+    }
+    for (const sm of smokes.items) {
+      if (!sm.visible) continue;
+      const u = sm.userData;
+      u.life -= dt;
+      if (u.life <= 0) { sm.visible = false; continue; }
+      const k = 1 - u.life / u.max;
+      sm.scale.setScalar(u.size * (0.5 + k));
+      sm.material.opacity = 0.75 * Math.min(1, k * 8) * (1 - k);
+      sm.position.addScaledVector(u.vel, dt);
+      u.vel.multiplyScalar(Math.exp(-0.6 * dt));
+    }
+    boomTime -= dt;
+    boomLight.intensity = boomTime > 0 ? 260 * (boomTime / BOOM_LIGHT) ** 2 : 0;
     for (const t of tracers.items) {
       if (!t.visible) continue;
       const u = t.userData;
@@ -238,5 +333,9 @@ export function createEffects(scene, { showPaths = false } = {}) {
     light.intensity = lightTime > 0 ? 18 : 0;
   }
 
-  return { tracer, impact, muzzleLight, path, update, options };
+  return {
+    tracer, impact, muzzleLight, path, explosion, update, options,
+    /** The lights live in the scene, not the group: take them out with the mission. */
+    dispose() { light.removeFromParent(); boomLight.removeFromParent(); },
+  };
 }
