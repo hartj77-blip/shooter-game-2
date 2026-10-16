@@ -51,6 +51,9 @@ const CLIPS = {
   lie: 'LayToIdle',
 };
 
+// How much bigger than the first pose's bounding ball a soldier's ball is (see frustum culling below).
+const CULL_GROW = 2.2;
+
 // Where the hands go on a gun, in the gun's own space (render/gun-models.js), and
 // where the gun sits relative to the chest (character space: x right, y up, z forward is -).
 const GRIP = new THREE.Vector3(0, -0.07, 0.02);
@@ -161,13 +164,32 @@ export function createCharacter({ gltf, guns = null, weapon, colors }) {
   body.rotation.y = TURN;
   root.add(body);
   const mats = materialsFor(colors);
+  // Two copies of the body ride the same skeleton: the full one, and a simpler
+  // one (a quarter of the triangles) for far away. `detail()` shows one of them.
+  const near = [], far = [];
   body.traverse((o) => {
     if (!o.isSkinnedMesh) return;
     o.material = o.material.name === 'M_Joints' ? mats.joints : mats.body;
     o.castShadow = true;
     o.receiveShadow = true;
-    o.frustumCulled = false; // its bounds don't follow the animation, so three.js can't judge them
+    // Skip drawing it when it's off screen ("frustum culling"). three.js judges
+    // that with a ball around the mesh, but a skinned mesh's ball is worked out
+    // once, in its first pose, and the animation moves it about. So: a ball well
+    // big enough for any pose (lying down, arms out), around the first one.
+    o.computeBoundingSphere();
+    o.boundingSphere.radius *= CULL_GROW;
+    (o.parent?.name.endsWith('_far') ? far : near).push(o);
   });
+  for (const o of far) o.visible = false;
+  let level = 0;
+  // They all share one skeleton (the copy made a skeleton each): its bones are
+  // worked out once a frame, not once per mesh.
+  const skeleton = near[0].skeleton;
+  for (const o of [...near, ...far]) {
+    if (o.skeleton === skeleton) continue;
+    o.skeleton.dispose();
+    o.bind(skeleton, o.bindMatrix);
+  }
   const bone = (name) => body.getObjectByName(name);
   const B = {
     pelvis: bone('pelvis'), spine1: bone('spine_01'), spine2: bone('spine_02'), spine3: bone('spine_03'),
@@ -380,10 +402,17 @@ export function createCharacter({ gltf, guns = null, weapon, colors }) {
     pose,
     /** What the ragdoll needs: the skeleton's bones by name. */
     bone,
+    /** Level of detail: 0 the full body, 1 the simpler one (for far away). */
+    detail(l) {
+      if (l === level || !far.length) return;
+      level = l;
+      for (const o of near) o.visible = l === 0;
+      for (const o of far) o.visible = l === 1;
+    },
     dispose() {
       mixer.stopAllAction();
       mixer.uncacheRoot(body);
-      body.traverse((o) => { if (o.isSkinnedMesh) o.skeleton.dispose(); }); // its bone texture (render/dispose.js)
+      skeleton.dispose(); // its bone texture (render/dispose.js)
     },
   };
 }

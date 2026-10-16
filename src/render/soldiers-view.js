@@ -43,6 +43,12 @@ function iconTexture(text, color) {
   return t;
 }
 
+// Past this many metres a soldier is drawn with the simpler body (render/character.js
+// `detail`), seen at the default view (BASE_FOV: the camera's up-down field of view, in
+// degrees; zoomed in, it's narrower and they count as nearer).
+const DETAIL_FAR = 20;
+const BASE_FOV = 68;
+
 /**
  * Which drawn soldier an event is about. Enemy events name the soldier (`id`);
  * player events only say whose slot it was (`owner`), so look that up instead.
@@ -245,6 +251,9 @@ export function createSoldiersView({
         const every = far > 70 ? 4 : far > 35 ? 2 : 1;
         v.frame = ((v.frame ?? 0) + 1) % every;
         posing = v.frame === 0;
+        // ...and drawn with the simpler body past DETAIL_FAR, judged by how big they
+        // look (zooming in with a scope makes them look nearer).
+        v.model.detail(far * (camera.fov / BASE_FOV) > DETAIL_FAR ? 1 : 0);
       }
       if (posing) {
         v.model.pose({
