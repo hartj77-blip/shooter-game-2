@@ -104,8 +104,10 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     }
     return best;
   };
-  // An enemy's bullet hit something: only players get hurt (no friendly fire between enemies).
+  // An enemy's bullet hit something: only players get hurt (no friendly fire between
+  // enemies), and the hostage, if a stray shot finds them (ai/hostage.js).
   ai.hurt = (shooter, victim, amount, hit) => {
+    if (victim.kind === 'civilian') return victim.damage?.(amount * ai.difficulty.damage, hit.from) ?? { killed: false };
     if (victim.kind !== 'player') return { killed: false };
     const p = recordOf(victim.owner);
     return p ? p.health.damage(amount * ai.difficulty.damage, hit.from) : { killed: false };

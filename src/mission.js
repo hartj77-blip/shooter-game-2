@@ -180,6 +180,16 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     rig.snap();
   }
 
+  /** A mission: back to the last checkpoint. */
+  let failedFor = 0;
+  function retry() {
+    session.retry();
+    enemiesView?.reset();
+    teammatesView.reset();
+    input.setLook(player.state.yaw);
+    rig.snap();
+  }
+
   const debug = createDebugPanel({
     scene: root, world, player, rig, loop,
     arsenal: soldier.arsenal, effects, hud, enemies: sim?.enemies ?? null, aiDebug, health,
@@ -200,9 +210,14 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     const cmd = playing ? input.sample() : idleCommand(input.yaw, input.pitch);
     if (health.state.dead && cmd.firePressed) watchIndex++; // spectating: watch someone else
     // Down in a solo fight (or the whole squad down, if you're the co-op host): R starts again.
+    // A mission retries from its last checkpoint instead, and "failed" includes the
+    // hostage bleeding out while you're still standing.
+    const failed = session.operation?.state === 'failed';
+    if (failed) failedFor += dt; else failedFor = 0;
     const allDown = session.pausable || session.encounter?.state === 'down';
-    if (health.state.down && cmd.reload && health.state.downTime > 0.8 && session.role === 'host' && allDown) {
-      restart();
+    if (session.role === 'host' && cmd.reload && (failed ? failedFor > 0.8 : health.state.down && health.state.downTime > 0.8 && allDown)) {
+      if (session.operation) retry();
+      else restart();
       return;
     }
     const out = session.step(dt, cmd);

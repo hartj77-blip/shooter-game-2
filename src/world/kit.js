@@ -10,6 +10,8 @@
 //   racks     tables showing the guns (drawn by the presentation code)
 //   enemies   where enemy soldiers start, and how they behave (src/ai/enemies.js)
 //   crates    ammo crates (src/game/supply.js)
+//   sites, entries, lzs  where a mission's objectives can be, where reinforcements
+//             arrive, and where the helicopter lands (src/game/operation.js)
 // The physics side (world/level.js) and the drawing side (render/level-view.js)
 // both read these same descriptions, so what you see always matches what you hit.
 //
@@ -195,6 +197,37 @@ const expanders = {
     };
   },
 
+  // MISSIONS (game/operation.js). These are invisible: what's there depends on the mission.
+  //
+  // A place an objective can be: where a hostage is held, a laptop sits, a weapons
+  // cache is hidden, or a position must be held. `safe` [x, z, yaw] is where the
+  // squad starts again if they retry from the checkpoint this site gives.
+  // `radius` (hold the line): how big the area to hold is.
+  site(p) {
+    return {
+      sites: [{
+        id: p.id, at: p.at, yaw: p.yaw ?? 0, radius: p.radius ?? null, label: p.label ?? null,
+        safe: p.safe ?? null,
+      }],
+    };
+  },
+
+  // Where reinforcements arrive (game/director.js): a gate, a jetty, a road in.
+  // `route` [[x, z] or [x, z, y], ...]: the way they run in before they go looking for you.
+  entry(p) {
+    return { entries: [{ id: p.id, at: p.at, yaw: p.yaw ?? 0, route: p.route ?? [], label: p.label ?? null }] };
+  },
+
+  // The helicopter landing zone: a square `size` metres across, a radio (`radio`
+  // [x, z]) to call the helicopter with, and the direction it flies in from
+  // (`approach`, radians: 0 = from the north).
+  lz(p) {
+    return {
+      lzs: [{ id: p.id ?? 'lz', at: p.at, size: p.size ?? 10, radio: p.radio ?? [p.at[0] + 4, p.at[2]], approach: p.approach ?? 0, safe: p.safe ?? null }],
+      paint: [{ size: [p.size ?? 10, p.size ?? 10], center: [p.at[0], (p.at[1] ?? 0) + 0.006, p.at[2]], rotY: 0, color: '#3a4a36' }],
+    };
+  },
+
   // An invisible wall from `from` to `to` ([x, z]) at the edge of the map, say
   // along a quay: it stops people walking off, but bullets and eyes pass straight
   // through and nobody can climb it (the BOUNDARY collision group, world/groups.js).
@@ -238,7 +271,7 @@ export function expandPiece(piece) {
   return result;
 }
 
-const KINDS = ['solids', 'paint', 'signs', 'targets', 'triggers', 'racks', 'enemies', 'crates'];
+const KINDS = ['solids', 'paint', 'signs', 'targets', 'triggers', 'racks', 'enemies', 'crates', 'sites', 'entries', 'lzs'];
 
 /** Expands a whole level definition. */
 export function expandLevel(def) {

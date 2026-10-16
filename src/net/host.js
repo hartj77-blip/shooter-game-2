@@ -27,7 +27,8 @@
 
 import { createJitterBuffer } from './jitter.js';
 import {
-  SNAPSHOT_EVERY, DEAD_KEPT, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, eventFor, wireEvent,
+  SNAPSHOT_EVERY, DEAD_KEPT, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, encodeOp, encodeHostage,
+  eventFor, wireEvent,
 } from './protocol.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
 import { GRENADE } from '../weapons/grenades.js';
@@ -213,6 +214,8 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
       g: sim.targets.list.map((t, i) => encodeTarget(i, t)),
       enc: encodeEncounter(sim.encounter),
       ...(sim.supply.list.length ? { cr: sim.supply.save() } : {}), // refills left in each ammo crate
+      ...(sim.operation ? { op: encodeOp(sim.operation.view) } : {}),  // the mission: objectives, helicopter
+      ...(sim.hostage ? { h: encodeHostage(sim.hostage.view) } : {}),
     };
   }
 
@@ -251,6 +254,8 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     course: sim.course,
     supply: sim.supply,
     grenades: sim.grenades,
+    operation: sim.operation,
+    get hostage() { return sim.hostage; },
     get local() { return sim.player(me); },
     enemies: sim.enemies ?? { list: [] },
     teammates,
@@ -282,6 +287,15 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     restart() {
       sim.reset();
       sim.events.emit('mission:restart', { tick: tick + 1 });
+    },
+
+    /**
+     * A mission: back to the last checkpoint (from the start if there's none).
+     * Everyone's browser hears which checkpoint, to put back its own ammo.
+     */
+    retry() {
+      const checkpoint = sim.retry();
+      sim.events.emit('mission:restart', { tick: tick + 1, checkpoint });
     },
 
     /** Just you, back to your spawn (the Proving Ground's "Back to spawn"). */
