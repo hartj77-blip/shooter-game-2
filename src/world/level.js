@@ -47,6 +47,13 @@ function colliderFor(solid) {
     // A ramp is a "convex hull": the tightest shape that wraps its six corners.
     const pts = Object.values(wedgePoints(solid.width, solid.length, solid.height)).flat();
     desc = RAPIER.ColliderDesc.convexHull(new Float32Array(pts));
+  } else if (solid.kind === 'cylinder') {
+    desc = RAPIER.ColliderDesc.cylinder(solid.height / 2, solid.radius);
+    // Lying down: turned a quarter about z (so it runs east-west), then by rotY about y.
+    if (solid.lie) {
+      const sy = Math.sin(solid.rotY / 2), cy = Math.cos(solid.rotY / 2), k = Math.SQRT1_2;
+      return desc.setTranslation(x, y, z).setRotation({ x: sy * k, y: sy * k, z: cy * k, w: cy * k }).setFriction(0);
+    }
   } else {
     throw new Error(`Unknown solid kind "${solid.kind}"`);
   }
