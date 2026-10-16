@@ -20,6 +20,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { SURFACE_TEXTURES } from './materials.js';
 
 const BASE = 'assets/';
 
@@ -29,7 +30,7 @@ export const MANIFEST = {
     soldier: 'models/soldier.glb', // tools/build-models.mjs, from Quaternius' Universal Animation Library
     guns: 'models/guns.glb',       // tools/build-models.mjs, from Quaternius' Ultimate Gun Pack
   },
-  textures: {},
+  textures: SURFACE_TEXTURES, // tools/build-textures.py, from Poly Haven (render/materials.js)
 };
 
 export function createAssets({ manifest = MANIFEST, base = BASE } = {}) {

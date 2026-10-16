@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { MANIFEST } from '../../src/render/assets.js';
 import { GUN_MODELS, buildGun } from '../../src/render/gun-models.js';
 import { WEAPONS } from '../../src/weapons/weapons-data.js';
+import { PALETTE, SURFACE_OF, SURFACES } from '../../src/render/materials.js';
 
 /** The JSON part of a .glb file: what's inside, without needing a graphics card. */
 function glbJson(file) {
@@ -81,9 +82,22 @@ test('a model gun is moved so its grip is the origin, and keeps its moving parts
   assert.equal(buildGun(WEAPONS.pistol, { guns: { scene } }).kind, 'blocks');
 });
 
+test('every palette colour is painted on a surface, and the textures stay small', () => {
+  for (const name of Object.keys(PALETTE)) assert.ok(SURFACES[SURFACE_OF[name]], `${name} -> ${SURFACE_OF[name]}`);
+  // tools/build-textures.py and render/materials.js agree on each surface's size.
+  const tool = fs.readFileSync('tools/build-textures.py', 'utf8');
+  for (const [name, { metres }] of Object.entries(SURFACES)) {
+    assert.match(tool, new RegExp(`'${name}':\\s*\\('[a-z_0-9]+', ${metres},`), `${name} covers ${metres} m in both`);
+  }
+  let kb = 0;
+  for (const file of fs.readdirSync('assets/textures')) kb += fs.statSync(`assets/textures/${file}`).size / 1024;
+  assert.ok(kb < 2048, `assets/textures is ${kb.toFixed(0)} KB (budget 2 MB)`);
+});
+
 test('CREDITS.md names where every asset folder came from', () => {
   const credits = fs.readFileSync('CREDITS.md', 'utf8');
   assert.match(credits, /Universal Animation Library/);
   assert.match(credits, /Ultimate Gun Pack/);
+  assert.match(credits, /Poly Haven/);
   assert.match(credits, /assets\/models\//);
 });

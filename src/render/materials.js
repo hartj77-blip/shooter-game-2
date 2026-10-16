@@ -1,12 +1,19 @@
-// Grey-box materials: the "prototype grid" look.
+// The level's materials: what each kind of surface looks like.
 //
-// Before real art exists, studios cover everything in a plain grid texture.
-// The grid is exactly 1 metre per square, so you can judge sizes, distances and
+// Every surface has a colour from PALETTE. Colours carry meaning: orange ledges
+// can be climbed, red means "too much", blue ramps, green stairs.
+//
+// With the textures loaded (assets/textures/, made by tools/build-textures.py
+// from Poly Haven's CC0 photos), each colour is painted over a real surface:
+// concrete, plaster, brick, corrugated iron... The photo only brings its light
+// and dark detail (it's grey); the colour still comes from PALETTE, like
+// painting a white plaster cast. A second picture, the "normal map", tells the
+// light which way each tiny bit faces, so grooves and cracks catch the sun.
+// A faint line every metre stays in the textures, so distances still read.
+//
+// Without them (a file didn't load, or before M6), the old grey-box look: a plain
+// grid drawn by code, exactly 1 metre per square, so you can judge sizes and
 // speeds at a glance ("that wall is 3 squares tall, I cover 5 squares a second").
-// Colours carry meaning: orange ledges can be climbed, red means "too much",
-// blue ramps, green stairs.
-//
-// The textures are drawn by code onto a canvas, so there are no image files to load.
 
 import * as THREE from 'three';
 
@@ -37,7 +44,41 @@ export const PALETTE = {
   roof_red:  { base: '#8a4a35', line: '#93533e', edge: '#a2604a' },
 };
 
-const SIZE = 256; // pixels per 1 m square
+// Which real surface each palette colour is painted on.
+export const SURFACE_OF = {
+  ground: 'ground', concrete: 'concrete', wall: 'plaster', ledge: 'concrete', hazard: 'concrete',
+  ramp: 'concrete', stairs: 'concrete', crate: 'wood', post: 'concrete', plank: 'wood', steel: 'plate',
+  container: 'metal', container_red: 'metal', container_blue: 'metal', sandbag: 'ground',
+  floor: 'concrete', roof: 'metal', asphalt: 'asphalt', quay: 'concrete', whitewash: 'plaster',
+  brick: 'brick', roof_red: 'tiles',
+};
+
+// The surfaces: how many metres one picture covers (tools/build-textures.py
+// SURFACES says the same), and how shiny it is.
+export const SURFACES = {
+  concrete: { metres: 2, roughness: 0.9 },
+  ground: { metres: 2, roughness: 0.95 },
+  plaster: { metres: 4, roughness: 0.9 },
+  brick: { metres: 2, roughness: 0.9 },
+  metal: { metres: 3, roughness: 0.6, metalness: 0.25 },
+  tiles: { metres: 4, roughness: 0.85 },
+  wood: { metres: 2, roughness: 0.85 },
+  asphalt: { metres: 3, roughness: 0.95 },
+  plate: { metres: 1, roughness: 0.55, metalness: 0.4 },
+};
+
+/** The texture files the game loads (render/assets.js). */
+export const SURFACE_TEXTURES = Object.fromEntries(Object.keys(SURFACES).flatMap((name) => [
+  [`${name}_color`, `textures/${name}_color.jpg`],
+  [`${name}_normal`, `textures/${name}_normal.jpg`],
+]));
+
+// The colour textures average this bright (0..1, as stored): the colour is
+// divided by it, so a painted surface comes out the palette's colour on average.
+const DETAIL_MEAN = 0.8;
+const UNDO_DETAIL = 1 / new THREE.Color().setRGB(DETAIL_MEAN, DETAIL_MEAN, DETAIL_MEAN, THREE.SRGBColorSpace).r;
+
+const SIZE = 256; // pixels per 1 m square (the grey-box grid)
 
 function gridTexture({ base, line, edge }, maxAnisotropy) {
   const canvas = document.createElement('canvas');
@@ -66,15 +107,61 @@ function gridTexture({ base, line, edge }, maxAnisotropy) {
   return tex;
 }
 
-export function createMaterials(renderer) {
+/** A surface's two loaded textures, ready to tile (1 UV = 1 m), or null if either is missing. */
+function surfaceTextures(assets, name, aniso) {
+  const map = assets?.texture(`${name}_color`), normalMap = assets?.texture(`${name}_normal`);
+  if (!map || !normalMap) return null;
+  const k = 1 / SURFACES[name].metres;
+  map.colorSpace = THREE.SRGBColorSpace;
+  normalMap.colorSpace = THREE.NoColorSpace; // directions, not colours: no colour conversion
+  for (const t of [map, normalMap]) {
+    t.repeat.set(k, k);
+    t.anisotropy = aniso; // keeps floors crisp at shallow angles
+  }
+  return { map, normalMap };
+}
+
+/**
+ * A painted area on the floor (a road, a lane, a start zone): any colour, on
+ * the concrete surface when the textures loaded. Its geometry's UVs must be in
+ * metres, like the level's.
+ */
+export function paintMaterial(color, materials) {
+  const concrete = materials.concrete;
+  const textured = !!concrete.normalMap;
+  return new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color).multiplyScalar(textured ? UNDO_DETAIL : 1),
+    map: textured ? concrete.map : null,
+    normalMap: textured ? concrete.normalMap : null,
+    roughness: 0.95,
+    polygonOffset: true, // drawn just above the ground it lies on, so they don't flicker
+    polygonOffsetFactor: -1,
+  });
+}
+
+/**
+ * One material per palette colour.
+ * @param {object} renderer  for the graphics card's sharpest texture filtering
+ * @param {object} [assets]  render/assets.js: the loaded textures (else the grey-box grid)
+ */
+export function createMaterials(renderer, assets = null) {
   const aniso = renderer.capabilities.getMaxAnisotropy();
   const materials = {};
   for (const [name, colors] of Object.entries(PALETTE)) {
-    materials[name] = new THREE.MeshStandardMaterial({
-      map: gridTexture(colors, aniso),
-      roughness: name === 'ramp' ? 0.75 : 0.9,
-      metalness: 0,
-    });
+    const surface = SURFACE_OF[name];
+    const tex = surfaceTextures(assets, surface, aniso);
+    materials[name] = tex
+      ? new THREE.MeshStandardMaterial({
+        ...tex,
+        color: new THREE.Color(colors.base).multiplyScalar(UNDO_DETAIL),
+        roughness: SURFACES[surface].roughness,
+        metalness: SURFACES[surface].metalness ?? 0,
+      })
+      : new THREE.MeshStandardMaterial({
+        map: gridTexture(colors, aniso),
+        roughness: name === 'ramp' ? 0.75 : 0.9,
+        metalness: 0,
+      });
   }
   return materials;
 }

@@ -25,6 +25,22 @@ All CC0 (public domain). Credit isn't required, but these people made them. `too
 
 The helmets, vests, packs and goggles on the soldiers, and the red dot sight on the carbine, are built by code (`src/render/character.js`, `src/render/gun-models.js`).
 
+## Textures
+
+All CC0 (public domain), from [Poly Haven](https://polyhaven.com/license). `tools/build-textures.py` turns each 1K set into a small grey detail picture (the game paints it with the map's colours) and a normal map, in `assets/textures/`.
+
+| Surface | Poly Haven texture | Author |
+|---|---|---|
+| Concrete (floors, quay, ledges, ramps, stairs, posts, floor paint) | [concrete_floor_02](https://polyhaven.com/a/concrete_floor_02) | Rob Tuytel |
+| Ground (and sandbags) | [gravel_concrete_03](https://polyhaven.com/a/gravel_concrete_03) | Charlotte Baglioni |
+| Plaster (walls, whitewash) | [plastered_wall_03](https://polyhaven.com/a/plastered_wall_03) | Rob Tuytel |
+| Brick | [red_brick_03](https://polyhaven.com/a/red_brick_03) | Rob Tuytel |
+| Corrugated metal (containers, sheet roofs) | [corrugated_iron_02](https://polyhaven.com/a/corrugated_iron_02) | Sergej Majboroda, Jenelle van Heerden |
+| Roof tiles | [roof_09](https://polyhaven.com/a/roof_09) | Rob Tuytel |
+| Wood (crates, planks) | [weathered_planks](https://polyhaven.com/a/weathered_planks) | Dimitrios Savva, Dario Barresi |
+| Asphalt | [asphalt_02](https://polyhaven.com/a/asphalt_02) | Rob Tuytel |
+| Steel plate | [metal_plate](https://polyhaven.com/a/metal_plate) | Rob Tuytel |
+
 ## Sounds
 
 All sounds are CC0 (public domain). Credit isn't required, but these people made them. `tools/build-sounds.py` turns the original recordings into the files in `assets/sounds/`.
