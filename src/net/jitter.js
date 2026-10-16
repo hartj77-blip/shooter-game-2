@@ -15,7 +15,7 @@
 //
 // Pure logic: runs in Node, tested on its own.
 
-import { PRESS_FLAGS } from './protocol.js';
+import { heldOnly } from '../core/input.js';
 
 export function createJitterBuffer({ target = 2, max = 8 } = {}) {
   const queue = []; // [seq, cmd], oldest first
@@ -24,13 +24,7 @@ export function createJitterBuffer({ target = 2, max = 8 } = {}) {
   let primed = false;
   const stats = { used: 0, guessed: 0, caughtUp: 0 };
 
-  const guess = (cmd) => {
-    const c = { ...cmd };
-    for (const k of PRESS_FLAGS) c[k] = false;
-    c.slot = 0;
-    c.cycle = 0;
-    return c;
-  };
+  const guess = heldOnly;
 
   return {
     stats,

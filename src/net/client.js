@@ -85,11 +85,18 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   });
 
   // Your health lives on the host; this mirror shows what the snapshots say.
-  const healthState = { hp: DEFAULT_HEALTH.max, sinceHit: Infinity, down: false, bleeding: false, dead: false, downTime: 0, taken: 0, downs: 0 };
+  const healthState = {
+    hp: DEFAULT_HEALTH.max, sinceHit: Infinity, down: false, bleeding: false, dead: false, downTime: 0, taken: 0, downs: 0,
+    bleedLeft: 0, reviving: 0, reviver: null,
+  };
   const health = {
     state: healthState, tuning: { ...DEFAULT_HEALTH }, godMode: false,
     get fraction() { return healthState.hp / DEFAULT_HEALTH.max; },
-    update(dt) { if (healthState.down) healthState.downTime += dt; },
+    update(dt) {
+      if (!healthState.down) return;
+      healthState.downTime += dt;
+      if (healthState.bleeding) healthState.bleedLeft = Math.max(0, healthState.bleedLeft - dt); // counts down between snapshots
+    },
     damage: () => ({ killed: false }),
     reset() {},
   };
@@ -179,7 +186,10 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     const mine = snap.players.get(me);
     if (mine) {
       if (mine.down && !healthState.down) healthState.downTime = 0;
-      Object.assign(healthState, { hp: msg.you?.hp ?? mine.hp, down: mine.down || mine.bleeding, bleeding: mine.bleeding, dead: mine.dead });
+      Object.assign(healthState, {
+        hp: msg.you?.hp ?? mine.hp, down: mine.down || mine.bleeding || mine.dead, bleeding: mine.bleeding, dead: mine.dead,
+        bleedLeft: mine.bleedLeft, reviving: mine.reviving, reviver: mine.reviver,
+      });
       if (msg.you) healthState.taken = msg.you.taken;
     }
     // Keep the host's command cushion about two deep: run a touch faster or slower.
@@ -292,7 +302,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     const cmd = out ? idleCommand(typed.yaw, typed.pitch) : typed;
     seq++;
 
-    const mods = soldier.arsenal.movementMods(cmd);
+    const mods = soldier.movementMods(cmd);
     soldier.move(cmd, dt);
     world.step(); // file the moved proxies and your hitboxes before tracing bullets
     hits = [];

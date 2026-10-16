@@ -29,6 +29,7 @@
 // snapshot stays small).
 
 import { LOADOUT } from '../weapons/weapons-data.js';
+export { PRESS_FLAGS } from '../core/input.js';
 
 export const PROTOCOL_VERSION = 1;
 export const SNAPSHOT_EVERY = 3;   // ticks between snapshots: 60 / 3 = 20 a second
@@ -45,8 +46,6 @@ const fromMrad = (v) => v / 1000;
 
 // On/off buttons packed into one number, one bit each (like a row of light switches).
 const CMD_BITS = ['jump', 'jumpHeld', 'crouch', 'crouchPressed', 'sprint', 'fire', 'firePressed', 'ads', 'reload', 'lastWeapon', 'interact', 'ping'];
-// The "pressed this tick" ones: never repeated when the host has to guess a command.
-export const PRESS_FLAGS = ['jump', 'crouchPressed', 'firePressed', 'reload', 'lastWeapon', 'ping'];
 
 const ANGLE = 1e4; // command angles: a tenth of a milliradian (aim must stay precise)
 
@@ -82,15 +81,20 @@ const TARGET_STATES = ['up', 'falling', 'down', 'rising'];
 const packFlags = (names, v) => names.reduce((bits, k, i) => (v[k] ? bits | (1 << i) : bits), 0);
 const unpackFlags = (names, bits, into) => { names.forEach((k, i) => { into[k] = (bits & (1 << i)) !== 0; }); return into; };
 
-/** One player, as seen by everyone else. */
+/** One player, as seen by everyone else (and their bleed-out clock and revive progress). */
 export function encodePlayer(v) {
-  return [v.owner, cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(P_FLAGS, v), cm(v.speed), Math.max(0, LOADOUT.indexOf(v.weapon)), Math.round(v.hp)];
+  return [
+    v.owner, cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(P_FLAGS, v), cm(v.speed),
+    Math.max(0, LOADOUT.indexOf(v.weapon)), Math.round(v.hp), Math.ceil((v.bleedLeft ?? 0) * 10),
+    Math.round((v.reviving ?? 0) * 100), v.reviver ?? -1,
+  ];
 }
 export function decodePlayer(a) {
-  const [owner, x, y, z, yaw, pitch, flags, speed, gun, hp] = a;
+  const [owner, x, y, z, yaw, pitch, flags, speed, gun, hp, bleed = 0, reviving = 0, reviver = -1] = a;
   return unpackFlags(P_FLAGS, flags, {
     owner, pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: fromMrad(pitch),
     speed: fromCm(speed), weapon: LOADOUT[gun] ?? LOADOUT[0], hp,
+    bleedLeft: bleed / 10, reviving: reviving / 100, reviver: reviver < 0 ? null : reviver,
   });
 }
 
