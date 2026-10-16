@@ -44,12 +44,16 @@
     <div id="wName" class="w-name"></div>
     <div class="ammo"><b id="ammoMag">0</b><span id="ammoReserve"></span></div>
     <div id="ammoHint" class="ammo-hint"></div>
+    <div id="grenades" class="grenades" title="Grenades (G)"></div>
   </div>
   <div id="course" class="course" hidden>
     <div id="courseTitle" class="course-title">KILL HOUSE</div>
     <div id="courseTime" class="course-time">0:00.00</div>
     <div id="courseInfo" class="course-info"></div>
+    <div id="courseBar" class="course-bar" hidden><i id="courseBarFill"></i></div>
   </div>
+  <div id="prompt" class="prompt" aria-live="polite"></div>
+  <div id="radioLine" class="radio-line" aria-live="polite"></div>
   <div id="results" class="results" hidden>
     <div class="results-title" id="resultsTitle">Course complete</div>
     <dl id="resultsList"></dl>
@@ -70,6 +74,11 @@
     <div id="coopDownInfo" class="down-info"></div>
     <div id="coopDownHint" class="down-hint"></div>
   </div>
+  <div id="missionDown" class="down" hidden>
+    <div id="missionDownTitle" class="down-title"></div>
+    <div id="missionDownInfo" class="down-info"></div>
+    <div id="missionDownHint" class="down-hint"></div>
+  </div>
   <div id="down" class="down" hidden>
     <div class="down-title">You're down</div>
     <div id="downInfo" class="down-info"></div>
@@ -88,9 +97,25 @@
 <section id="title" class="screen" hidden>
   <div class="card">
     <div class="brand">FIRETEAM</div>
-    <p class="tag">Milestone 4 &middot; Co-op</p>
+    <p class="tag">Milestone 5 &middot; Missions</p>
     <p id="notice" class="note notice" role="status" hidden></p>
-    <div class="maps" role="radiogroup" aria-label="Map">
+    <h3 class="maps-head">Missions &middot; The Harbour</h3>
+    <div class="maps" role="radiogroup" aria-label="Mission">
+      <button class="map" type="button" role="radio" data-map="harbour-rescue">
+        <b>Lifeline</b><span>Rescue: free a hostage held in the fishing village and get them to the helicopter.</span>
+      </button>
+      <button class="map" type="button" role="radio" data-map="harbour-intel">
+        <b>Dead Drop</b><span>Intel: download their records (defend the laptop), then carry the drive out.</span>
+      </button>
+      <button class="map" type="button" role="radio" data-map="harbour-sabotage">
+        <b>Short Fuse</b><span>Sabotage: find three weapons caches, plant charges, get clear, get out.</span>
+      </button>
+      <button class="map" type="button" role="radio" data-map="harbour-hold">
+        <b>Last Light</b><span>Hold the line: switch on the lighthouse radio and hold the headland for three minutes.</span>
+      </button>
+    </div>
+    <h3 class="maps-head">Practice</h3>
+    <div class="maps" role="radiogroup" aria-label="Practice map">
       <button id="mapProving" class="map" type="button" role="radio" data-map="proving-ground">
         <b>Proving Ground</b><span>Practise: movement course, firing range, timed kill house.</span>
       </button>
@@ -119,7 +144,9 @@
       <dt>Right mouse</dt><dd>Aim down sights</dd>
       <dt>R</dt><dd>Reload</dd>
       <dt>1&ndash;4 &middot; wheel &middot; Q</dt><dd>Switch gun &middot; last gun</dd>
-      <dt>V &middot; Z &middot; F</dt><dd>Co-op: squad radio &middot; ping &middot; revive (hold)</dd>
+      <dt>G</dt><dd>Throw a grenade</dd>
+      <dt>F (hold)</dt><dd>Use: ammo crates, objectives, revive a teammate</dd>
+      <dt>V &middot; Z</dt><dd>Co-op: squad radio &middot; ping</dd>
       <dt>~ `</dt><dd>Tuning panel (the key under Esc)</dd>
       <dt>Esc</dt><dd>Pause</dd>
     </dl>
@@ -157,8 +184,16 @@
       <label class="field">
         <span>Map</span>
         <select id="lobbyMap">
-          <option value="compound">The Compound</option>
-          <option value="proving-ground">Proving Ground</option>
+          <optgroup label="Missions · The Harbour">
+            <option value="harbour-rescue">Lifeline (rescue)</option>
+            <option value="harbour-intel">Dead Drop (intel)</option>
+            <option value="harbour-sabotage">Short Fuse (sabotage)</option>
+            <option value="harbour-hold">Last Light (hold the line)</option>
+          </optgroup>
+          <optgroup label="Practice">
+            <option value="compound">The Compound</option>
+            <option value="proving-ground">Proving Ground</option>
+          </optgroup>
         </select>
       </label>
       <label class="field">
@@ -175,6 +210,22 @@
     <div class="actions">
       <button id="btnStart" class="primary" type="button">Start</button>
       <button id="btnLeave" type="button">Leave</button>
+    </div>
+  </div>
+</section>
+
+<section id="debrief" class="screen" hidden>
+  <div class="card">
+    <p id="debriefKind" class="tag">Mission complete</p>
+    <h2 id="debriefTitle">Debrief</h2>
+    <p id="debriefResult" class="debrief-result"></p>
+    <dl id="debriefList" class="debrief-list"></dl>
+    <table id="debriefPlayers" class="debrief-players" hidden></table>
+    <p id="debriefNote" class="muted small"></p>
+    <div class="actions">
+      <button id="btnAgain" class="primary" type="button">Play again</button>
+      <button id="btnDebriefLobby" type="button">Back to lobby</button>
+      <button id="btnDebriefTitle" type="button">Main menu</button>
     </div>
   </div>
 </section>

@@ -391,3 +391,59 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 .mute-list { display: grid; gap: 6px; margin: 0 0 12px; }
 .mute-list button { font-size: 15px; min-height: 38px; padding: 6px 12px; }
 .mute-list button[aria-pressed="true"] { color: var(--danger); border-color: rgba(224, 88, 62, 0.6); }
+
+/* ---- Missions (milestone 5) ---- */
+/* The objective panel (the timer box, in a mission) and its progress bar. */
+.course.mission { min-width: 300px; max-width: min(460px, calc(100vw - 32px)); }
+.course.mission .course-time { font-size: 26px; }
+.course.mission .course-info { color: var(--text); font-size: 15px; }
+.course-bar { height: 6px; margin-top: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.5); overflow: hidden; }
+.course-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s linear; }
+.course-bar.warn i { background: var(--danger); animation: pulse 0.5s ease-in-out infinite alternate; }
+
+/* "Hold F: ..." under the crosshair, and Overlord on the radio. */
+.prompt {
+  position: absolute; left: 50%; top: 56%; transform: translateX(-50%); padding: 5px 14px; border-radius: 6px;
+  font: 600 17px var(--head); letter-spacing: 0.08em; text-transform: uppercase; background: rgba(0, 0, 0, 0.5);
+  opacity: 0; transition: opacity 0.15s; text-shadow: none; white-space: nowrap;
+}
+.prompt.on { opacity: 1; }
+.radio-line {
+  position: absolute; left: 50%; top: calc(118px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+  width: min(620px, calc(100vw - 32px)); padding: 6px 14px; border-radius: 6px; text-align: center;
+  background: rgba(10, 22, 18, 0.72); border: 1px solid rgba(143, 196, 106, 0.4); font-size: 16px; text-shadow: none;
+  opacity: 0; transition: opacity 0.4s;
+}
+.radio-line.on { opacity: 1; }
+.radio-line b { font: 600 14px var(--head); letter-spacing: 0.14em; text-transform: uppercase; color: var(--good); margin-right: 10px; }
+.grenades { font: 600 15px var(--head); letter-spacing: 0.12em; color: var(--muted); min-height: 18px; }
+
+/* Objective markers. */
+.mark.objective { --c: var(--accent); font-size: 14px; }
+.mark.objective::before { content: ""; width: 14px; height: 14px; background: var(--c); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.mark.objective.warn { --c: var(--danger); }
+.mark.objective.warn::before { animation: pulse 0.4s ease-in-out infinite alternate; }
+.mark.objective.search { --c: #d9d4c4; opacity: 0.85; }
+.mark.objective.search::before { display: none; }
+.mark.objective.lz { --c: var(--good); }
+.mark.objective.cargo { --c: #ffb35a; }
+.mark.crate { --c: #c9a46a; font-size: 12px; opacity: 0.9; }
+.feed div.objective { background: rgba(30, 26, 10, 0.6); }
+.feed div.objective b { color: var(--accent); }
+.feed div.warn b { color: var(--danger); }
+
+/* The map picker's two groups. */
+.maps-head { margin: 18px 0 -8px; font: 600 13px var(--head); letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+
+/* The debrief. */
+.debrief-result { font: 600 18px var(--head); letter-spacing: 0.06em; color: var(--good); margin: 0 0 12px; }
+.debrief-result.failed { color: var(--danger); }
+.debrief-list { display: grid; grid-template-columns: 1fr auto; gap: 4px 18px; margin: 0 0 14px; }
+.debrief-list dt { color: var(--muted); }
+.debrief-list dd { margin: 0; font: 600 17px var(--head); text-align: right; }
+.debrief-list dd.done { color: var(--good); }
+.debrief-players { width: 100%; border-collapse: collapse; margin-bottom: 12px; font: 500 15px var(--head); letter-spacing: 0.04em; }
+.debrief-players th { text-align: right; color: var(--muted); font-weight: 600; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.debrief-players td { text-align: right; padding: 3px 6px; }
+.debrief-players th:first-child, .debrief-players td:first-child { text-align: left; }
+

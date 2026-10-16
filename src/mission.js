@@ -42,6 +42,10 @@ import { disposeTree } from './render/dispose.js';
 import { connectGameSounds } from './audio/game-sounds.js';
 import { createHud } from './ui/hud.js';
 import { createSquadHud } from './ui/squad-hud.js';
+import { createObjectiveHud } from './ui/objective-hud.js';
+import { createMarkers, createRing } from './ui/markers.js';
+import { createPropsView } from './render/props-view.js';
+import { createHeliView } from './render/heli-view.js';
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
@@ -116,10 +120,21 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     scene: root, source: session.teammates, effects, ragdolls, world, registry, camera, events,
     colors: SOLDIER_COLORS.friend, icons: false, downEvent: 'player:dead',
   });
+  // The hostage: an orange, unarmed soldier. (They can come back at a checkpoint, so no ragdoll.)
+  const hostages = { get list() { return session.hostage ? [session.hostage] : []; } };
+  const hostageView = def.mission
+    ? createSoldiersView({
+      scene: root, source: hostages, effects, world, registry, camera, events,
+      colors: SOLDIER_COLORS.hostage, icons: false, downEvent: null, name: 'hostage',
+    })
+    : null;
+  // Mission props (laptop, caches, radios, grenades in flight) and the helicopter.
+  const props = createPropsView({ scene: root, session });
+  const heli = session.operation ? createHeliView({ scene: root, session }) : null;
   const aiDebug = sim?.enemies ? createAiDebug(root, { enemies: sim.enemies, nav: sim.nav, cover: sim.cover, noise: sim.noise }) : null;
   const sounds = connectGameSounds({
     audio, events, soldier, cameraRig: rig, world, registry, health, owner: me,
-    others: [session.enemies, session.teammates],
+    others: [session.enemies, session.teammates, hostages], helicopter: heli?.state ?? null,
   });
 
   // Your own shots: the flash and tracers start at the gun on screen.
@@ -134,6 +149,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     }
   });
   events.on('bullet:impact', (hit) => effects.impact(hit));
+  events.on('explosion', (e) => effects.explosion(e.pos, e));
 
   const nameOf = (owner) => (owner === me ? session.local.callsign : session.teammates.list.find((m) => m.owner === owner)?.view.callsign) ?? `Player ${owner + 1}`;
   const hud = createHud({
@@ -141,7 +157,12 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     course: session.course, encounter: session.encounter, threats: hasEnemies ? session.enemies : null,
     coop: !!room, nameOf,
   });
-  const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting: room.role === 'host', voice: () => app.voice }) : null;
+  // Markers in the world and the hold-F ring are shared by the squad HUD and the objective HUD.
+  const markers = createMarkers(document.getElementById('marks'), camera);
+  const ring = createRing({ ring: document.getElementById('ring'), fill: document.getElementById('ringFill'), label: document.getElementById('ringText') });
+  const hosting = !joining;
+  const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting, markers, ring, voice: () => app.voice }) : null;
+  const objectiveHud = session.operation ? createObjectiveHud({ session, events, hud, markers, ring, hosting, nameOf, audio }) : null;
 
   // SPECTATING: once you're out (co-op), the camera rides over a teammate's
   // shoulder. Click to switch to someone else.
@@ -171,11 +192,18 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     rig.snap();
   }
 
+  /** Everyone on screen is new after a restart or a retry. */
+  function resetViews() {
+    enemiesView?.reset();
+    teammatesView.reset();
+    hostageView?.reset();
+    props.reset();
+  }
+
   /** Start the fight again: everyone back where they began. */
   function restart() {
     session.restart();
-    enemiesView?.reset();
-    teammatesView.reset();
+    resetViews();
     input.setLook(player.state.yaw);
     rig.snap();
   }
@@ -184,24 +212,20 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   let failedFor = 0;
   function retry() {
     session.retry();
-    enemiesView?.reset();
-    teammatesView.reset();
+    resetViews();
     input.setLook(player.state.yaw);
     rig.snap();
   }
 
   const debug = createDebugPanel({
     scene: root, world, player, rig, loop,
-    arsenal: soldier.arsenal, effects, hud, enemies: sim?.enemies ?? null, aiDebug, health,
+    arsenal: soldier.arsenal, effects, hud, enemies: sim?.enemies ?? null, aiDebug, health, director: sim?.director ?? null,
     onRespawn: hasEnemies ? restart : respawn,
     visible: app.debugOpen,
   });
 
   // A co-op game restarting (the host pressed it): rebuild the soldiers on screen.
-  events.on('mission:restart', () => {
-    enemiesView?.reset();
-    teammatesView.reset();
-  });
+  events.on('mission:restart', () => resetViews());
 
   /** One fixed step of the game. */
   function update(dt, playing) {
@@ -248,11 +272,19 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     targetsView.update(dt);
     enemiesView?.update(dt, alpha);
     teammatesView.update(dt, alpha);
+    hostageView?.update(dt, alpha);
+    props.update(dt, alpha);
+    heli?.update(dt);
     ragdolls?.update(dt);
     aiDebug?.update();
     sounds.frame(dt);
     hud.update(dt, { playing });
+    markers.begin();
+    ring.begin();
     squadHud?.update(dt, { watching: spectating ? watching : null });
+    objectiveHud?.update(dt);
+    markers.end();
+    ring.end();
     debug.update(alpha);
     // No gun in your face in the debug third-person view, or once you're down.
     view.render(rig.tuning.thirdPerson || health.state.down ? null : viewmodel);
@@ -267,6 +299,11 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     if (joining) loop.timeScale = 1;
     hud.dispose();
     squadHud?.dispose();
+    objectiveHud?.dispose();
+    markers.dispose();
+    ring.dispose();
+    sounds.dispose();
+    effects.dispose();
     debug.destroy();
     ragdolls?.dispose();
     session.dispose();
@@ -285,17 +322,18 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   }
 
   return {
-    positionOf,
+    positionOf, nameOf,
     mapId, def, room, events, session, sim, world, registry,
     soldier, player, health, rig, viewmodel, effects, hud, debug,
-    enemiesView, teammatesView, ragdolls, aiDebug, sounds, root,
+    enemiesView, teammatesView, hostageView, props, heli, ragdolls, aiDebug, sounds, root,
     hasEnemies,
     get enemies() { return sim?.enemies ?? null; },
     get targets() { return session.targets; },
     get course() { return session.course; },
     get encounter() { return session.encounter; },
+    get operation() { return session.operation; },
     nav: sim?.nav ?? null, cover: sim?.cover ?? null, noise: sim?.noise ?? null,
-    update, render, respawn, restart, dispose,
+    update, render, respawn, restart, retry, dispose,
     setDifficulty(value) { if (!room) sim?.enemies?.setDifficulty(value); }, // co-op: the host's lobby choice
   };
 }

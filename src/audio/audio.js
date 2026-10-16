@@ -14,6 +14,11 @@
 //
 // Browsers refuse to make sound until you've clicked something, so the engine
 // downloads the files early but only starts (unlock()) on your first click.
+//
+// Most sounds play once and are gone. A LOOP (the helicopter's rotor) plays
+// over and over until it's stopped, like a record on repeat: loop() hands back
+// a handle to move it, change its volume, and stop it. Whoever starts a loop
+// must stop it, or it carries on into the next map (the smoke test checks).
 
 import { SOUNDS, soundFiles } from './sound-bank.js';
 
@@ -135,9 +140,29 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     heartbeat: [0.5, (t) => tone(52)(t) * (Math.exp(-t * 28) + (t > 0.17 ? 0.7 * Math.exp(-(t - 0.17) * 30) : 0))],
     radio: [0.1, (t) => (Math.sign(Math.sin(2 * Math.PI * 1150 * t)) * 0.25 + (Math.random() * 2 - 1) * 0.35) * Math.exp(-t * 35)],
     laser: [0.28, (t) => tone(900 + 1600 * t)(t) * Math.min(1, t * 40) * Math.min(1, (0.28 - t) * 30) * 0.5],
+    // An explosion, if the recordings didn't load: a deep thump under rumbling noise.
+    boom: [1.6, (() => {
+      let lp = 0;
+      return (t) => {
+        lp += ((Math.random() * 2 - 1) - lp) * 0.08; // noise with the treble taken off
+        return (lp * 2.2 * Math.exp(-t * 3) + tone(42 - 12 * t)(t) * Math.exp(-t * 5)) * Math.min(1, t * 400);
+      };
+    })()],
+    // The rotor: a "whup" each time a blade passes (11 a second), over the engine's whine.
+    // Exactly one second long, a whole number of whups, so it loops without a click.
+    rotor: [1, (() => {
+      let lp = 0;
+      return (t) => {
+        lp += ((Math.random() * 2 - 1) - lp) * 0.12;
+        const phase = (t * 11) % 1;
+        const whup = Math.exp(-phase * 14);
+        return lp * 1.8 * (0.25 + whup) + tone(33)(t) * whup * 0.5 + tone(440)(t) * 0.03;
+      };
+    })()],
   };
   const fallbackFor = (name) =>
-    /rifle|smg|shotgun|pistol/.test(name) && !/reload/.test(name) ? 'shot'
+    name.startsWith('explosion') ? 'boom'
+    : /rifle|smg|shotgun|pistol/.test(name) && !/reload/.test(name) ? 'shot'
       : name.startsWith('ding') ? 'ring'
         : /hit_|step|land|hurt|bodyfall/.test(name) ? 'thud' : 'click';
 
@@ -214,6 +239,80 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     source.start(now + (opts.delay ?? 0), offset);
   }
 
+  // ------------------------------------------------------------ loops
+
+  const loops = new Set();
+
+  /**
+   * Starts a sound that repeats until stopped.
+   * @param {string} name  key in SOUNDS
+   * @param {object} [opts] { position, volume, rate } (change them later with set())
+   * @returns {{ set(opts:object): void, stop(): void }}
+   */
+  function loop(name, opts = {}) {
+    const entry = SOUNDS[name];
+    const state = { position: null, volume: 1, rate: 1, ...opts };
+    let nodes = null;
+    function start() {
+      // (Sound may still be locked when the loop is asked for: it starts on the first set() after.)
+      if (nodes || !ctx || ctx.state !== 'running' || !entry) return;
+      const { buffer } = bufferFor(entry, name);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 18000;
+      source.connect(gain).connect(lp);
+      let out = lp;
+      let panner = null;
+      if (entry.spatial) {
+        panner = ctx.createPanner();
+        panner.panningModel = 'HRTF';
+        panner.distanceModel = 'inverse';
+        panner.refDistance = entry.refDistance ?? 3;
+        panner.rolloffFactor = 1;
+        panner.maxDistance = 400;
+        out.connect(panner);
+        out = panner;
+      }
+      out.connect(entry.bus === 'ui' ? ui : sfx);
+      source.start();
+      nodes = { source, gain, lp, panner };
+    }
+    const handle = {
+      set(next = {}) {
+        Object.assign(state, next);
+        start();
+        if (!nodes) return;
+        const now = ctx.currentTime;
+        // Glide to the new volume (a sudden jump would click).
+        nodes.gain.gain.setTargetAtTime(entry.volume * state.volume, now, 0.05);
+        nodes.source.playbackRate.setTargetAtTime(state.rate, now, 0.1);
+        if (nodes.panner && state.position) {
+          setPosition(nodes.panner, state.position);
+          const p = state.position;
+          const d = Math.hypot(p.x - ears.x, p.y - ears.y, p.z - ears.z);
+          nodes.lp.frequency.setTargetAtTime(Math.max(500, 18000 / (1 + Math.max(0, d - 15) / 12)), now, 0.1);
+        }
+      },
+      stop() {
+        loops.delete(handle);
+        if (!nodes) return;
+        const { source, gain } = nodes;
+        gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+        source.stop(ctx.currentTime + 0.3);
+        source.onended = () => source.disconnect();
+        nodes = null;
+      },
+    };
+    loops.add(handle);
+    handle.set();
+    return handle;
+  }
+
   function setPosition(node, p) {
     if (node.positionX) {
       node.positionX.value = p.x;
@@ -247,8 +346,11 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     preload,
     unlock,
     play,
+    loop,
     update,
     applyVolumes,
+    /** How many loops are playing (or waiting for sound to unlock). */
+    get loops() { return loops.size; },
     get ready() { return !!ctx && ctx.state === 'running'; },
     /** The Web Audio context and master volume (voice chat plugs in here), once unlocked. */
     get context() { return ctx; },

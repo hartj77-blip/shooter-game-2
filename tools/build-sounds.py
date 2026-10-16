@@ -20,9 +20,11 @@ Sources (all CC0 public domain, see CREDITS.md):
                   (https://opengameart.org/content/gun-reload-lock-or-click-sound)
   --kenney    the Audio folder from Kenney's Impact Sounds pack
               https://kenney.nl/assets/impact-sounds
+  --scifi     the Audio folder from Kenney's Sci-Fi Sounds pack (explosions)
+              https://kenney.nl/assets/sci-fi-sounds
 
 Usage:
-  python3 tools/build-sounds.py --firearms DIR --oga DIR --kenney DIR [--out assets/sounds]
+  python3 tools/build-sounds.py --firearms DIR --oga DIR --kenney DIR --scifi DIR [--out assets/sounds]
 
 Needs Python 3 with NumPy, and ffmpeg.
 """
@@ -82,6 +84,14 @@ KENNEY = [
     ('bodyfall', 'impactSoft_heavy', [2, 3, 4], 0.6),
 ]
 
+# Milestone 5: explosions. Each is two recordings played together: a deep boom
+# you feel, and a crunch that tells you something broke. (output, [(file, gain)], length)
+LAYERS = [
+    ('explosion_1', [('lowFrequency_explosion_000', 1.0), ('explosionCrunch_001', 0.7)], 2.0),
+    ('explosion_2', [('lowFrequency_explosion_001', 1.0), ('explosionCrunch_003', 0.7)], 1.6),
+    ('explosion_3', [('lowFrequency_explosion_000', 1.0), ('explosionCrunch_004', 0.6)], 2.0),
+]
+
 
 def decode(path, start, length):
     """Reads `length` seconds of `path` from `start`, as mono floats."""
@@ -116,6 +126,7 @@ def main():
     p.add_argument('--firearms', required=True)
     p.add_argument('--oga', required=True)
     p.add_argument('--kenney', required=True)
+    p.add_argument('--scifi', required=True)
     p.add_argument('--out', default=os.path.join(os.path.dirname(__file__), '..', 'assets', 'sounds'))
     args = p.parse_args()
     roots = {'firearms': args.firearms, 'oga': args.oga}
@@ -131,6 +142,15 @@ def main():
             x = shape(decode(os.path.join(args.kenney, f'{prefix}_{v:03d}.ogg'), 0, max_len))
             encode(x, os.path.join(args.out, f'{group}_{i}.mp3'))
             print(f'{group}_{i}.mp3  {len(x) / RATE:.2f}s')
+
+    for name, parts, length in LAYERS:
+        x = np.zeros(int(length * RATE), dtype=np.float32)
+        for f, gain in parts:
+            y = decode(os.path.join(args.scifi, f'{f}.ogg'), 0, length)
+            x[:len(y)] += y[:len(x)] * gain
+        x = shape(x)
+        encode(x, os.path.join(args.out, f'{name}.mp3'))
+        print(f'{name}.mp3  {len(x) / RATE:.2f}s')
 
 
 if __name__ == '__main__':
