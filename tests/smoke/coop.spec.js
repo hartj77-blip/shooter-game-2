@@ -103,6 +103,32 @@ test('co-op in two tabs: host, join, play the Compound together', async ({ conte
   await friend.screenshot({ path: 'test-results/coop-friend.png' });
   await host.screenshot({ path: 'test-results/coop-host.png' });
 
+  // ---- the friend goes down; the host revives them
+  await host.evaluate(() => {
+    const f = window.fireteam;
+    const friendP = f.session.sim.player(1);
+    friendP.health.godMode = false;
+    friendP.health.damage(500);
+    const at = friendP.soldier.state.pos;
+    f.soldier.teleport([at.x + 1, 0, at.z], Math.PI / 2); // right beside them
+  });
+  await expect(friend.locator('#coopDown')).toBeVisible({ timeout: 15_000 });
+  await expect(friend.locator('#coopDownTitle')).toHaveText("You're down");
+  await expect(friend.locator('#coopDownInfo')).toContainText('Bleeding out in');
+  await expect(host.locator('#squad')).toContainText('Down');
+  await expect(host.locator('#marks')).toContainText('Hold F to revive', { timeout: 15_000 });
+  await host.screenshot({ path: 'test-results/coop-revive.png' });
+  await host.keyboard.down('KeyF');
+  await host.waitForFunction(() => !window.fireteam.session.sim.player(1).health.state.down, null, { timeout: 30_000 });
+  await host.keyboard.up('KeyF');
+  await expect(friend.locator('#coopDown')).toBeHidden({ timeout: 15_000 });
+  await expect(host.locator('#feed')).toContainText('back up');
+
+  // ---- the friend pings the ground; the host sees the marker
+  await friend.evaluate(() => window.fireteam.input.setLook(0, -0.5));
+  await friend.keyboard.press('KeyZ');
+  await expect(host.locator('#marks')).toContainText('Here', { timeout: 15_000 });
+
   // ---- the friend leaves; the host carries on alone
   await friend.evaluate(() => window.fireteam.flow.go('paused'));
   await expect(friend.locator('#btnQuit')).toHaveText('Leave game');

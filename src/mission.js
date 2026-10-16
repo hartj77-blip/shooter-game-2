@@ -41,6 +41,7 @@ import { createAiDebug } from './render/ai-debug.js';
 import { disposeTree } from './render/dispose.js';
 import { connectGameSounds } from './audio/game-sounds.js';
 import { createHud } from './ui/hud.js';
+import { createSquadHud } from './ui/squad-hud.js';
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
@@ -133,10 +134,34 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   });
   events.on('bullet:impact', (hit) => effects.impact(hit));
 
+  const nameOf = (owner) => (owner === me ? session.local.callsign : session.teammates.list.find((m) => m.owner === owner)?.view.callsign) ?? `Player ${owner + 1}`;
   const hud = createHud({
     soldier, settings: settings.values, loop, input, camera, events, owner: me, health,
     course: session.course, encounter: session.encounter, threats: hasEnemies ? session.enemies : null,
+    coop: !!room, nameOf,
   });
+  const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting: room.role === 'host' }) : null;
+
+  // SPECTATING: once you're out (co-op), the camera rides over a teammate's
+  // shoulder. Click to switch to someone else.
+  let watchIndex = 0;
+  let watching = null;
+  const over = new THREE.Vector3();
+  const ahead = new THREE.Vector3();
+  function spectate(alpha, dt) {
+    const mates = session.teammates.list.filter((m) => !m.view.dead && !m.view.down);
+    if (!mates.length) { watching = null; return false; }
+    const v = mates[watchIndex % mates.length].view;
+    watching = v.callsign ?? 'a teammate';
+    const p = v.prev ?? v.pos;
+    const x = p.x + (v.pos.x - p.x) * alpha, y = p.y + (v.pos.y - p.y) * alpha, z = p.z + (v.pos.z - p.z) * alpha;
+    const fx = -Math.sin(v.yaw), fz = -Math.cos(v.yaw);
+    over.set(x - fx * 2.6 + fz * 0.6, y + 2.1, z - fz * 2.6 - fx * 0.6); // behind and a little to the right
+    camera.position.lerp(over, 1 - Math.exp(-10 * dt));
+    ahead.set(x + fx * 10, y + 1.5 + Math.sin(v.pitch) * 10, z + fz * 10);
+    camera.lookAt(ahead);
+    return true;
+  }
 
   /** Just you, back to your spawn. */
   function respawn() {
@@ -172,6 +197,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     // Paused: a solo game stops, a co-op game carries on without you.
     if (!playing && session.pausable) return;
     const cmd = playing ? input.sample() : idleCommand(input.yaw, input.pitch);
+    if (health.state.dead && cmd.firePressed) watchIndex++; // spectating: watch someone else
     // Down in a solo fight (or the whole squad down, if you're the co-op host): R starts again.
     const allDown = session.pausable || session.encounter?.state === 'down';
     if (health.state.down && cmd.reload && health.state.downTime > 0.8 && session.role === 'host' && allDown) {
@@ -198,7 +224,8 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
       c.x *= k; c.y *= k; c.z *= k;
       rig.offset = c;
     }
-    rig.update(alpha, dt);
+    const spectating = health.state.dead && spectate(alpha, dt);
+    if (!spectating) rig.update(alpha, dt);
     view.followWithShadows(view.camera.position);
     viewmodel.update(dt);
     effects.update(dt);
@@ -209,6 +236,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     aiDebug?.update();
     sounds.frame(dt);
     hud.update(dt, { playing });
+    squadHud?.update(dt, { watching: spectating ? watching : null });
     debug.update(alpha);
     // No gun in your face in the debug third-person view, or once you're down.
     view.render(rig.tuning.thirdPerson || health.state.down ? null : viewmodel);
@@ -222,6 +250,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     for (const off of offs) off();
     if (joining) loop.timeScale = 1;
     hud.dispose();
+    squadHud?.dispose();
     debug.destroy();
     ragdolls?.dispose();
     session.dispose();

@@ -58,6 +58,17 @@
   <div id="feed" class="feed" aria-live="polite"></div>
   <div id="subs" class="subs" aria-live="polite"></div>
   <div id="dmgNums" class="dmg-nums"></div>
+  <ol id="squad" class="squad" aria-label="Your squad" hidden></ol>
+  <div id="marks" class="marks" aria-hidden="true"></div>
+  <div id="ring" class="ring" hidden>
+    <svg viewBox="0 0 64 64" aria-hidden="true"><circle class="ring-bg" cx="32" cy="32" r="28"></circle><circle id="ringFill" class="ring-fill" cx="32" cy="32" r="28"></circle></svg>
+    <span id="ringText">Reviving</span>
+  </div>
+  <div id="coopDown" class="down" hidden>
+    <div id="coopDownTitle" class="down-title"></div>
+    <div id="coopDownInfo" class="down-info"></div>
+    <div id="coopDownHint" class="down-hint"></div>
+  </div>
   <div id="down" class="down" hidden>
     <div class="down-title">You're down</div>
     <div id="downInfo" class="down-info"></div>

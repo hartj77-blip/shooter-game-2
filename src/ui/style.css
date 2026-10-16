@@ -330,3 +330,52 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
   .lobby-settings, .field-inline { grid-template-columns: 1fr; }
   .room-code { font-size: 36px; }
 }
+
+/* ------------------------------------------------------------------ co-op HUD */
+/* The squad, top left: name, health, and how they're doing. */
+.squad {
+  position: absolute; left: calc(18px + env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px));
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; width: 210px; text-shadow: none;
+}
+.squad li {
+  --c: var(--muted);
+  display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 2px 8px;
+  padding: 5px 9px 6px; border-radius: 5px; background: rgba(0, 0, 0, 0.5); border-left: 3px solid var(--c);
+}
+.squad .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.squad b { font: 600 16px var(--head); letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.squad .state { font: 600 12px var(--head); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.squad .hp { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.squad .hp i { display: block; height: 100%; width: 100%; background: var(--c); transition: width 0.2s; }
+/* (is-down, not "down": .down is already the big "You're down" card.) */
+.squad li.is-down .state { color: var(--danger); }
+.squad li.is-down .hp i { background: var(--danger); }
+.squad li.is-dead { opacity: 0.55; }
+.squad li.talking .dot { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85); }
+
+/* Markers in the world: name tags, revive crosses, pings. */
+.marks { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.mark {
+  --c: #fff; position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 1px;
+  font: 600 13px var(--head); letter-spacing: 0.08em; text-transform: uppercase; color: var(--c); white-space: nowrap;
+  transform: translate(-50%, -100%); will-change: transform;
+}
+.mark small { font: 500 12px var(--head); color: var(--text); opacity: 0.85; }
+.mark.tag { font-size: 14px; opacity: 0.9; }
+.mark.revive::before, .mark.ping::before { content: ""; width: 18px; height: 18px; }
+.mark.revive { --c: #ff5a3c; }
+.mark.revive::before { background: var(--c); clip-path: polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%); animation: pulse 0.6s ease-in-out infinite alternate; }
+.mark.ping.place { --c: var(--accent); }
+.mark.ping.place::before { background: var(--c); clip-path: polygon(50% 100%, 0 0, 100% 0); }
+.mark.ping.enemy { --c: #ff4a3a; }
+.mark.ping.enemy::before { border: 3px solid var(--c); transform: rotate(45deg); width: 14px; height: 14px; }
+.mark.edge { opacity: 0.8; }
+
+/* Reviving progress (or being revived), middle of the screen. */
+.ring { position: absolute; left: 50%; top: 58%; transform: translate(-50%, 0); display: grid; justify-items: center; gap: 4px; text-shadow: none; }
+.ring svg { width: 64px; height: 64px; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 6; }
+.ring-bg { stroke: rgba(0, 0, 0, 0.5); }
+.ring-fill { stroke: var(--good); stroke-linecap: round; stroke-dasharray: 176; stroke-dashoffset: 176; }
+.ring span { font: 600 15px var(--head); letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; background: rgba(0, 0, 0, 0.5); }
+@media (max-width: 700px) { .squad { width: 160px; } }
