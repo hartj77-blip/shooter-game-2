@@ -36,8 +36,8 @@ Each milestone ends with something playable on GitHub Pages, a lesson in `docs/l
 | M1 | Move like a pro | Fixed-timestep loop, mouse look, walk/sprint/crouch/jump/slide/mantle, the Proving Ground, tuning panel | **Done** |
 | M2 | Gunfeel | Four guns (carbine, SMG, pump shotgun, pistol), recoil, spread, aim down sights, viewmodel, effects, real sound, firing range, timed kill house | **Done** |
 | M3 | Enemies | Enemy soldiers (Rifleman, Rusher, Marksman) with sight, hearing and awareness, state-machine brains, squads, a nav grid with A*, cover and flanking, fairness rules, ragdolls, health that recovers, the Compound map, difficulty | **Done** |
-| M4 | Co-op | Lobby, room codes, host-run game, snapshots, interpolation, prediction, revive, pings, voice | Next |
-| M5 | Missions | Objectives, the director, reinforcements, success and fail, debrief | |
+| M4 | Co-op | 1–4 players: lobby, room codes, invite links, host-run game, snapshots, interpolation, prediction and reconciliation, favour-the-shooter hits, bleed out and revive, spectating, pings, squad HUD, voice (radio + nearby), a mission loader | **Done** |
+| M5 | Missions | Objectives, the director, reinforcements, success and fail, debrief | Next |
 | M6 | Art pass | Stylized kit, animated characters, lighting, post-processing, quality presets | |
 | M7 | Progression | XP, unlocks, attachments, loadouts, support call-ins, saved progress | |
 | M8 | Polish | Audio mix, HUD, full settings, gamepad, touch, loading, performance | |
@@ -97,9 +97,34 @@ The numbers live in `src/ai/enemy-data.js` (and the tuning panel's AI section). 
 
 Measured on Regular, standing in the open at the Compound gate: down after 4.9 s (2.1 s after the first hit); strafing, 10.9 s. Recruit about twice as long, Veteran 2.5 s.
 
-**Your health:** 100. Recovery starts 4.5 s after the last hit, at 22 per second. At 0 you're down; R restarts the fight. Enemies get no headshot bonus on you.
+**Your health:** 100. Recovery starts 4.5 s after the last hit, at 22 per second. At 0 you're down; solo, R restarts the fight (co-op: see below). Enemies get no headshot bonus on you.
 
 **The Compound:** a walled compound about 72 × 60 m inside the wall. It has a two-storey house with a balcony, a warehouse, barracks, a guard tower and a courtyard of containers and sandbags. You start behind a berm where nobody can see you (a test checks this). There are three ways in: the gate, a breach in the east wall, and a drain in the west wall that only you can crawl through. 16 enemies in 6 squads; clear them all for a time and a results card. Best time is saved in the browser.
+
+## Co-op (M4)
+
+Up to 4 players. One browser hosts (runs the real game); the others are clients. Lessons 11–13 explain how.
+
+| Thing | Value | Where |
+|---|---|---|
+| Snapshots | 20 a second (every 3rd tick), unreliable; about 1.4 KB for 4 players and 16 enemies (budget 2.5 KB) | `SNAPSHOT_EVERY`, `SNAPSHOT_BUDGET` in `src/net/protocol.js` |
+| Commands | 60 a second, each packet repeating the last 3, unreliable | `CMD_REDUNDANCY` |
+| Others drawn in the past by | 6 ticks (0.1 s) | `INTERP_DELAY` |
+| Host's command cushion | about 2 commands; 2 per tick when more than 8 wait | `src/net/jitter.js` |
+| Prediction "match" | within 1 cm; corrections glide out over about 0.1 s | `MATCH` in `src/net/client.js` |
+| Hit claims | start within 3.5 m of where the host has you; capped at the gun's maximum | `src/net/host.js` |
+| Friendly fire | off | `passThrough` |
+| Bleed out / revive | 30 s to be revived; hold F for 3 s within 1.8 m; back up on 30 health | `DEFAULT_HEALTH`, `REVIVE` |
+| Enemy health by squad size | ×1, ×1.25, ×1.45, ×1.6 | `PLAYER_SCALING` in `src/ai/enemy-data.js` |
+| Attack tokens | per player (each player gets the difficulty's number) | `src/ai/squad.js` |
+| Pings | marker for 4 s; an enemy ping follows the enemy | `PING` in `src/game/pings.js` |
+| Nearby voice | full volume within 4 m, silent at 25 m | `VOICE` in `src/net/voice-mix.js` |
+| Radio voice | band-pass 300–3,400 Hz plus soft distortion | `src/net/voice.js` |
+| Room codes | 5 letters, no I, L or O | `src/net/room.js` |
+
+Measured: the host's tick with 4 players, 16 enemies and 3 clients takes about 1.8 ms (99% under 6.6 ms); a client's tick about 0.5 ms. Co-op best times are kept per squad size. The kill house timer is solo only; co-op on the Proving Ground is free roam.
+
+If the host leaves, the game ends for everyone ("The host left the game.").
 
 ## Controls
 
@@ -114,31 +139,35 @@ Measured on Regular, standing in the open at the Compound gate: down after 4.9 s
 | Aim down sights | Right mouse (hold or toggle) |
 | Reload | R |
 | Switch gun | 1–4, mouse wheel, Q for the last gun |
+| Squad radio (co-op) | V (hold) |
+| Ping (co-op) | Z or middle mouse |
+| Revive a teammate (co-op) | F (hold) |
+| Spectating: next teammate | Left mouse |
 | Tuning panel | `` ` `` |
 | Pause | Esc |
 
-When you're down in the Compound, R starts the fight again. Gamepad and touch controls arrive in M8. Key rebinding arrives with full settings in M8.
+When you're down in a solo fight, R starts it again. In co-op the host presses R once the whole squad is down. Gamepad and touch controls arrive in M8. Key rebinding arrives with full settings in M8.
 
 ## Art direction
 
 - **Stylized military.** Chunky, simplified shapes; slightly exaggerated proportions; flat-ish colours with soft lighting. Think "toy soldier diorama", not "documentary".
-- **Colour carries meaning.** Amber marks interactive things and the HUD's important bits. Red means danger. Friendly teams get a cool blue outline, enemies warm red.
+- **Colour carries meaning.** Amber marks interactive things and the HUD's important bits. Red means danger. Teammates wear cool blue accents, enemies warm red; each player slot has its own colour (amber, blue, green, pink) in the roster and on name tags.
 - **Readability first.** Enemies must stand out from backgrounds at a distance. Shadows are soft, so they never hide a threat completely.
 - **Grey-box until M6.** Gameplay is proven with the grid-textured kit before any real art goes in.
 
 ## Audio direction
 
-Punchy weapon sounds from real CC0 recordings, with a short echo; every play slightly varied in pitch so automatic fire never sounds robotic; positional impacts; footsteps that change with the surface. Since M3: enemy gunfire and footsteps placed in 3D and duller with distance (far sounds lose their treble), bullet whizzes past your ear, a heartbeat at low health, a radio click with every callout, and a tone with the Marksman's laser. Still to come: recorded voices for callouts, music that rises with combat intensity.
+Punchy weapon sounds from real CC0 recordings, with a short echo; every play slightly varied in pitch so automatic fire never sounds robotic; positional impacts; footsteps that change with the surface. Since M3: enemy gunfire and footsteps placed in 3D and duller with distance (far sounds lose their treble), bullet whizzes past your ear, a heartbeat at low health, a radio click with every callout, and a tone with the Marksman's laser. Since M4: voice chat (squad radio through a radio filter, nearby voice placed in 3D), teammates' footsteps and gunfire, a handset click when someone keys the radio. Still to come: recorded voices for callouts, music that rises with combat intensity.
 
 ## Accessibility (ongoing)
 
-Already in: reduce camera motion, hold or toggle for crouch, sprint and aiming, adjustable field of view and sensitivity, difficulty levels, subtitles for enemy callouts, and an on-screen arrow for every threat you might only hear (damage direction, someone noticing you, a laser on you). Coming: key rebinding, colour-blind-safe markers, aim assist on gamepad and touch.
+Already in: pings and markers so a squad can play without voice, push-to-talk or voice off, per-player mute, reduce camera motion, hold or toggle for crouch, sprint and aiming, adjustable field of view and sensitivity, difficulty levels, subtitles for enemy callouts, and an on-screen arrow for every threat you might only hear (damage direction, someone noticing you, a laser on you). Coming: key rebinding, colour-blind-safe markers, aim assist on gamepad and touch.
 
 ## Tech overview
 
 - Plain JavaScript ES modules with an import map, with no build step.
 - three.js for drawing, Rapier for physics, lil-gui for the tuning panel, all vendored in `vendor/` at pinned versions.
-- PeerJS (WebRTC) for peer-to-peer co-op from M4: one player's browser hosts the game.
+- PeerJS 1.5.5 (WebRTC) for peer-to-peer co-op: one player's browser hosts the game; voice is a mesh. Its free broker introduces players; its free TURN servers relay when a network blocks direct links.
 - Simulation runs at a fixed 60 Hz; drawing interpolates between ticks.
 - Simulation code never touches the screen, so it's unit tested in Node.
 
@@ -146,8 +175,11 @@ Already in: reduce camera motion, hold or toggle for crouch, sprint and aiming, 
 
 - ~~How much should aiming slow you down?~~ Decided in M2: to 60–75% of normal speed depending on the gun (`ads.move`), and you can't sprint while aiming.
 - Should guns have a limited spare-ammo pool in missions, with ammo crates? The training ground uses infinite spare magazines for now. Decide in M5.
-- Friendly fire: off, on, or an option? Decide in M4.
-- Do downed players bleed out, or wait indefinitely while a teammate lives? Decide in M5.
+- ~~Friendly fire: off, on, or an option?~~ Decided in M4: off.
+- ~~Do downed players bleed out?~~ Decided in M4: yes, after 30 s, unless a teammate revives them; then you spectate until the next fight.
+- When the host leaves, hand the game to another player ("host migration") instead of ending it? Possible, because every client has the level; the hard part is moving the enemies' brains. Later.
+- Some strict networks can't connect even through the free relay. A paid TURN service, or our own? Decide if players hit it.
+- Hits are trusted to each player's browser (favour the shooter). Fine for friends; a public matchmaking mode would need the host to check shots properly (lag compensation).
 - Should enemies vault low walls and drop off ledges? The nav grid has no "jump links" yet, so they walk round. Decide when a map needs it.
 - Grenades (yours and theirs) to flush enemies out of cover? Probably M7 (loadouts) or M5 (missions).
 - When you go down in a solo mission: restart the whole fight (as now), or a checkpoint? Decide in M5.
