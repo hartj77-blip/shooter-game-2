@@ -156,9 +156,9 @@ export function createOperation({
 
   /** Where the squad starts again from a checkpoint at `at` (a site, or the landing zone). */
   function spotsAt(at) {
-    const [sx, sz, syaw] = at.safe ?? [at.at[0], at.at[2] + 2, at.yaw ?? 0];
-    const y = at.at[1] ?? 0;
-    return AROUND.map(([dx, dz]) => ({ pos: placePoint([dx, 0, dz], [sx, y, sz], syaw), yaw: syaw }));
+    // (A safe spot is on the ground unless it says otherwise: the laptop may be upstairs, the restart isn't.)
+    const [sx, sz, syaw, sy = 0] = at.safe ?? [at.at[0], at.at[2] + 2, at.yaw ?? 0, at.at[1] ?? 0];
+    return AROUND.map(([dx, dz]) => ({ pos: placePoint([dx, 0, dz], [sx, sy, sz], syaw), yaw: syaw }));
   }
 
   function saveCheckpoint(at) {
