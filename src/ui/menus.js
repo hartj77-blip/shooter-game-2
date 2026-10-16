@@ -25,6 +25,12 @@ const LABELS = {
   showFps:      { label: 'Show frame rate' },
   quality:      { label: 'Graphics quality', names: { low: 'Low (fastest)', medium: 'Medium', high: 'High' } },
   callsign:     { label: 'Callsign', placeholder: 'Your name in co-op games', help: 'Shown to your teammates. Up to 16 characters.' },
+  voiceMode:    {
+    label: 'Voice chat',
+    names: { both: 'Radio (hold V) + nearby voice', radio: 'Push-to-talk only (hold V)', off: 'Off: no microphone, no voices' },
+    help: 'Nearby voice: teammates close to you hear you from where you stand. Wear headphones so nobody hears themselves echo.',
+  },
+  voiceVolume:  { label: 'Voice volume', step: 0.05, format: (v) => `${Math.round(v * 100)}%` },
 };
 
 export function createMenus(settings) {

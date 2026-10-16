@@ -12,9 +12,12 @@
 // works the same way: welcome, start, load, loaded.
 //
 // Lobby messages (the in-game ones are in net/protocol.js):
-//   client → host   hello { callsign, version, peer }   loaded {}   rpong { at }
+//   client → host   hello { callsign, version, peer }   loaded {}   rpong { at }   radio { on }
 //   host → client   welcome { slot, code, roster, lobby }   roster { roster }   lobby { lobby }
-//                   start { lobby }   bye { reason }   rping { at }
+//                   start { lobby }   bye { reason }   rping { at }   radio { slot, on }
+//
+// "radio" says someone pressed or let go of V, so every browser plays their
+// voice through the radio filter (net/voice.js) and clicks like a handset.
 //
 // Runs in Node: the tests use the pretend network.
 
@@ -125,6 +128,10 @@ export async function hostRoom({ net, callsign, code = makeCode(), lobby: start 
         tell();
       } else if (msg.t === 'rpong') {
         member.ping = Math.round(clock() - msg.at);
+      } else if (msg.t === 'radio') {
+        member.radio = !!msg.on;
+        for (const m of members.values()) if (m !== member) m.link?.send({ t: 'radio', slot: member.slot, on: member.radio });
+        events.emit('radio', { slot: member.slot, on: member.radio });
       }
     });
     link.onClose(() => {
@@ -154,6 +161,10 @@ export async function hostRoom({ net, callsign, code = makeCode(), lobby: start 
       Object.assign(lobby, patch);
       broadcast({ t: 'lobby', lobby });
       events.emit('change', {});
+    },
+    /** You pressed or let go of V. */
+    setRadio(on) {
+      broadcast({ t: 'radio', slot: 0, on: !!on });
     },
     /** Everyone load the map and play. */
     start() {
@@ -210,6 +221,8 @@ export async function joinRoom({ net, code, callsign, peer = null }) {
       on: events.on,
       /** Tell the host this browser has built the map and is ready to play. */
       loaded() { link.send({ t: 'loaded' }); },
+      /** You pressed or let go of V. */
+      setRadio(on) { link.send({ t: 'radio', on: !!on }); },
       /** Leave (back to the title screen). */
       close() { reason = 'you'; link.close(); },
     };
@@ -232,6 +245,8 @@ export async function joinRoom({ net, code, callsign, peer = null }) {
         events.emit('start', msg.lobby);
       } else if (msg.t === 'rping') {
         link.send({ t: 'rpong', at: msg.at }, { reliable: false });
+      } else if (msg.t === 'radio') {
+        events.emit('radio', { slot: msg.slot, on: msg.on });
       } else if (msg.t === 'bye') {
         reason = msg.reason;
         if (!joined) {

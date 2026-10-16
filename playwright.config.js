@@ -13,7 +13,11 @@ export default defineConfig({
     viewport: { width: 1280, height: 720 },
     launchOptions: {
       // Headless browsers have no graphics card, so draw WebGL in software.
-      args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+      args: [
+        '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
+        // A pretend microphone (it beeps), allowed without asking: for the voice chat test.
+        '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required',
+      ],
     },
   },
   webServer: {

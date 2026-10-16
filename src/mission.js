@@ -140,7 +140,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     course: session.course, encounter: session.encounter, threats: hasEnemies ? session.enemies : null,
     coop: !!room, nameOf,
   });
-  const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting: room.role === 'host' }) : null;
+  const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting: room.role === 'host', voice: () => app.voice }) : null;
 
   // SPECTATING: once you're out (co-op), the camera rides over a teammate's
   // shoulder. Click to switch to someone else.
@@ -261,7 +261,15 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
 
   if (joining) room.loaded(); // tell the host we're ready for our soldier
 
+  /** Where teammate `owner`'s head is (for nearby voice), or null if they're not here. */
+  function positionOf(owner) {
+    const v = session.teammates.list.find((m) => m.owner === owner)?.view;
+    if (!v) return null;
+    return { x: v.pos.x, y: v.pos.y + (v.down ? 0.5 : v.crouched ? 1.0 : 1.6), z: v.pos.z };
+  }
+
   return {
+    positionOf,
     mapId, def, room, events, session, sim, world, registry,
     soldier, player, health, rig, viewmodel, effects, hud, debug,
     enemiesView, teammatesView, ragdolls, aiDebug, sounds, root,

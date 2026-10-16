@@ -141,3 +141,37 @@ test('co-op in two tabs: host, join, play the Compound together', async ({ conte
 
   expect(problems).toEqual([]);
 });
+
+test("voice plumbing: your microphone lights you up; a teammate's voice goes through the radio or nearby path", async ({ page }) => {
+  const problems = [];
+  watch(page, 'page', problems);
+  await page.goto('/?net=local&nolock&map=proving-ground');
+  await page.waitForFunction(() => window.fireteam?.ready, null, { timeout: 60_000 });
+  await page.click('#btnHost');
+  await expect(page.locator('#roomCode')).toHaveText(/^[A-Z]{5}$/, { timeout: 10_000 });
+  await page.waitForFunction(() => window.fireteam.voice?.hasMic, null, { timeout: 15_000 });
+  // The pretend microphone beeps: your own light comes on in the roster.
+  await expect(page.locator('#roster li[data-slot="0"].talking')).toHaveCount(1, { timeout: 15_000 });
+
+  // Feed that same microphone in as teammate 2's voice.
+  await page.evaluate(async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    window.fireteam.voice.hear(1, stream);
+  });
+  await page.waitForFunction(() => window.fireteam.voice.levels(1)?.level > 0.01, null, { timeout: 15_000 });
+  // In the lobby everyone is "nearby"; on the radio, the voice moves to the radio path.
+  await page.waitForFunction(() => window.fireteam.voice.levels(1).near > 0.9, null, { timeout: 5_000 });
+  await page.evaluate(() => window.fireteam.voice.setTalkerRadio(1, true));
+  await page.waitForFunction(() => {
+    const l = window.fireteam.voice.levels(1);
+    return l.radio > 0.9 && l.near < 0.1;
+  }, null, { timeout: 5_000 });
+  // Muted: silence on both.
+  await page.evaluate(() => window.fireteam.voice.mute(1, true));
+  await page.waitForFunction(() => {
+    const l = window.fireteam.voice.levels(1);
+    return l.radio < 0.05 && l.near < 0.05;
+  }, null, { timeout: 5_000 });
+  await expect(page.locator('#lobbyInfo')).toContainText('needs the online game'); // no voice links over ?net=local
+  expect(problems).toEqual([]);
+});
