@@ -11,12 +11,21 @@
 //
 // The game flow is a state machine (core/fsm.js):
 //
-//     title --Deploy--> playing <--Esc / Resume--> paused --Quit--> title
+//     title --Play solo--> playing <--Esc / Resume--> paused --Quit--> title
+//       │                     ▲
+//       ├─Host co-op──> lobby ┘ (Start; friends' browsers follow)
+//       └─Join co-op──> join ──> lobby
+//
+// Co-op: a ROOM (net/room.js) is the lobby; the mission plays through a host
+// or client session (net/host.js, net/client.js). Solo play needs none of it.
 //
 // Handy URL options (add them after the address, like ?map=compound&debug):
 //   ?map=NAME   which map: proving-ground (default) or compound
 //   ?debug      open the tuning panel straight away
 //   ?autostart  skip the title screen (the automated browser test uses this)
+//   ?join=CODE  open the "join" screen with this room code (invite links)
+//   ?net=local  co-op between tabs of this browser, without the internet
+//   ?nolock     don't capture the mouse (automated tests)
 
 import { initPhysics } from './world/physics.js';
 import { createLoop } from './core/loop.js';
@@ -28,6 +37,10 @@ import { createRenderer } from './render/renderer.js';
 import { createAudio } from './audio/audio.js';
 import { createMenus } from './ui/menus.js';
 import { loadMission } from './mission.js';
+import { hostRoom, joinRoom, cleanCode } from './net/room.js';
+import { createPeerNet, createLocalNet } from './net/transport.js';
+import { loadPeer } from './net/peer-loader.js';
+import { createLobbyUi } from './ui/lobby.js';
 import provingGround from '../levels/proving-ground.js';
 import compound from '../levels/compound.js';
 
@@ -75,7 +88,7 @@ async function boot() {
 
   const view = createRenderer(canvas, settings.values);
   const input = createInput({ target: window, doc: document, settings: settings.values });
-  input.requireLock = !params.has('autostart');
+  input.requireLock = !params.has('autostart') && !params.has('nolock');
 
   let mission = null; // the map being played (src/mission.js)
   const loop = createLoop({
@@ -91,17 +104,23 @@ async function boot() {
   const app = { view, audio, input, settings, loop, debugOpen: params.has('debug') };
 
   // ---------------------------------------------------------------- game flow
-  const flow = createStateMachine({
-    title: {
-      enter() {
-        input.enabled = false;
-        input.clear();
-        input.unlockPointer();
-        mission?.hud.show(false);
-        menus.only('title');
-        document.body.classList.remove('playing');
-      },
+  /** A menu screen over the 3D view (the game stops listening to the keyboard). */
+  const menuState = (screen, after = () => {}) => ({
+    enter() {
+      input.enabled = false;
+      input.clear();
+      input.unlockPointer();
+      mission?.hud.show(false);
+      menus.only(screen);
+      document.body.classList.remove('playing');
+      after();
     },
+  });
+  const el = (id) => document.getElementById(id);
+  const flow = createStateMachine({
+    title: menuState('title'),
+    join: menuState('join', () => el('joinCode').focus()),
+    lobby: menuState('lobby'),
     playing: {
       enter() {
         input.enabled = true;
@@ -114,6 +133,7 @@ async function boot() {
       enter() {
         input.enabled = false;
         input.clear();
+        setUpPauseMenu();
         menus.only('pause');
         document.body.classList.remove('playing');
       },
@@ -122,16 +142,21 @@ async function boot() {
 
   // ---------------------------------------------------------------- loading maps
   let busy = Promise.resolve();
-  /** Swap to map `id`: unload the current mission, build the new one. One at a time. */
-  function openMap(id) {
+  // Which menu screen goes with each state, to bring back after loading.
+  const SCREEN = { title: 'title', join: 'join', lobby: 'lobby', paused: 'pause' };
+  /**
+   * Swap to map `id`: unload the current mission, build the new one. One at a time.
+   * @param {object} [opts.room] co-op: play it with this room (otherwise solo)
+   */
+  function openMap(id, { room: withRoom = null } = {}) {
     busy = busy.then(async () => {
-      if (mission?.mapId === id) return;
+      if (mission?.mapId === id && (mission.room ?? null) === withRoom) return;
       menus.only('loading');
       menus.setLoading(0.72, `Loading ${LEVELS[id].name}…`);
       const old = mission;
       mission = null; // the loop stops touching it straight away
       old?.dispose();
-      mission = await loadMission({ app, mapId: id, def: LEVELS[id], onProgress: (k, text) => menus.setLoading(k, text) });
+      mission = await loadMission({ app, mapId: id, def: LEVELS[id], room: withRoom, onProgress: (k, text) => menus.setLoading(k, text) });
       try { localStorage.setItem('fireteam.map', id); } catch { /* not remembered, that's all */ }
       if (params.get('map') !== id) {
         params.set('map', id);
@@ -141,7 +166,8 @@ async function boot() {
       document.getElementById('btnRespawn').textContent = mission.hasEnemies ? 'Restart the fight' : 'Back to spawn';
       menus.setLoading(1, 'Ready');
       menus.hide('loading');
-      if (flow.is('title')) menus.show('title'); // back to where you picked the map
+      const screen = SCREEN[flow.state];
+      if (screen) menus.show(screen); // back to where you were
     });
     return busy;
   }
@@ -164,6 +190,118 @@ async function boot() {
     if (document.hidden && flow.is('playing')) flow.go('paused');
   });
 
+  // ---------------------------------------------------------------- co-op
+  let net = null;  // how we reach other players (made when first needed)
+  let room = null; // the lobby we're hosting or have joined
+  const local = params.get('net') === 'local';
+  const lobbyUi = createLobbyUi();
+
+  async function getNet() {
+    if (!net) net = local ? createLocalNet() : createPeerNet(await loadPeer());
+    return net;
+  }
+  function dropNet() {
+    if (local) return; // the tab-to-tab channel can stay
+    net?.close?.();
+    net = null;
+  }
+  /** A message on the title screen ("The host left the game."). */
+  function notice(text) {
+    el('notice').textContent = text ?? '';
+    el('notice').hidden = !text;
+  }
+  const inviteLink = () => `${location.origin}${location.pathname}?join=${room.code}${local ? '&net=local' : ''}`;
+
+  async function hostCoop() {
+    notice(null);
+    flow.go('lobby');
+    lobbyUi.render(null, { info: local ? 'Opening a room for other tabs…' : 'Opening a room on the matchmaking service…' });
+    try {
+      room = await hostRoom({
+        net: await getNet(), callsign: settings.values.callsign,
+        lobby: { map: mission?.mapId ?? pickMap(), difficulty: settings.values.difficulty },
+      });
+      watchRoom(room);
+      lobbyUi.render(room);
+    } catch (err) {
+      dropNet();
+      lobbyUi.render(null, { error: err.message });
+    }
+  }
+
+  async function joinCoop(text) {
+    const error = el('joinError');
+    error.hidden = true;
+    const code = cleanCode(text);
+    if (!code) {
+      error.textContent = 'Room codes are 5 letters, like KQXRT.';
+      error.hidden = false;
+      return;
+    }
+    el('btnJoinGo').disabled = true;
+    try {
+      const n = await getNet();
+      room = await joinRoom({ net: n, code, callsign: settings.values.callsign, peer: n.id ?? null });
+      watchRoom(room);
+      notice(null);
+      flow.go('lobby');
+      lobbyUi.render(room);
+      if (room.lobby.started) playCoop(); // a game in progress: straight in
+    } catch (err) {
+      dropNet();
+      error.textContent = err.message;
+      error.hidden = false;
+    } finally {
+      el('btnJoinGo').disabled = false;
+    }
+  }
+
+  function watchRoom(r) {
+    r.on('change', () => { if (room === r && flow.is('lobby')) lobbyUi.render(r); });
+    if (r.role !== 'client') return;
+    r.on('start', () => { if (room === r) playCoop(); });
+    r.on('stop', () => { if (room === r) backToLobby(); });
+    r.on('closed', ({ message }) => { if (room === r) leaveCoop(message); });
+  }
+
+  /** Into the game: the host builds it first, then tells everyone; a client follows. */
+  async function playCoop() {
+    const r = room;
+    await openMap(r.lobby.map, { room: r });
+    if (room !== r) return;
+    if (r.role === 'host') r.start();
+    play();
+  }
+
+  /** The mission ends but the room stays (the host chose "End game"). */
+  async function backToLobby() {
+    if (room?.role === 'host') room.stop();
+    flow.go('lobby');
+    await openMap(mission?.mapId ?? room.lobby.map); // a solo copy, as the backdrop
+    if (room) lobbyUi.render(room);
+  }
+
+  /** Leave the room altogether (or it closed under us), back to the title screen. */
+  async function leaveCoop(message = null) {
+    const r = room;
+    room = null;
+    r?.close();
+    dropNet();
+    flow.go('title');
+    notice(message);
+    if (mission?.room) await openMap(mission.mapId);
+  }
+
+  /** The pause menu's buttons depend on how you're playing. */
+  function setUpPauseMenu() {
+    const coop = !!mission?.room;
+    const hosting = mission?.room?.role === 'host';
+    el('btnRespawn').hidden = coop && !hosting;
+    el('btnMaps').hidden = coop;
+    el('btnQuit').textContent = !coop ? 'Quit to title' : hosting ? 'End game (back to lobby)' : 'Leave game';
+    el('pauseCoop').hidden = !coop;
+  }
+
   addEventListener('keydown', (e) => {
     if (e.code === 'Backquote') {
       e.preventDefault();
@@ -177,6 +315,7 @@ async function boot() {
     } else if (e.code === 'Escape' && !input.isLocked()) {
       if (menus.isOpen('settings')) menus.closeSettings();
       else if (flow.is('playing')) flow.go('paused');
+      else if (flow.is('join')) flow.go('title');
     }
   });
 
@@ -186,18 +325,44 @@ async function boot() {
   }
 
   const restartOrRespawn = () => (mission.hasEnemies ? mission.restart() : mission.respawn());
-  const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
-  on('btnDeploy', () => busy.then(play));
+  const on = (id, fn) => el(id).addEventListener('click', fn);
+  on('btnDeploy', () => { notice(null); busy.then(play); });
   on('btnResume', play);
   on('btnRespawn', () => { restartOrRespawn(); play(); });
   on('btnMaps', () => { mission.restart(); flow.go('title'); });
-  on('btnQuit', () => { mission.restart(); flow.go('title'); });
+  on('btnQuit', () => {
+    if (!mission.room) { mission.restart(); flow.go('title'); } else if (mission.room.role === 'host') backToLobby(); else leaveCoop();
+  });
+
+  // Co-op buttons.
+  on('btnHost', hostCoop);
+  on('btnJoin', () => { notice(null); flow.go('join'); });
+  on('btnJoinBack', () => flow.go('title'));
+  el('joinForm').addEventListener('submit', (e) => { e.preventDefault(); joinCoop(el('joinCode').value); });
+  on('btnStart', () => { if (room?.role === 'host') playCoop(); });
+  on('btnLeave', () => leaveCoop());
+  on('btnCopyLink', async () => {
+    if (!room) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink());
+      el('btnCopyLink').textContent = 'Copied!';
+    } catch {
+      el('btnCopyLink').textContent = inviteLink(); // can't copy: show it so it can be copied by hand
+    }
+    setTimeout(() => { el('btnCopyLink').textContent = 'Copy invite link'; }, 2500);
+  });
+  el('lobbyMap').addEventListener('change', (e) => room?.role === 'host' && room.setLobby({ map: e.target.value }));
+  el('lobbyDifficulty').addEventListener('change', (e) => room?.role === 'host' && room.setLobby({ difficulty: e.target.value }));
+  const callsign = el('callsign');
+  callsign.value = settings.values.callsign;
+  callsign.addEventListener('change', () => { settings.set('callsign', callsign.value); callsign.value = settings.values.callsign; });
   on('btnSettingsT', () => menus.openSettings());
   on('btnSettingsP', () => menus.openSettings());
   on('btnSettingsDone', () => menus.closeSettings());
   on('btnSettingsReset', () => { settings.reset(); menus.refresh(); });
 
   appEvents.on('settings:change', ({ key, value }) => {
+    if (key === 'callsign') callsign.value = value;
     if (key === 'quality') view.applyQuality(value);
     if (key === 'masterVolume' || key === 'sfxVolume') audio.applyVolumes();
     if (key === 'difficulty') mission?.setDifficulty(value);
@@ -208,15 +373,23 @@ async function boot() {
   await openMap(pickMap());
   loop.start();
   if (params.has('autostart')) flow.go('playing');
-  else flow.go('title');
+  else if (params.has('join')) {
+    // An invite link: the code is filled in, ready to press Join.
+    el('joinCode').value = params.get('join');
+    params.delete('join');
+    history.replaceState(null, '', `?${params}`);
+    flow.go('join');
+  } else flow.go('title');
 
   // A handle for poking at the game from the browser's developer console, e.g.
   //   fireteam.player.tuning.gravity = 5
   //   fireteam.enemies.options.freeze = true
   // Everything after `mission` belongs to the map being played, so it changes when the map does.
   window.fireteam = {
-    input, loop, view, flow, settings, audio, app, openMap, ready: true,
+    input, loop, view, flow, settings, audio, app, openMap, hostCoop, joinCoop, ready: true,
     get mission() { return mission; },
+    get room() { return room; },
+    get session() { return mission?.session; },
     get map() { return mission?.mapId; },
     get events() { return mission?.events; },
     get player() { return mission?.player; },

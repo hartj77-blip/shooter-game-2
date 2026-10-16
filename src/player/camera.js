@@ -61,8 +61,9 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
     trauma: 0,      // 0..1, how shaken the camera is; fades over time
     flinch: 0,      // sideways jolt when you're hit (radians)
     flinchVel: 0,
-    down: 0,        // 0..1: you've gone down, the view sinks and tips over (main.js sets the target)
+    down: 0,        // 0..1: you've gone down, the view sinks and tips over (mission.js sets the target)
     downTarget: 0,
+    offset: { x: 0, y: 0, z: 0 }, // co-op: how far a correction just moved you; eased out by mission.js
     time: 0,
     update,
     snap,
@@ -127,9 +128,9 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
 
     // Blend between the last two ticks so motion looks smooth between updates.
     feet.set(
-      p.x + (s.pos.x - p.x) * alpha,
-      p.y + (s.pos.y - p.y) * alpha,
-      p.z + (s.pos.z - p.z) * alpha,
+      p.x + (s.pos.x - p.x) * alpha + rig.offset.x,
+      p.y + (s.pos.y - p.y) * alpha + rig.offset.y,
+      p.z + (s.pos.z - p.z) * alpha + rig.offset.z,
     );
 
     // Eye height eases towards crouching or standing instead of snapping.

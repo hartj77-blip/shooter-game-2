@@ -8,6 +8,11 @@
 //   - everything it draws, under one group in the scene (`root`)
 //   - the camera rig, the gun in your hands, game sounds, HUD and tuning panel
 //
+// Three ways to play one: solo (a host session for one), hosting co-op (the
+// same, plus friends' browsers connected through the room, net/room.js), or
+// joining (a client session, net/client.js, that predicts you and shows the
+// host's world).
+//
 // dispose() undoes all of it: takes the group out of the scene, frees its
 // graphics memory and the physics engine's memory, empties the HUD and closes
 // the tuning panel. Like striking the set between two plays: the theatre
@@ -21,6 +26,8 @@ import { createDebugPanel } from './core/debug.js';
 import { createSim } from './game/sim.js';
 import { createRecords } from './game/course.js';
 import { createHost } from './net/host.js';
+import { createClient } from './net/client.js';
+import { cleanCallsign } from './net/room.js';
 import { createCameraRig } from './player/camera.js';
 import { createMaterials } from './render/materials.js';
 import { buildLevelView } from './render/level-view.js';
@@ -43,27 +50,44 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => res
  * @param {object} opts.app     the app shell: { view, audio, input, settings, loop, debugOpen }
  * @param {string} opts.mapId   e.g. 'compound'
  * @param {object} opts.def     the level definition (levels/*.js)
+ * @param {object} [opts.room]  co-op: the room (net/room.js) we're hosting or have joined
  * @param {(fraction:number, text:string) => void} [opts.onProgress] for the loading bar
  */
-export async function loadMission({ app, mapId, def, onProgress = () => {} }) {
+export async function loadMission({ app, mapId, def, room = null, onProgress = () => {} }) {
   const { view, audio, input, settings, loop } = app;
-  onProgress(0.75, def.nav ? `Building ${def.name} and mapping it for the enemies…` : `Building ${def.name}…`);
+  const joining = room?.role === 'client';
+  const mapping = def.nav && !joining; // only the host's enemies need the map of where they can walk
+  onProgress(0.75, mapping ? `Building ${def.name} and mapping it for the enemies…` : `Building ${def.name}…`);
   await nextFrame(); // let the loading bar show before the (slow-ish) build
 
-  // ---------------------------------------------------------------- the simulation
+  // ---------------------------------------------------------------- the session
   const events = createEvents();
-  const sim = createSim({
-    def, id: mapId, events,
-    seed: (Math.random() * 2 ** 31) | 0,
-    difficulty: settings.values.difficulty,
-    records: createRecords(), // best times, saved in this browser
-  });
-  const session = createHost({ sim, me: 0 });
+  const offs = []; // room listeners, removed when the mission ends
+  let session;
+  if (joining) {
+    session = createClient({ def, me: room.me, link: room.link, roster: room.roster, events });
+  } else {
+    const sim = createSim({
+      def, id: mapId, events, coop: !!room,
+      seed: (Math.random() * 2 ** 31) | 0,
+      difficulty: room?.lobby.difficulty ?? settings.values.difficulty,
+      records: createRecords(), // best times, saved in this browser
+      players: [{ owner: 0, callsign: cleanCallsign(settings.values.callsign, 'Player 1') }],
+    });
+    session = createHost({ sim, me: 0, coop: !!room });
+    if (room) {
+      // A friend's browser has built the map: add their soldier. A friend left: remove it.
+      offs.push(room.on('loaded', (m) => session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign })));
+      offs.push(room.on('leave', (m) => session.removeClient(m.slot)));
+      for (const m of room.members.values()) if (m.link && m.loaded) session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign });
+    }
+  }
+  const sim = session.sim ?? null; // only the host has the real simulation
   const me = session.me;
   const { soldier, health } = session.local;
   const player = soldier.body;
   const { world, registry } = session;
-  const hasEnemies = !!sim.enemies;
+  const hasEnemies = session.enemies.list.length > 0;
 
   // ---------------------------------------------------------------- what you see and hear
   const root = new THREE.Group();
@@ -90,7 +114,7 @@ export async function loadMission({ app, mapId, def, onProgress = () => {} }) {
     scene: root, source: session.teammates, effects, ragdolls, world, registry, camera, events,
     colors: SOLDIER_COLORS.friend, icons: false, downEvent: 'player:dead',
   });
-  const aiDebug = hasEnemies ? createAiDebug(root, { enemies: sim.enemies, nav: sim.nav, cover: sim.cover, noise: sim.noise }) : null;
+  const aiDebug = sim?.enemies ? createAiDebug(root, { enemies: sim.enemies, nav: sim.nav, cover: sim.cover, noise: sim.noise }) : null;
   const sounds = connectGameSounds({
     audio, events, soldier, cameraRig: rig, world, registry, health, owner: me,
     others: [session.enemies, session.teammates],
@@ -132,9 +156,15 @@ export async function loadMission({ app, mapId, def, onProgress = () => {} }) {
 
   const debug = createDebugPanel({
     scene: root, world, player, rig, loop,
-    arsenal: soldier.arsenal, effects, hud, enemies: sim.enemies, aiDebug, health,
+    arsenal: soldier.arsenal, effects, hud, enemies: sim?.enemies ?? null, aiDebug, health,
     onRespawn: hasEnemies ? restart : respawn,
     visible: app.debugOpen,
+  });
+
+  // A co-op game restarting (the host pressed it): rebuild the soldiers on screen.
+  events.on('mission:restart', () => {
+    enemiesView?.reset();
+    teammatesView.reset();
   });
 
   /** One fixed step of the game. */
@@ -142,14 +172,17 @@ export async function loadMission({ app, mapId, def, onProgress = () => {} }) {
     // Paused: a solo game stops, a co-op game carries on without you.
     if (!playing && session.pausable) return;
     const cmd = playing ? input.sample() : idleCommand(input.yaw, input.pitch);
-    // Down in a solo fight: R starts again.
-    if (health.state.down && cmd.reload && health.state.downTime > 0.8 && session.role === 'host') {
+    // Down in a solo fight (or the whole squad down, if you're the co-op host): R starts again.
+    const allDown = session.pausable || session.encounter?.state === 'down';
+    if (health.state.down && cmd.reload && health.state.downTime > 0.8 && session.role === 'host' && allDown) {
       restart();
       return;
     }
     const out = session.step(dt, cmd);
     input.addLook(out.look.yaw, out.look.pitch); // recoil moves your aim
     sounds.tick();
+    // A co-op client runs a touch faster or slower to keep the host's command cushion right.
+    if (joining) loop.timeScale = session.rate;
   }
 
   /** Draw a frame. `alpha` is how far we are between the last two ticks. */
@@ -158,6 +191,13 @@ export async function loadMission({ app, mapId, def, onProgress = () => {} }) {
     const ads = soldier.arsenal.state.ads;
     input.lookScale = 1 + ((settings.values.adsSensitivity / aim().zoom) - 1) * ads;
     rig.downTarget = health.state.down ? 1 : 0;
+    if (session.correction) {
+      // The host corrected our prediction: glide the camera over the gap rather than jump.
+      const c = session.correction;
+      const k = Math.exp(-12 * dt);
+      c.x *= k; c.y *= k; c.z *= k;
+      rig.offset = c;
+    }
     rig.update(alpha, dt);
     view.followWithShadows(view.camera.position);
     viewmodel.update(dt);
@@ -179,6 +219,8 @@ export async function loadMission({ app, mapId, def, onProgress = () => {} }) {
     if (disposed) return;
     disposed = true;
     app.debugOpen = debug.visible; // the next mission's panel opens the same way
+    for (const off of offs) off();
+    if (joining) loop.timeScale = 1;
     hud.dispose();
     debug.destroy();
     ragdolls?.dispose();
@@ -188,17 +230,19 @@ export async function loadMission({ app, mapId, def, onProgress = () => {} }) {
     disposeTree(viewmodel.scene);
   }
 
+  if (joining) room.loaded(); // tell the host we're ready for our soldier
+
   return {
-    mapId, def, events, session, sim, world, registry,
+    mapId, def, room, events, session, sim, world, registry,
     soldier, player, health, rig, viewmodel, effects, hud, debug,
     enemiesView, teammatesView, ragdolls, aiDebug, sounds, root,
     hasEnemies,
-    get enemies() { return sim.enemies; },
+    get enemies() { return sim?.enemies ?? null; },
     get targets() { return session.targets; },
     get course() { return session.course; },
     get encounter() { return session.encounter; },
-    nav: sim.nav, cover: sim.cover, noise: sim.noise,
+    nav: sim?.nav ?? null, cover: sim?.cover ?? null, noise: sim?.noise ?? null,
     update, render, respawn, restart, dispose,
-    setDifficulty(value) { sim.enemies?.setDifficulty(value); },
+    setDifficulty(value) { if (!room) sim?.enemies?.setDifficulty(value); }, // co-op: the host's lobby choice
   };
 }

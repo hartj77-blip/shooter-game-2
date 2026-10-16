@@ -4,6 +4,9 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: 'tests/smoke',
   timeout: 60_000,
+  // One test at a time: each draws 3D in software (the co-op test draws two
+  // tabs at once), and sharing the CPU between tests would make them crawl.
+  workers: 1,
   outputDir: 'test-results',
   use: {
     baseURL: 'http://127.0.0.1:4173',
