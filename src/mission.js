@@ -32,6 +32,7 @@ import { createCameraRig } from './player/camera.js';
 import { createMaterials } from './render/materials.js';
 import { buildLevelView } from './render/level-view.js';
 import { createViewmodel } from './render/viewmodel.js';
+import { moodFor } from './render/moods.js';
 import { createEffects } from './render/effects.js';
 import { createTargetsView } from './render/targets-view.js';
 import { createSoldiersView } from './render/soldiers-view.js';
@@ -99,14 +100,14 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const root = new THREE.Group();
   root.name = `mission:${mapId}`;
   view.scene.add(root);
-  view.setSun(def.sun);
+  view.setMood(moodFor(def), def.sun);
   root.add(buildLevelView(session.level.expanded, createMaterials(view.renderer)));
 
   input.setLook(player.state.yaw);
   const aim = () => ({ amount: soldier.arsenal.state.ads, zoom: soldier.arsenal.current.def.ads.zoom });
   const rig = createCameraRig({ camera: view.camera, player, input, settings: settings.values, aim, events, owner: me });
   const viewmodel = createViewmodel({
-    soldier, input, settings: settings.values, cameraRig: rig, worldCamera: view.camera, sunDir: view.sunDir, events, owner: me,
+    soldier, input, settings: settings.values, cameraRig: rig, worldCamera: view.camera, sunDir: view.sunDir, mood: () => view.mood, events, owner: me,
   });
   const effects = createEffects(root);
   const targetsView = createTargetsView(root, session.targets, session.level.expanded.racks);

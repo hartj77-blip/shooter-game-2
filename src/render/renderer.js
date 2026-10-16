@@ -4,12 +4,12 @@
 // needs: a camera, a sky, fog, a sun that casts shadows, soft light from the
 // sky, and "tone mapping" (squeezing very bright and very dark light into the
 // range a screen can show, like a camera's auto-exposure).
+//
+// The colours and strengths of all that light come from the map's MOOD
+// (render/moods.js): midday, haze, golden hour, night. setMood() applies one.
 
 import * as THREE from 'three';
-
-const SKY_TOP = new THREE.Color('#5d86b8');
-const SKY_HORIZON = new THREE.Color('#c9d3d2');
-const GROUND_BOUNCE = new THREE.Color('#5a5544');
+import { MOODS, DEFAULT_MOOD } from './moods.js';
 
 // Graphics quality presets. "Pixel ratio" is how many real screen pixels each
 // CSS pixel gets: 2 is sharp on high-DPI screens but four times the work of 1.
@@ -28,7 +28,7 @@ export function createRenderer(canvas, settings) {
   renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY_HORIZON, 70, 260);
+  scene.fog = new THREE.Fog('#c9d3d2', 70, 260);
 
   const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 500);
   scene.add(camera); // so things attached to the camera (later: your gun) get drawn
@@ -40,7 +40,7 @@ export function createRenderer(canvas, settings) {
       side: THREE.BackSide,
       depthWrite: false,
       fog: false,
-      uniforms: { top: { value: SKY_TOP }, horizon: { value: SKY_HORIZON } },
+      uniforms: { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() } },
       vertexShader: /* glsl */`
         varying vec3 vDir;
         void main() {
@@ -62,8 +62,9 @@ export function createRenderer(canvas, settings) {
   sky.renderOrder = -1;
   scene.add(sky);
 
-  // Soft light from the whole sky (blue-ish from above, warm bounce from the ground).
-  scene.add(new THREE.HemisphereLight(SKY_TOP.clone().lerp(SKY_HORIZON, 0.4), GROUND_BOUNCE, 2.4));
+  // Soft light from the whole sky (from above) and bounced off the ground (from below).
+  const hemi = new THREE.HemisphereLight('#9fb8d6', '#5a5544', 2.4);
+  scene.add(hemi);
 
   // The sun: one strong light from far away, casting shadows.
   const sun = new THREE.DirectionalLight('#fff1d6', 2.6);
@@ -83,6 +84,29 @@ export function createRenderer(canvas, settings) {
       Math.cos(elevation) * Math.cos(azimuth),
     );
   }
+
+  /**
+   * Light the world for a map: its mood (render/moods.js) and which way its sun is.
+   * @param {object} mood   a MOODS entry (or moodFor(level))
+   * @param {{azimuth:number, elevation:number}} [sunAngles] the level's `sun`
+   */
+  let mood = MOODS[DEFAULT_MOOD];
+  function setMood(m, sunAngles = { azimuth: 0.4, elevation: 0.9 }) {
+    mood = m;
+    sky.material.uniforms.top.value.set(m.skyTop);
+    sky.material.uniforms.horizon.value.set(m.skyHorizon);
+    scene.fog.color.set(m.fog);
+    scene.fog.near = m.fogNear;
+    scene.fog.far = m.fogFar;
+    sun.color.set(m.sun);
+    sun.intensity = m.sunIntensity;
+    hemi.color.set(m.hemiSky);
+    hemi.groundColor.set(m.hemiGround);
+    hemi.intensity = m.hemiIntensity;
+    renderer.toneMappingExposure = m.exposure;
+    setSun({ azimuth: sunAngles.azimuth, elevation: m.elevation ?? sunAngles.elevation });
+  }
+  setMood(mood);
 
   // The shadow map only covers SHADOW_RANGE around you, so it follows you around.
   // Moving it in whole shadow-pixel steps stops shadow edges from shimmering.
@@ -140,6 +164,9 @@ export function createRenderer(canvas, settings) {
     camera,
     sunDir,
     setSun,
+    setMood,
+    /** The mood being shown (the gun in your hands is lit to match). */
+    get mood() { return mood; },
     followWithShadows,
     applyQuality,
     render,

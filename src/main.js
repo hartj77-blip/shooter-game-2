@@ -35,6 +35,7 @@ import { createStateMachine } from './core/fsm.js';
 import { events as appEvents } from './core/events.js';
 import { createRenderer } from './render/renderer.js';
 import { createAudio } from './audio/audio.js';
+import { createAssets } from './render/assets.js';
 import { createMenus } from './ui/menus.js';
 import { loadMission } from './mission.js';
 import { hostRoom, joinRoom, cleanCode } from './net/room.js';
@@ -88,8 +89,16 @@ async function boot() {
   const audio = createAudio({ settings: settings.values });
   menus.setLoading(0.1, 'Loading the physics engine…');
   await initPhysics();
-  menus.setLoading(0.4, 'Loading sounds…');
-  await Promise.all([loadFonts(), audio.preload((k) => menus.setLoading(0.4 + k * 0.3, 'Loading sounds…'))]);
+  // Sounds, models and textures download together; the bar shows the slower of the two.
+  menus.setLoading(0.4, 'Loading sounds and models…');
+  const assets = createAssets();
+  const loaded = { sound: 0, art: 0 };
+  const progress = () => menus.setLoading(0.4 + Math.min(loaded.sound, loaded.art) * 0.3, 'Loading sounds and models…');
+  await Promise.all([
+    loadFonts(),
+    audio.preload((k) => { loaded.sound = k; progress(); }),
+    assets.preload((k) => { loaded.art = k; progress(); }),
+  ]);
 
   const view = createRenderer(canvas, settings.values);
   const input = createInput({ target: window, doc: document, settings: settings.values });
@@ -113,7 +122,7 @@ async function boot() {
       }
     },
   });
-  const app = { view, audio, input, settings, loop, debugOpen: params.has('debug') };
+  const app = { view, audio, assets, input, settings, loop, debugOpen: params.has('debug') };
 
   // ---------------------------------------------------------------- game flow
   /** A menu screen over the 3D view (the game stops listening to the keyboard). */
@@ -469,7 +478,7 @@ async function boot() {
   //   fireteam.enemies.options.freeze = true
   // Everything after `mission` belongs to the map being played, so it changes when the map does.
   window.fireteam = {
-    input, loop, view, flow, settings, audio, app, openMap, hostCoop, joinCoop, ready: true,
+    input, loop, view, flow, settings, audio, assets, app, openMap, hostCoop, joinCoop, ready: true,
     get mission() { return mission; },
     get room() { return room; },
     get voice() { return voice; },
