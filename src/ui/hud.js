@@ -27,8 +27,13 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
  * @param {{list: Array}} [opts.threats] the enemies (each with a `view`), for "someone's noticing you" arrows
  * @param {object} [opts.health]     player/health.js
  * @param {number} [opts.owner]      your player slot: only your hits, hurts and kills show
+ * @param {boolean} [opts.coop]      a co-op game: the squad HUD (ui/squad-hud.js) shows who's down
+ * @param {Function} [opts.nameOf]   owner -> callsign, for the results card
  */
-export function createHud({ soldier, settings, loop, input, camera, course, encounter = null, threats = null, health = null, events, owner = 0 }) {
+export function createHud({
+  soldier, settings, loop, input, camera, course, encounter = null, threats = null, health = null, events, owner = 0,
+  coop = false, nameOf = (o) => `Player ${o + 1}`,
+}) {
   const player = soldier.body;
   const arsenal = soldier.arsenal;
   const el = (id) => document.getElementById(id);
@@ -210,6 +215,7 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
     downBox.hidden = true;
   });
   events.on('encounter:down', (e) => {
+    if (coop) return; // the squad HUD says "Mission failed"
     downInfo.textContent = `${e.kills} of ${e.total} hostiles down · ${formatTime(e.time)}`;
     downBox.hidden = false;
   });
@@ -224,6 +230,13 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
       ['Accuracy', `${Math.round(r.accuracy * 100)}% (${r.hits}/${r.shots})`],
       ['Damage taken', String(r.damageTaken)],
     ];
+    // Co-op: everyone's own numbers too.
+    if (r.players?.length > 1) {
+      for (const p of [...r.players].sort((a, b) => a.owner - b.owner)) {
+        const extra = [p.downs ? `${p.downs} down` : '', p.revives ? `${p.revives} revive${p.revives > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ');
+        rows.push([nameOf(p.owner), `${p.kills} kill${p.kills === 1 ? '' : 's'} · ${Math.round(p.accuracy * 100)}%${extra ? ` · ${extra}` : ''}`]);
+      }
+    }
     resultsList.replaceChildren(...rows.flatMap(([k, v]) => {
       const dt = document.createElement('dt');
       dt.textContent = k;
@@ -343,6 +356,9 @@ export function createHud({ soldier, settings, loop, input, camera, course, enco
   return {
     options,
     show(on) { root.hidden = !on; },
+    /** A line in the kill feed (top right). `html` must already be escaped. */
+    feedLine(html, cls = '') { line(feed, html, cls); },
+    esc,
 
     /** Remove everything this HUD added to the page (the mission is ending). */
     dispose() {
