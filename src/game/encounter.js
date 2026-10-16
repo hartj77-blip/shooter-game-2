@@ -18,7 +18,8 @@ const inside = (box, p) =>
 
 /**
  * @param {object} opts
- * @param {string} opts.id         record name (e.g. 'compound')
+ * @param {string|Function} opts.id record name (e.g. 'compound'), or a function giving it (co-op:
+ *                                 'compound-3p', worked out when the fight ends, since friends can join mid-game)
  * @param {object} [opts.start]    trigger box { min, max }: the timer starts when you leave it (no box: at once)
  * @param {object} opts.enemies    ai/enemies.js
  * @param {object} [opts.health]   player/health.js, for solo play
@@ -26,11 +27,12 @@ const inside = (box, p) =>
  * @param {object} opts.records    createRecords() from game/course.js
  * @param {Function} [opts.emit]
  */
-export function createEncounter({ id, start, enemies, health = null, squad = null, records, emit = () => {} }) {
+export function createEncounter({ id: name, start, enemies, health = null, squad = null, records, emit = () => {} }) {
+  const recordName = () => (typeof name === 'function' ? name() : name);
   const healths = squad ?? (() => [health]);
   const standing = (h) => !h.state.down && !h.state.bleeding && !h.state.dead;
   const enc = {
-    id,
+    get id() { return recordName(); },
     state: 'ready',
     time: 0,
     shots: 0,
@@ -57,7 +59,7 @@ export function createEncounter({ id, start, enemies, health = null, squad = nul
     Object.assign(enc, { state: 'ready', time: 0, shots: 0, hits: 0, headshots: 0, kills: 0, result: null });
     enc.players.clear();
     enc.total = enemies.list.length;
-    emit('encounter:ready', { id, best: records.best(id), total: enc.total });
+    emit('encounter:ready', { id: enc.id, best: records.best(enc.id), total: enc.total });
   }
 
   /** @param {{x,y,z}|Array<{x,y,z}>} feet every player's feet position */
@@ -66,7 +68,7 @@ export function createEncounter({ id, start, enemies, health = null, squad = nul
     if (enc.state === 'ready') {
       if (!start || all.some((f) => !inside(start, f))) {
         enc.state = 'running';
-        emit('encounter:start', { id, total: enc.total });
+        emit('encounter:start', { id: enc.id, total: enc.total });
       }
       return;
     }
@@ -75,10 +77,11 @@ export function createEncounter({ id, start, enemies, health = null, squad = nul
     const team = healths();
     if (team.length && !team.some(standing)) {
       enc.state = 'down';
-      emit('encounter:down', { id, time: enc.time, kills: enc.kills, total: enc.total });
+      emit('encounter:down', { id: enc.id, time: enc.time, kills: enc.kills, total: enc.total });
       return;
     }
     if (enemies.alive.length === 0) {
+      const id = enc.id;
       const previous = records.best(id);
       const record = records.submit(id, enc.time);
       enc.result = {

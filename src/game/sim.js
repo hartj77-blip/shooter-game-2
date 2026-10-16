@@ -70,10 +70,11 @@ export function playerView(p) {
  * @param {object} [opts.records]   best times (game/course.js)
  * @param {boolean} [opts.infiniteAmmo] spare magazines never run out
  * @param {Function} [opts.onMapping] called before the (slow-ish) nav grid is built, e.g. to update a loading bar
+ * @param {boolean} [opts.coop] a co-op game (no solo-only extras like the kill house timer)
  */
 export function createSim({
   def, id = 'map', players = [{ owner: 0 }], seed = 1, difficulty = 'regular', events = createEvents(),
-  records = createRecords(null), infiniteAmmo = true, onMapping = null,
+  records = createRecords(null), infiniteAmmo = true, onMapping = null, coop = false,
 }) {
   const world = createPhysicsWorld();
   const registry = createSurfaceRegistry();
@@ -141,14 +142,14 @@ export function createSim({
 
   const encounter = enemies
     ? createEncounter({
-      id: team.size > 1 ? `${id}-${team.size}p` : id, // co-op best times are kept per squad size
+      id: coop ? () => `${id}-${team.size}p` : id, // co-op best times are kept per squad size
       start: trigger('compound:start'),
       enemies, records, emit: events.emit,
       squad: () => [...team.values()].map((p) => p.health),
     })
     : null;
   // The kill house is a solo course.
-  const course = trigger('killhouse:start') && team.size === 1
+  const course = trigger('killhouse:start') && team.size === 1 && !coop
     ? createCourse({ id: 'killhouse', start: trigger('killhouse:start'), finish: trigger('killhouse:finish'), targets, records, emit: events.emit })
     : null;
   world.step();

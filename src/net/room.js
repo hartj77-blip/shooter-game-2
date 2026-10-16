@@ -249,6 +249,7 @@ export async function joinRoom({ net, code, callsign, peer = null }) {
       }
       if (reason !== 'you') events.emit('closed', { reason, message: BYE[reason] ?? BYE.left });
     });
-    link.send({ t: 'hello', callsign: cleanCallsign(callsign), version: PROTOCOL_VERSION, peer });
+    // (An empty callsign is fine: the host calls you "Player 2" and so on.)
+    link.send({ t: 'hello', callsign: cleanText(callsign, 16), version: PROTOCOL_VERSION, peer });
   });
 }
