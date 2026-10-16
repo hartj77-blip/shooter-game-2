@@ -47,6 +47,10 @@ import { createObjectiveHud } from './ui/objective-hud.js';
 import { createMarkers, createRing } from './ui/markers.js';
 import { createPropsView } from './render/props-view.js';
 import { createHeliView } from './render/heli-view.js';
+import { GAMEPAD } from './core/gamepad.js';
+import { RAPIER } from './world/physics.js';
+import { SIGHT } from './world/groups.js';
+import { WEAPONS } from './weapons/weapons-data.js';
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
@@ -152,6 +156,24 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   events.on('bullet:impact', (hit) => effects.impact(hit));
   events.on('explosion', (e) => effects.explosion(e.pos, e));
 
+  // A controller shakes with your shots, when you're hit, and when something blows up near you.
+  events.on('weapon:fire', (e) => {
+    if (e.owner !== me) return;
+    const big = WEAPONS[e.weapon]?.pump || e.weapon === 'dmr';
+    input.rumble(big ? 0.6 : 0.12, big ? 0.8 : 0.35, big ? 130 : 60);
+  });
+  events.on('player:hurt', (e) => {
+    if (e.owner !== me || e.amount <= 0) return;
+    const k = Math.min(1, e.amount / 30);
+    input.rumble(0.2 + 0.5 * k, 0.3 * k, 150);
+  });
+  events.on('player:down', (e) => { if (e.owner === me) input.rumble(0.8, 0.8, 400); });
+  events.on('explosion', (e) => {
+    const p = player.state.pos;
+    const k = Math.max(0, 1 - Math.hypot(e.pos.x - p.x, e.pos.y - p.y, e.pos.z - p.z) / 30);
+    if (k > 0) input.rumble(k, k * 0.6, 350);
+  });
+
   const nameOf = (owner) => (owner === me ? session.local.callsign : session.teammates.list.find((m) => m.owner === owner)?.view.callsign) ?? `Player ${owner + 1}`;
   const hud = createHud({
     soldier, settings: settings.values, loop, input, camera, events, owner: me, health,
@@ -162,8 +184,8 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const markers = createMarkers(document.getElementById('marks'), camera);
   const ring = createRing({ ring: document.getElementById('ring'), fill: document.getElementById('ringFill'), label: document.getElementById('ringText') });
   const hosting = !joining;
-  const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting, markers, ring, voice: () => app.voice }) : null;
-  const objectiveHud = session.operation ? createObjectiveHud({ session, events, hud, markers, ring, hosting, nameOf, audio }) : null;
+  const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting, markers, ring, voice: () => app.voice, glyph: input.glyph }) : null;
+  const objectiveHud = session.operation ? createObjectiveHud({ session, events, hud, markers, ring, hosting, nameOf, audio, glyph: input.glyph }) : null;
 
   // SPECTATING: once you're out (co-op), the camera rides over a teammate's
   // shoulder. Click to switch to someone else.
@@ -252,6 +274,32 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     if (joining) loop.timeScale = session.rate;
   }
 
+  // CONTROLLER AIM ASSIST: while your sights are over an enemy you can see,
+  // the right stick turns you more slowly, so it's easier to stay on target.
+  // It never moves your aim by itself. Off for the mouse.
+  const assistRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+  const sights = new THREE.Vector3();
+  function aimAssist() {
+    if (input.device !== 'pad' || !settings.values.aimAssist || !hasEnemies) return 1;
+    camera.getWorldDirection(sights);
+    const eye = camera.position;
+    let best = null, bestK = 1;
+    for (const e of session.enemies.list) {
+      const v = e.view;
+      if (v.dead || v.down) continue;
+      const tx = v.pos.x - eye.x, ty = v.pos.y + (v.crouched ? 0.9 : 1.25) - eye.y, tz = v.pos.z - eye.z;
+      const d = Math.hypot(tx, ty, tz);
+      if (d > 70 || d < 0.5) continue;
+      const angle = Math.acos(Math.min(1, (tx * sights.x + ty * sights.y + tz * sights.z) / d));
+      const reach = Math.max(Math.atan(0.55 / d), (1.2 * Math.PI) / 180); // about a body's width
+      if (angle / reach < bestK) { bestK = angle / reach; best = { tx: tx / d, ty: ty / d, tz: tz / d, d }; }
+    }
+    if (!best) return 1;
+    assistRay.origin = { x: eye.x, y: eye.y, z: eye.z };
+    assistRay.dir = { x: best.tx, y: best.ty, z: best.tz };
+    return world.castRay(assistRay, best.d - 0.3, true, undefined, SIGHT) ? 1 : GAMEPAD.assistSlow;
+  }
+
   /** Draw a frame. `alpha` is how far we are between the last two ticks. */
   function render(alpha, dt, playing) {
     // While aiming, slow the mouse down to match the zoom.
@@ -265,6 +313,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
       c.x *= k; c.y *= k; c.z *= k;
       rig.offset = c;
     }
+    input.assist = playing ? aimAssist() : 1;
     const spectating = health.state.dead && spectate(alpha, dt);
     if (!spectating) rig.update(alpha, dt);
     view.followWithShadows(view.camera.position);

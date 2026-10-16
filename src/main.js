@@ -110,6 +110,8 @@ async function boot() {
       mission?.update(dt, flow.is('playing'));
     },
     render(alpha, dt) {
+      input.pollPad(dt); // a controller is read once a frame (core/gamepad.js)
+      document.body.classList.toggle('pad', input.device === 'pad'); // menus show the focus clearly
       if (mission) {
         mission.render(alpha, dt, flow.is('playing'));
         audio.update(view.camera);
@@ -405,6 +407,62 @@ async function boot() {
       else if (flow.is('join')) flow.go('title');
     }
   });
+
+  // ---------------------------------------------------------------- controllers in menus
+  // The D-pad (or left stick) moves between the buttons on screen, A presses,
+  // B goes back, Start pauses and resumes. Focus moves to the nearest control
+  // in that direction, judged by where they are on screen.
+  const focusables = () => [...document.querySelectorAll('.screen:not([hidden]) :is(button, select, input)')]
+    .filter((e) => !e.disabled && !e.hidden && e.offsetParent !== null);
+  function moveFocus(dir) {
+    const list = focusables();
+    if (!list.length) return;
+    const cur = document.activeElement;
+    if (!list.includes(cur)) { list[0].focus(); return; }
+    // Sliders and choices: left and right change the value.
+    if ((dir === 'left' || dir === 'right') && (cur.type === 'range' || cur.tagName === 'SELECT')) {
+      if (cur.type === 'range') { if (dir === 'right') cur.stepUp(); else cur.stepDown(); } else {
+        cur.selectedIndex = Math.max(0, Math.min(cur.options.length - 1, cur.selectedIndex + (dir === 'right' ? 1 : -1)));
+      }
+      cur.dispatchEvent(new Event('input', { bubbles: true }));
+      cur.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+    const centre = (e) => { const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const from = centre(cur);
+    const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+    let best = null, bestScore = Infinity;
+    for (const e of list) {
+      if (e === cur) continue;
+      const c = centre(e);
+      const along = (c.x - from.x) * dx + (c.y - from.y) * dy;
+      if (along <= 4) continue; // not in that direction
+      const across = Math.abs((c.x - from.x) * dy) + Math.abs((c.y - from.y) * dx);
+      const score = along + across * 2;
+      if (score < bestScore) { bestScore = score; best = e; }
+    }
+    (best ?? cur).focus();
+    (best ?? cur).scrollIntoView?.({ block: 'nearest' });
+  }
+  input.onPadMenu = (action) => {
+    if (action === 'start') {
+      if (flow.is('playing')) flow.go('paused');
+      else if (flow.is('paused')) play();
+      else if (flow.is('title')) el('btnDeploy').click();
+      return;
+    }
+    if (flow.is('playing')) return;
+    if (action === 'accept') {
+      const cur = document.activeElement;
+      if (focusables().includes(cur)) {
+        if (cur.type === 'checkbox') { cur.checked = !cur.checked; cur.dispatchEvent(new Event('change', { bubbles: true })); } else cur.click();
+      } else moveFocus('down');
+    } else if (action === 'back') {
+      if (menus.isOpen('settings')) menus.closeSettings();
+      else if (flow.is('paused')) play();
+      else if (flow.is('join')) flow.go('title');
+    } else moveFocus(action);
+  };
 
   // The map picker on the title screen.
   for (const button of document.querySelectorAll('.map')) {

@@ -38,13 +38,52 @@ test('the game loads, runs without errors, and the player can walk', async ({ pa
   expect(problems).toEqual([]);
 });
 
+test('a controller: the menus, walking, turning and pausing', async ({ page }) => {
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  // A pretend controller the test can push around (browsers can't fake a real one).
+  await page.addInitScript(() => {
+    const pad = { id: 'test pad', index: 0, connected: true, mapping: 'standard', timestamp: 0,
+      axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })) };
+    window.testPad = {
+      press(i, on) { pad.buttons[i] = { pressed: on, touched: on, value: on ? 1 : 0 }; pad.timestamp++; },
+      axes(a) { pad.axes = a; pad.timestamp++; },
+    };
+    navigator.getGamepads = () => [pad, null, null, null];
+  });
+  await page.goto('/?nolock');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.flow.is('title'), null, { timeout: 30_000 });
+  // Start (on the title screen) plays.
+  await page.evaluate(() => window.testPad.press(9, true));
+  await page.waitForFunction(() => window.fireteam.flow.is('playing'), null, { timeout: 15_000 });
+  await page.evaluate(() => window.testPad.press(9, false));
+  await page.waitForFunction(() => window.fireteam.loop.tick > 30, null, { timeout: 30_000 });
+  const start = await page.evaluate(() => ({ ...window.fireteam.player.state.pos, yaw: window.fireteam.input.yaw }));
+  await page.evaluate(() => window.testPad.axes([0, -1, 0.7, 0])); // forward, and turn right
+  const tick = await page.evaluate(() => window.fireteam.loop.tick);
+  await page.waitForFunction((t) => window.fireteam.loop.tick > t + 60, tick, { timeout: 30_000 });
+  await page.evaluate(() => window.testPad.axes([0, 0, 0, 0]));
+  const end = await page.evaluate(() => ({ ...window.fireteam.player.state.pos, yaw: window.fireteam.input.yaw }));
+  expect(Math.hypot(end.x - start.x, end.z - start.z), 'walked').toBeGreaterThan(1.5);
+  expect(start.yaw - end.yaw, 'turned right').toBeGreaterThan(0.2);
+  expect(await page.evaluate(() => window.fireteam.input.device)).toBe('pad');
+  // Start pauses; the D-pad moves between the pause menu's buttons; B resumes.
+  await page.evaluate(() => window.testPad.press(9, true));
+  await page.waitForFunction(() => window.fireteam.flow.is('paused'), null, { timeout: 15_000 });
+  await page.evaluate(() => { window.testPad.press(9, false); window.testPad.press(13, true); });
+  await page.waitForFunction(() => document.activeElement?.tagName === 'BUTTON', null, { timeout: 15_000 });
+  await page.evaluate(() => { window.testPad.press(13, false); window.testPad.press(1, true); });
+  await page.waitForFunction(() => window.fireteam.flow.is('playing'), null, { timeout: 15_000 });
+  expect(problems).toEqual([]);
+});
+
 test('the title screen and settings open', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => window.fireteam?.ready, null, { timeout: 30_000 });
   await expect(page.locator('#title')).toBeVisible();
   await page.click('#btnSettingsT');
   await expect(page.locator('#settings')).toBeVisible();
-  await expect(page.locator('#settingsForm .setting')).toHaveCount(17);
+  await expect(page.locator('#settingsForm .setting')).toHaveCount(20);
   await page.screenshot({ path: 'test-results/settings.png' });
   await page.click('#btnSettingsDone');
   await expect(page.locator('#settings')).toBeHidden();

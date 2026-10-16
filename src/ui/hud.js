@@ -218,6 +218,7 @@ export function createHud({
     if (coop) return; // the squad HUD says "Mission failed"
     downInfo.textContent = `${e.kills} of ${e.total} hostiles down · ${formatTime(e.time)}`;
     downBox.hidden = false;
+    el('downKey').textContent = input.glyph?.('reload') ?? 'R'; // "X" on a controller
   });
   events.on('encounter:finish', (r) => {
     bestTime = r.best;

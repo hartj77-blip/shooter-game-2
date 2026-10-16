@@ -42,8 +42,9 @@ const USING = { crate: 'Taking ammo', free: 'Untying the hostage', laptop: 'Star
  * @param {boolean} opts.hosting  solo, or the co-op host (who retries a failed mission)
  * @param {(owner:number) => string} opts.nameOf
  * @param {object} [opts.audio]   for the radio's click
+ * @param {(action:string) => string} [opts.glyph] what to call a button ("F", or "X" on a controller)
  */
-export function createObjectiveHud({ session, events, hud, markers, ring, hosting, nameOf, audio = null }) {
+export function createObjectiveHud({ session, events, hud, markers, ring, hosting, nameOf, audio = null, glyph = (a) => ({ interact: 'F', reload: 'R' })[a] }) {
   const el = (id) => document.getElementById(id);
   const box = el('course');
   const title = el('courseTitle');
@@ -95,7 +96,7 @@ export function createObjectiveHud({ session, events, hud, markers, ring, hostin
     events.on('objective:hold', () => hud.feedLine('Radio on: <b>hold the area</b>', 'objective')),
     events.on('extract:called', () => hud.feedLine('<b>Helicopter inbound</b>', 'objective')),
     events.on('extract:landed', () => hud.feedLine('<b>The helicopter is down</b>: get aboard', 'objective')),
-    events.on('hostage:down', () => hud.feedLine('<b>The hostage is down!</b> Hold F to revive them', 'objective warn')),
+    events.on('hostage:down', () => hud.feedLine(`<b>The hostage is down!</b> Hold ${glyph('interact')} to revive them`, 'objective warn')),
     events.on('hostage:revive', (e) => hud.feedLine(`${who(e.by)} got the hostage up`, 'objective')),
     events.on('hostage:wait', () => hud.feedLine('The hostage can’t keep up: <b>wait for them</b>', 'objective warn')),
     events.on('director:wave', (e) => { if (e.label) hud.feedLine(`Enemy reinforcements: ${esc(e.label)}`, 'warn'); }),
@@ -248,10 +249,10 @@ export function createObjectiveHud({ session, events, hud, markers, ring, hostin
       }
     }
     const full = best?.kind === 'crate' && local.soldier.arsenal.full();
-    const text = !best ? '' : best.empty ? 'Ammo crate: empty' : full ? 'Ammo crate: you’re full' : `Hold F: ${best.label}`;
+    const text = !best ? '' : best.empty ? 'Ammo crate: empty' : full ? 'Ammo crate: you’re full' : `Hold ${glyph('interact')}: ${best.label}`;
     set(prompt, 'p', text);
     prompt.classList.toggle('on', !!text);
-    if (local.using && local.useProgress > 0) ring.want(local.useProgress, USING[local.using] ?? 'Hold F');
+    if (local.using && local.useProgress > 0) ring.want(local.useProgress, USING[local.using] ?? `Hold ${glyph('interact')}`);
   }
 
   // ---- mission failed
@@ -262,7 +263,7 @@ export function createObjectiveHud({ session, events, hud, markers, ring, hostin
     set(downTitle, 'dt', 'Mission failed');
     set(downInfo, 'di', v.reason === 'hostage' ? 'The hostage didn’t make it.' : 'Nobody is left standing.');
     const from = v.checkpoint ? `checkpoint ${v.checkpoint}` : 'the start';
-    set(downHint, 'dh', hosting ? `Press R to retry from ${from}` : `Waiting for the host to retry from ${from}`);
+    set(downHint, 'dh', hosting ? `Press ${glyph('reload')} to retry from ${from}` : `Waiting for the host to retry from ${from}`);
   }
 
   return {

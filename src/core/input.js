@@ -9,6 +9,15 @@
 // Keys use `event.code`, the physical key position, so WASD stays in the
 // same place on French or German keyboards. Mouse buttons get made-up codes
 // ('Mouse0' = left, 'Mouse2' = right) so they live in the same bindings table.
+//
+// Controllers (core/gamepad.js) feed the very same actions: pollPad() is
+// called every frame, its buttons press and release actions, its left stick
+// adds to the movement and its right stick turns the view. The command that
+// comes out looks exactly the same, so nothing else in the game (not even
+// co-op) needs to know which you're holding. In menus, the pad moves the focus
+// instead (onPadMenu).
+
+import { createGamepadReader, GLYPHS } from './gamepad.js';
 
 export const DEFAULT_BINDINGS = {
   forward: ['KeyW', 'ArrowUp'],
@@ -46,13 +55,19 @@ const PITCH_LIMIT = (89 * Math.PI) / 180;
  * @param {Document|object} [opts.doc]  for pointer lock state
  * @param {object} [opts.settings]      settings.values (sensitivity, invertY, crouchMode, sprintMode, aimMode)
  */
-export function createInput({ target = globalThis, doc = globalThis.document, settings = {} } = {}) {
+export function createInput({
+  target = globalThis, doc = globalThis.document, settings = {},
+  getPads = () => globalThis.navigator?.getGamepads?.() ?? [],
+} = {}) {
   const bindings = structuredClone(DEFAULT_BINDINGS);
   const actionOf = new Map();          // 'KeyW' -> 'forward'
   const held = new Set();              // actions currently held down
   const pressed = new Set();           // actions pressed since the last command
   let lockedAt = 0;
   let wheel = 0;                       // mouse wheel steps since the last command
+  const pad = createGamepadReader(getPads);
+  const padMove = { x: 0, y: 0 };      // the left stick, after its dead zone
+  const menuRepeat = { dir: null, t: 0 }; // holding a direction in a menu repeats it
 
   const input = {
     enabled: false,     // only true while playing; menus don't move the player
@@ -63,6 +78,18 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
     crouchToggled: false,
     sprintToggled: false,
     adsToggled: false,
+    padSprint: false,   // L3 sprints until you stop moving forward
+    device: 'keyboard', // what was used last: 'keyboard' (and mouse) or 'pad'
+    assist: 1,          // aim assist: controller turn speed multiplier, set each frame by the mission
+    /** Called with 'up' | 'down' | 'left' | 'right' | 'accept' | 'back' | 'start' when the pad is used in menus (and 'start' in game). */
+    onPadMenu: null,
+    pollPad,
+    /** What to call an action's button right now ("F" on a keyboard, "X" on a controller). */
+    glyph: (action) => GLYPHS[input.device]?.[action] ?? GLYPHS.keyboard[action] ?? action,
+    /** Shake the controller, if one is in use and rumble is on. */
+    rumble(strong, weak, ms) {
+      if (input.device === 'pad' && settings.rumble !== false) pad.rumble(strong, weak, ms);
+    },
     sample,
     setLook,
     addLook,
@@ -96,6 +123,7 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
   }
 
   function onKeyDown(e) {
+    input.device = 'keyboard';
     const action = actionOf.get(e.code);
     if (!action || !input.enabled) return;
     e.preventDefault?.(); // stop Space from scrolling the page, etc.
@@ -132,6 +160,7 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
     if (!input.enabled || !isLocked()) return;
     const dx = e.movementX || 0;
     const dy = e.movementY || 0;
+    if (Math.abs(dx) + Math.abs(dy) > 2) input.device = 'keyboard';
     // Some browsers report one huge jump right after the pointer locks. Ignore it.
     if (performance.now() - lockedAt < 80 && (Math.abs(dx) > 200 || Math.abs(dy) > 200)) return;
     const k = (settings.sensitivity ?? 2) * RAD_PER_COUNT * input.lookScale;
@@ -145,6 +174,55 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
     pressed.clear();
     wheel = 0;
     input.adsToggled = false;
+    input.padSprint = false;
+    padMove.x = padMove.y = 0;
+  }
+
+  /**
+   * Read the controller (once a frame). Playing: its buttons press actions, its
+   * sticks move and turn you. In menus: it moves the focus (onPadMenu).
+   */
+  function pollPad(dt) {
+    const r = pad.read(dt);
+    if (!r) { padMove.x = padMove.y = 0; return; }
+    if (r.used) input.device = 'pad';
+    if (!input.enabled) {
+      padMove.x = padMove.y = 0;
+      menuFromPad(r, dt);
+      return;
+    }
+    for (const a of r.pressed) {
+      if (a === 'menu') input.onPadMenu?.('start');
+      else if (a === 'prev' || a === 'next') { wheel += a === 'next' ? 1 : -1; input.adsToggled = false; }
+      else if (a === 'sprint') {
+        input.padSprint = !input.padSprint;
+        if (input.padSprint) { input.crouchToggled = false; input.adsToggled = false; }
+      } else press(a);
+    }
+    for (const a of r.released) held.delete(a);
+    padMove.x = r.move.x;
+    padMove.y = r.move.y;
+    const k = (settings.padSensitivity ?? 1) * input.lookScale * input.assist;
+    addLook(r.look.yaw * k, r.look.pitch * k * (settings.invertY ? -1 : 1));
+  }
+
+  // Menus: the D-pad or left stick moves between buttons (held, it repeats),
+  // A clicks, B goes back, Start is Start.
+  function menuFromPad(r, dt) {
+    const names = { jump: 'accept', crouch: 'back', menu: 'start' };
+    for (const a of r.pressed) if (names[a]) input.onPadMenu?.(names[a]);
+    const { x, y } = r.move;
+    const stick = Math.abs(x) > 0.5 || Math.abs(y) > 0.5 ? (Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : (y > 0 ? 'up' : 'down')) : null;
+    const dpad = r.down.has('radio') ? 'up' : r.down.has('nightvision') ? 'down' : r.down.has('prev') ? 'left' : r.down.has('next') ? 'right' : null;
+    const dir = dpad ?? stick;
+    if (dir !== menuRepeat.dir) {
+      menuRepeat.dir = dir;
+      menuRepeat.t = 0.4; // the first repeat waits a little longer
+      if (dir) input.onPadMenu?.(dir);
+    } else if (dir) {
+      menuRepeat.t -= dt;
+      if (menuRepeat.t <= 0) { menuRepeat.t = 0.12; input.onPadMenu?.(dir); }
+    }
   }
 
   target.addEventListener('keydown', onKeyDown);
@@ -171,11 +249,13 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
   /** Builds this tick's command and resets the "pressed" flags. */
   function sample() {
     const on = (a) => held.has(a);
-    const moveX = (on('right') ? 1 : 0) - (on('left') ? 1 : 0);
-    const moveZ = (on('forward') ? 1 : 0) - (on('back') ? 1 : 0);
+    const clamp = (v) => Math.max(-1, Math.min(1, v));
+    const moveX = clamp((on('right') ? 1 : 0) - (on('left') ? 1 : 0) + padMove.x);
+    const moveZ = clamp((on('forward') ? 1 : 0) - (on('back') ? 1 : 0) + padMove.y);
 
-    // Toggle sprint switches itself off when you stop running forward.
+    // Toggle sprint (and the controller's L3 sprint) switches itself off when you stop running forward.
     if (moveZ <= 0) input.sprintToggled = false;
+    if (moveZ <= 0.3) input.padSprint = false;
 
     let slot = 0;
     for (let i = 1; i <= 4; i++) if (pressed.has(`slot${i}`)) slot = i;
@@ -189,7 +269,7 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
       jumpHeld: on('jump'),
       crouch: settings.crouchMode === 'toggle' ? input.crouchToggled : on('crouch'),
       crouchPressed: pressed.has('crouch'),
-      sprint: settings.sprintMode === 'toggle' ? input.sprintToggled : on('sprint'),
+      sprint: (settings.sprintMode === 'toggle' ? input.sprintToggled : on('sprint')) || input.padSprint,
       fire: on('fire') || pressed.has('fire'),
       firePressed: pressed.has('fire'),
       ads: settings.aimMode === 'toggle' ? input.adsToggled : on('ads'),
