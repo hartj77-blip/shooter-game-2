@@ -105,7 +105,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   root.name = `mission:${mapId}`;
   view.scene.add(root);
   view.setMood(moodFor(def), def.sun);
-  root.add(buildLevelView(session.level.expanded, createMaterials(view.renderer)));
+  root.add(buildLevelView(session.level.expanded, createMaterials(view.renderer, app.assets)));
 
   input.setLook(player.state.yaw);
   const aim = () => ({ amount: soldier.arsenal.state.ads, zoom: soldier.arsenal.current.def.ads.zoom });

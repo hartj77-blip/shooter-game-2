@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { wedgePoints, WEDGE_TRIANGLES } from '../world/kit.js';
 import { signTexture } from './signs.js';
 import { mergeTextured } from './merge.js';
+import { paintMaterial } from './materials.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 export const TILE = 32; // metres: the size of a batch
@@ -88,10 +89,11 @@ export function buildLevelView(expanded, materials) {
   }
 
   for (const paint of expanded.paint) {
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(paint.size[0], paint.size[1]),
-      new THREE.MeshStandardMaterial({ color: paint.color, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1 }),
-    );
+    const geometry = new THREE.PlaneGeometry(paint.size[0], paint.size[1]);
+    // UVs in metres (a plane's run 0..1 across it), so the surface keeps its real size.
+    const uv = geometry.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * paint.size[0], uv.getY(i) * paint.size[1]);
+    const mesh = new THREE.Mesh(geometry, paintMaterial(paint.color, materials));
     mesh.position.set(...paint.center);
     mesh.rotation.set(-Math.PI / 2, paint.rotY, 0, 'YXZ');
     mesh.receiveShadow = true;
