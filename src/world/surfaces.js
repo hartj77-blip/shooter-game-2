@@ -41,6 +41,10 @@ export const MATERIAL_SURFACE = {
   whitewash: 'concrete',
   brick: 'concrete',
   roof_red: 'concrete',
+  barrel: 'metal',
+  barrel_red: 'metal',
+  tank: 'metal',
+  trim: 'concrete',
 };
 
 export function createSurfaceRegistry() {

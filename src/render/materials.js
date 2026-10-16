@@ -42,6 +42,11 @@ export const PALETTE = {
   whitewash: { base: '#c9c3b4', line: '#d0cabc', edge: '#dad4c6' },
   brick:     { base: '#7a4f3e', line: '#835847', edge: '#926453' },
   roof_red:  { base: '#8a4a35', line: '#93533e', edge: '#a2604a' },
+  // The art pass (milestone 6).
+  trim:       { base: '#b3ad9f', line: '#bbb5a7', edge: '#c6c0b2' },
+  barrel:     { base: '#3c5a74', line: '#45637d', edge: '#53718b' },
+  barrel_red: { base: '#8c3b2c', line: '#954435', edge: '#a55243' },
+  tank:       { base: '#c7c2b6', line: '#cfcabe', edge: '#d9d4c8' },
 };
 
 // Which real surface each palette colour is painted on.
@@ -50,7 +55,7 @@ export const SURFACE_OF = {
   ramp: 'concrete', stairs: 'concrete', crate: 'wood', post: 'concrete', plank: 'wood', steel: 'plate',
   container: 'metal', container_red: 'metal', container_blue: 'metal', sandbag: 'ground',
   floor: 'concrete', roof: 'metal', asphalt: 'asphalt', quay: 'concrete', whitewash: 'plaster',
-  brick: 'brick', roof_red: 'tiles',
+  brick: 'brick', roof_red: 'tiles', trim: 'concrete', barrel: 'metal', barrel_red: 'metal', tank: 'plate',
 };
 
 // The surfaces: how many metres one picture covers (tools/build-textures.py
