@@ -61,13 +61,15 @@ test('shooting works: ammo goes down, a target gets hit, the kill house timer st
   await page.goto('/?autostart');
   await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 40, null, { timeout: 30_000 });
 
-  // Stand at the range's second lane and aim at the 10 m target's chest.
+  // Stand in the range's second lane, 5 m from the 10 m target, and aim at its chest.
+  // (From the 10 m line, hip-fire spread meant a burst of six could all miss now
+  // and then: about one run in eight failed, on luck alone.)
   await page.evaluate(() => {
     const f = window.fireteam;
     window.hits = 0;
     f.events.on('target:hit', () => window.hits++);
-    f.player.teleport([44.5, 0, -5.2], 0);
-    f.input.setLook(0, Math.atan2(1.18 - 1.68, 11.8));
+    f.player.teleport([44.5, 0, -12], 0);
+    f.input.setLook(0, Math.atan2(1.18 - 1.68, 5));
   });
   await page.waitForFunction(() => window.fireteam.soldier.arsenal.current.status === 'ready', null, { timeout: 30_000 });
   const startTick = await page.evaluate(() => window.fireteam.loop.tick);
