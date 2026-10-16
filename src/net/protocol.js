@@ -30,6 +30,7 @@
 
 import { LOADOUT } from '../weapons/weapons-data.js';
 import { ROLES } from '../ai/enemy-data.js';
+import { USE_KINDS } from '../game/interact.js';
 export { PRESS_FLAGS } from '../core/input.js';
 
 export const PROTOCOL_VERSION = 2;
@@ -83,20 +84,25 @@ const TARGET_STATES = ['up', 'falling', 'down', 'rising'];
 const packFlags = (names, v) => names.reduce((bits, k, i) => (v[k] ? bits | (1 << i) : bits), 0);
 const unpackFlags = (names, bits, into) => { names.forEach((k, i) => { into[k] = (bits & (1 << i)) !== 0; }); return into; };
 
-/** One player, as seen by everyone else (and their bleed-out clock and revive progress). */
+/**
+ * One player, as seen by everyone else: where, how, their bleed-out clock, how
+ * far a revive is, and what they're holding F at (a crate, a laptop...).
+ */
 export function encodePlayer(v) {
   return [
     v.owner, cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(P_FLAGS, v), cm(v.speed),
     Math.max(0, LOADOUT.indexOf(v.weapon)), Math.round(v.hp), Math.ceil((v.bleedLeft ?? 0) * 10),
     Math.round((v.reviving ?? 0) * 100), v.reviver ?? -1,
+    v.using ? USE_KINDS.indexOf(v.using) : -1, Math.round((v.useProgress ?? 0) * 100),
   ];
 }
 export function decodePlayer(a) {
-  const [owner, x, y, z, yaw, pitch, flags, speed, gun, hp, bleed = 0, reviving = 0, reviver = -1] = a;
+  const [owner, x, y, z, yaw, pitch, flags, speed, gun, hp, bleed = 0, reviving = 0, reviver = -1, use = -1, useProgress = 0] = a;
   return unpackFlags(P_FLAGS, flags, {
     owner, pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: fromMrad(pitch),
     speed: fromCm(speed), weapon: LOADOUT[gun] ?? LOADOUT[0], hp,
     bleedLeft: bleed / 10, reviving: reviving / 100, reviver: reviver < 0 ? null : reviver,
+    using: USE_KINDS[use] ?? null, useProgress: useProgress / 100,
   });
 }
 
@@ -155,6 +161,7 @@ export function decodeEncounter(a) {
 const SHARED_EVENTS = new Set([
   'weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'bullet:nearmiss', 'player:hurt', 'player:down',
   'player:dead', 'player:revive', 'enemy:down', 'enemy:bark', 'mission:restart', 'ping:mark', 'player:joined', 'player:left',
+  'ammo:resupply',
 ]);
 // Events about your own soldier that your browser already showed when you did it.
 const OWN_ECHO = new Set(['weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit']);

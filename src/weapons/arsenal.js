@@ -149,6 +149,37 @@ export function createArsenal({ loadout = LOADOUT, rng, emit = () => {}, owner =
     return { shots, look };
   }
 
+  /** What you're carrying: [magazine, spare] for each gun. */
+  const ammo = () => guns.map((g) => [g.mag, g.reserve]);
+
+  /**
+   * Set what you're carrying (a checkpoint puts back what you had). A reload in
+   * progress is called off; nothing else changes (a gun being raised stays
+   * being raised), so movement and aiming carry on exactly as before.
+   */
+  function load(counts) {
+    guns.forEach((g, i) => {
+      if (!counts?.[i]) return;
+      if (g.reload) g.cancelReload();
+      [g.mag, g.reserve] = counts[i];
+    });
+  }
+
+  /**
+   * An ammo crate: every gun's spare ammo back to full. "Full" rather than "add
+   * some", so doing it twice changes nothing: in co-op the host's copy of your
+   * guns and your own browser both do it, a moment apart, and end up the same.
+   */
+  function resupply() {
+    for (const g of guns) g.reserve = Math.max(g.reserve, g.def.reserve);
+  }
+
+  /** A full load: what you start a mission with. */
+  const fresh = () => guns.map((g) => [g.def.mag, g.def.reserve]);
+
+  /** True if a crate would give you nothing. */
+  const full = () => guns.every((g) => g.reserve >= g.def.reserve);
+
   return {
     guns,
     state,
@@ -157,5 +188,10 @@ export function createArsenal({ loadout = LOADOUT, rng, emit = () => {}, owner =
     switchTo,
     movementMods,
     update,
+    ammo,
+    fresh,
+    load,
+    resupply,
+    full,
   };
 }

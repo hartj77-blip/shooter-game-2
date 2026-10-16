@@ -7,7 +7,8 @@
 // (CLAUDE.md, "One tick, in order"):
 //
 //   players move → enemies move → targets → world.step() → players shoot (and ping) →
-//   enemies think → enemies shoot → health → revives → the encounter / kill house
+//   enemies think → enemies shoot → health → revives → hold-F (crates...) →
+//   the encounter / kill house
 //
 // Solo play, the co-op host (net/host.js) and the tests all run this same
 // code. A co-op client runs a cut-down version of its own (net/client.js).
@@ -27,6 +28,8 @@ import { createEnemies } from '../ai/enemies.js';
 import { createCourse, createRecords } from './course.js';
 import { createEncounter } from './encounter.js';
 import { createRevives } from './revive.js';
+import { createInteractions } from './interact.js';
+import { createSupply } from './supply.js';
 import { pingFrom } from './pings.js';
 import { createEvents } from '../core/events.js';
 import { idleCommand, heldOnly } from '../core/input.js';
@@ -60,6 +63,7 @@ export function playerView(p) {
     hp: h.hp, down: !!(h.down || h.bleeding), dead: !!h.dead,
     bleeding: !!h.bleeding, bleedLeft: h.bleedLeft ?? 0,
     reviving: p.reviving ?? 0, reviver: p.reviver ?? null, // a teammate is getting them up
+    using: p.using ?? null, useProgress: p.useProgress ?? 0,  // holding F at a crate, a laptop... (game/interact.js)
   };
 }
 
@@ -72,14 +76,16 @@ export function playerView(p) {
  * @param {string} [opts.difficulty]
  * @param {object} [opts.events]    this mission's event bus
  * @param {object} [opts.records]   best times (game/course.js)
- * @param {boolean} [opts.infiniteAmmo] spare magazines never run out
+ * @param {boolean} [opts.infiniteAmmo] spare magazines never run out (default: on practice maps, not in missions)
  * @param {Function} [opts.onMapping] called before the (slow-ish) nav grid is built, e.g. to update a loading bar
  * @param {boolean} [opts.coop] a co-op game (no solo-only extras like the kill house timer)
  */
 export function createSim({
   def, id = 'map', players = [{ owner: 0 }], seed = 1, difficulty = 'regular', events = createEvents(),
-  records = createRecords(null), infiniteAmmo = true, onMapping = null, coop = false,
+  records = createRecords(null), infiniteAmmo = null, onMapping = null, coop = false,
 }) {
+  // Practice maps: shoot all you like. Missions: your spare ammo runs out (game/supply.js).
+  const unlimited = infiniteAmmo ?? !def.mission;
   const world = createPhysicsWorld();
   const registry = createSurfaceRegistry();
   const level = buildLevel(def, world, registry);
@@ -117,7 +123,7 @@ export function createSim({
       flatZones: true, // enemies don't get headshot bonuses on players
       passThrough: throughTeammates,
       spawn: start,
-      options: { infiniteAmmo },
+      options: { infiniteAmmo: unlimited },
     });
     const p = { id: `p${owner}`, owner, soldier, health, callsign, spawn: start, lastCmd: idleCommand(start.yaw) };
     Object.defineProperty(p, 'view', { get: () => playerView(p) });
@@ -161,6 +167,15 @@ export function createSim({
 
   const isPlayer = (owner) => typeof owner === 'number';
   const revives = createRevives();
+  const interactions = createInteractions();
+  const supply = createSupply({ crates: level.expanded.crates, emit: events.emit });
+  // A crate refill: the host's copy of that player's guns fills up too (their
+  // own browser does the same for its copy, net/client.js).
+  events.on('ammo:resupply', (e) => team.get(e.owner)?.soldier.arsenal.resupply());
+  /** Everything that can be used with F right now. */
+  const spots = () => supply.spots();
+  /** Is `p` busy reviving someone? (That comes before any other F.) */
+  const reviving = (p) => { for (const r of revives.progress.values()) if (r.by === p.owner) return true; return false; };
   let time = 0;
   events.on('player:down', (e) => { if (isPlayer(e.owner)) encounter?.onDown(e.owner); });
   events.on('player:revive', (e) => { if (isPlayer(e.by)) encounter?.onRevive(e.by); });
@@ -230,6 +245,7 @@ export function createSim({
     enemies?.act(dt);
     for (const p of team.values()) p.health.update(dt);
     revives.update(dt, team.values(), now);
+    interactions.update(dt, team.values(), now, spots(), reviving);
     time += dt;
     const feet = [...team.values()].map((p) => p.soldier.state.pos);
     if (course && feet[0]) course.update(dt, feet[0]);
@@ -247,13 +263,16 @@ export function createSim({
     events.emit('ping:mark', { owner: p.owner, ...mark });
   }
 
-  /** Back to the start: enemies respawn, everyone's healed and back at their spawn. */
+  /** Back to the start: enemies respawn, everyone's healed, re-armed and back at their spawn. */
   function reset() {
     revives.reset();
+    interactions.reset();
+    supply.reset();
     enemies?.reset();
     for (const p of team.values()) {
       p.soldier.teleport(p.spawn.pos, p.spawn.yaw);
       p.health.reset();
+      p.soldier.arsenal.load(p.soldier.arsenal.fresh());
       p.lastCmd = idleCommand(p.spawn.yaw);
     }
     encounter?.reset();
@@ -263,7 +282,9 @@ export function createSim({
   return {
     def, level, world, registry, targets, nav, cover, noise, events,
     get enemies() { return enemies; },
-    encounter, course, team, revives,
+    encounter, course, team, revives, interactions, supply,
+    spots,
+    infiniteAmmo: unlimited,
     damage, // who gets hurt by a player's bullet (the co-op host applies clients' hits through it)
     player: (owner) => team.get(owner) ?? null,
     addPlayer,

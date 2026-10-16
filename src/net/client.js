@@ -81,7 +81,8 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   const spawn = spawnFor(level, me);
   const soldier = createSoldier({
     world, registry, targets, damage: claim, events: quietEvents, owner: me, seed: seed * 101 + me * 7 + 1,
-    flatZones: true, passThrough: (info) => info.target?.kind === 'player', spawn, options: { infiniteAmmo: true },
+    flatZones: true, passThrough: (info) => info.target?.kind === 'player', spawn,
+    options: { infiniteAmmo: !def.mission }, // the same rule as the host's (game/sim.js)
   });
 
   // Your health lives on the host; this mirror shows what the snapshots say.
@@ -100,7 +101,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     damage: () => ({ killed: false }),
     reset() {},
   };
-  const local = { owner: me, soldier, health, get callsign() { return callsigns.get(me); }, spawn };
+  const local = { owner: me, soldier, health, get callsign() { return callsigns.get(me); }, spawn, using: null, useProgress: 0 };
 
   // ---------------------------------------------------------------- everyone else (proxies)
   // Enemies get a stand-in the first time a snapshot mentions them, so ones that
@@ -133,6 +134,11 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     enemyById.clear();
     enemies.list = [];
   }
+
+  // The ammo crates, as the host last told us (how many refills each has left).
+  const supply = {
+    list: level.expanded.crates.map((c, i) => ({ id: c.id ?? `crate${i}`, pos: { x: c.at[0], y: c.at[1] ?? 0, z: c.at[2] }, left: c.refills ?? 4 })),
+  };
 
   // The encounter's scoreboard, as the host last told us.
   const encounter = specs.length
@@ -178,6 +184,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
    */
   function restarted(data) {
     restartPending = true;
+    soldier.arsenal.load(soldier.arsenal.fresh()); // a fresh start: a full load
     const from = data?.tick ?? 0;
     for (let i = timeline.length - 1; i >= 0; i--) if (timeline[i].tick < from) timeline.splice(i, 1);
     for (let i = snaps.length - 1; i >= 0; i--) if (snaps[i].tick < from) snaps.splice(i, 1);
@@ -189,6 +196,12 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   /** Play a host event here, after tidying up anything that needs it. */
   function play(name, data) {
     if (name === 'mission:restart') restarted(data);
+    if (name === 'ammo:resupply') {
+      // Your ammo is yours: the host says a crate refilled you, so fill your own guns.
+      if (data.owner === me) soldier.arsenal.resupply();
+      const c = supply.list.find((x) => x.id === data.crate);
+      if (c) c.left = data.left;
+    }
     if (name === 'enemy:down') {
       const p = enemyById.get(data.id);
       if (p) p.view.dead = true; // in case every snapshot showing the fall went missing
@@ -226,6 +239,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
       t.pos.z = g.z;
       targets.sync(t);
     }
+    if (msg.cr) msg.cr.forEach((left, i) => { if (supply.list[i]) supply.list[i].left = left; });
     const enc = decodeEncounter(msg.enc);
     if (enc && encounter) Object.assign(encounter, enc);
     const mine = snap.players.get(me);
@@ -236,6 +250,8 @@ export function createClient({ def, me, link, roster = [], events = createEvents
         bleedLeft: mine.bleedLeft, reviving: mine.reviving, reviver: mine.reviver,
       });
       if (msg.you) healthState.taken = msg.you.taken;
+      local.using = mine.using; // what the host says you're holding F at (for the progress ring)
+      local.useProgress = mine.useProgress;
     }
     // Keep the host's command cushion about two deep: run a touch faster or slower.
     rate = msg.buf < 1 ? 1.02 : msg.buf > 4 ? 0.98 : 1;
@@ -403,6 +419,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     targets,
     encounter,
     course: null,
+    supply,
     local,
     enemies,
     teammates,
