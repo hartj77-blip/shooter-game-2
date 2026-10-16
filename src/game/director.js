@@ -11,7 +11,7 @@
 // it up; a few calm seconds let it drain away. The squad's intensity is the
 // highest of the players still standing.
 //
-// PHASES (a small state machine, lesson 1):
+// PHASES (a small state machine, lesson 4):
 //
 //   calm ──(time)──▶ build ──(intensity high)──▶ peak ──(intensity falls)──▶ relax ──(time)──▶ build
 //                     │ waves every so often       no new waves                no new waves
