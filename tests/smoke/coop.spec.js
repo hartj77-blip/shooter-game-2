@@ -176,7 +176,9 @@ test('co-op mission: two tabs start Lifeline, the friend frees the hostage, both
     f.enemies.options.freeze = true;
     const p = f.session.sim.player(1);
     p.health.godMode = true;
-    const h = f.session.sim.hostage.view;
+    const sim = f.session.sim;
+    window.heldAt = sim.level.expanded.sites[sim.operation.view.sites[0]]; // where they're held (this game's pick)
+    const h = sim.hostage.view;
     p.soldier.teleport([h.pos.x - Math.sin(h.yaw) * 1.1, h.pos.y, h.pos.z - Math.cos(h.yaw) * 1.1], h.yaw + Math.PI);
   });
   await friend.waitForFunction(() => {
@@ -197,14 +199,22 @@ test('co-op mission: two tabs start Lifeline, the friend frees the hostage, both
   await expect(friend.locator('#courseInfo')).toContainText('call the helicopter', { timeout: 15_000 });
   await friend.waitForFunction(() => window.fireteam.session.hostage.view.captive === false, null, { timeout: 15_000 });
 
-  // The friend walks off; the hostage follows (on the host, and so on the friend's screen).
-  const from = await host.evaluate(() => ({ ...window.fireteam.session.sim.hostage.view.pos }));
-  await friend.keyboard.down('KeyW');
+  // The friend heads outside; the hostage follows (on the host, and so on the friend's screen).
+  // (The hostage's building is picked at random each game, so don't walk blind: a wall
+  // within a few metres would leave them "close enough" and standing still. Go to the
+  // building's safe spot outside, which the map's tests prove can be reached.)
+  const from = await host.evaluate(() => {
+    const f = window.fireteam;
+    const sim = f.session.sim;
+    const site = window.heldAt;
+    const [x, z, yaw, y = 0] = site.safe;
+    sim.player(1).soldier.teleport([x, y, z], yaw);
+    return { ...sim.hostage.view.pos };
+  });
   await host.waitForFunction((b) => {
     const p = window.fireteam.session.sim.hostage.view.pos;
     return Math.hypot(p.x - b.x, p.z - b.z) > 1;
   }, from, { timeout: 45_000 });
-  await friend.keyboard.up('KeyW');
   await friend.waitForFunction((b) => {
     const p = window.fireteam.session.hostage.view.pos;
     return Math.hypot(p.x - b.x, p.z - b.z) > 0.5;
