@@ -24,6 +24,7 @@ const LABELS = {
   showReadout:  { label: 'Show speed readout' },
   showFps:      { label: 'Show frame rate' },
   quality:      { label: 'Graphics quality', names: { low: 'Low (fastest)', medium: 'Medium', high: 'High' } },
+  callsign:     { label: 'Callsign', placeholder: 'Your name in co-op games', help: 'Shown to your teammates. Up to 16 characters.' },
 };
 
 export function createMenus(settings) {
@@ -43,7 +44,16 @@ export function createMenus(settings) {
 
     let input;
     let value;
-    if (typeof rule.default === 'boolean') {
+    if (rule.text) {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = rule.maxLength;
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      if (meta.placeholder) input.placeholder = meta.placeholder;
+      input.addEventListener('change', () => { settings.set(key, input.value); input.value = settings.values[key]; });
+      row.classList.add('setting-text');
+    } else if (typeof rule.default === 'boolean') {
       input = document.createElement('input');
       input.type = 'checkbox';
       input.addEventListener('change', () => settings.set(key, input.checked));
