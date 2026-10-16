@@ -9,6 +9,7 @@
 //   triggers  invisible boxes that notice when you walk in (start and finish pads)
 //   racks     tables showing the guns (drawn by the presentation code)
 //   enemies   where enemy soldiers start, and how they behave (src/ai/enemies.js)
+//   crates    ammo crates (src/game/supply.js)
 // The physics side (world/level.js) and the drawing side (render/level-view.js)
 // both read these same descriptions, so what you see always matches what you hit.
 //
@@ -183,6 +184,17 @@ const expanders = {
     return expanders.wall({ ...p, height: p.height ?? 1.0, thick: p.thick ?? 0.6, mat: 'sandbag' });
   },
 
+  // An ammo crate (missions): hold F beside it to fill up your spare ammo and
+  // grenades (game/supply.js). `refills`: how many times it can be used,
+  // shared by the whole squad.
+  crate(p) {
+    const size = [1.1, 0.75, 0.7];
+    return {
+      solids: [box(size, [p.at[0], p.at[1] + size[1] / 2, p.at[2]], p.rotY ?? 0, 'crate')],
+      crates: [{ id: p.id ?? null, at: p.at, rotY: p.rotY ?? 0, refills: p.refills ?? null }],
+    };
+  },
+
   // An invisible wall from `from` to `to` ([x, z]) at the edge of the map, say
   // along a quay: it stops people walking off, but bullets and eyes pass straight
   // through and nobody can climb it (the BOUNDARY collision group, world/groups.js).
@@ -226,7 +238,7 @@ export function expandPiece(piece) {
   return result;
 }
 
-const KINDS = ['solids', 'paint', 'signs', 'targets', 'triggers', 'racks', 'enemies'];
+const KINDS = ['solids', 'paint', 'signs', 'targets', 'triggers', 'racks', 'enemies', 'crates'];
 
 /** Expands a whole level definition. */
 export function expandLevel(def) {

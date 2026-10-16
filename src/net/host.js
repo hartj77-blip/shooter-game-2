@@ -52,8 +52,24 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
   let tick = 0;
   const commands = new Map();
   const remote = new Set();
+  // Rounds each client has claimed per gun since their last refill (a loose check:
+  // a client keeps its own ammo count, lesson 17).
+  const spent = new Map(); // slot -> Map(weapon id -> rounds)
 
   sim.events.onAny((name, data) => { if (clients.size) pending.push([name, data]); });
+  sim.events.on('ammo:resupply', (e) => spent.delete(e.owner));
+  sim.events.on('mission:restart', () => spent.clear());
+
+  /** Could they really have fired this many? A full load since their last refill, plus a magazine to spare. */
+  function canSpend(slot, def, rounds) {
+    if (sim.infiniteAmmo) return true;
+    if (!spent.has(slot)) spent.set(slot, new Map());
+    const mine = spent.get(slot);
+    const total = (mine.get(def.id) ?? 0) + rounds;
+    if (total > def.mag * 2 + def.reserve) return false;
+    mine.set(def.id, total);
+    return true;
+  }
 
   // ---------------------------------------------------------------- friends coming and going
 
@@ -111,6 +127,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     if (!o || Math.hypot(o.x - s.pos.x, o.y - s.pos.y - 1.5, o.z - s.pos.z) > REACH) return;
     const pulls = Math.min(MAX_PULLS, Math.max(1, msg.pulls | 0));
     const shots = (msg.shots ?? []).slice(0, def.pellets * pulls);
+    if (!canSpend(slot, def, pulls)) return; // out of ammo, by any honest count
 
     // Everyone hears it: enemies through the noise board, players through the event.
     sim.noise?.post({ pos: o, radius: def.noise ?? NOISE.gunshot, kind: 'gunshot', owner: slot });
@@ -169,6 +186,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
       e: enemyRows(),
       g: sim.targets.list.map((t, i) => encodeTarget(i, t)),
       enc: encodeEncounter(sim.encounter),
+      ...(sim.supply.list.length ? { cr: sim.supply.save() } : {}), // refills left in each ammo crate
     };
   }
 
@@ -205,6 +223,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     targets: sim.targets,
     encounter: sim.encounter,
     course: sim.course,
+    supply: sim.supply,
     get local() { return sim.player(me); },
     enemies: sim.enemies ?? { list: [] },
     teammates,
