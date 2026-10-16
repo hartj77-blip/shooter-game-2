@@ -16,16 +16,23 @@
 
 export function createSquads(enemies) {
   const squads = new Map();
-  for (const e of enemies) {
-    const id = e.squadId ?? e.id;
-    if (!squads.has(id)) {
-      squads.set(id, { id, members: [], knowledge: null, alert: 'calm', flanker: null, lastBark: -Infinity });
-    }
-    const sq = squads.get(id);
-    sq.members.push(e);
-    e.squad = sq;
-  }
+  for (const e of enemies) joinSquad(squads, e);
   return squads;
+}
+
+/**
+ * Put `e` in its squad (making the squad if it's the first member). Used for
+ * newcomers too, like reinforcements: every other squad keeps what it knows.
+ */
+export function joinSquad(squads, e) {
+  const id = e.squadId ?? e.id;
+  if (!squads.has(id)) {
+    squads.set(id, { id, members: [], knowledge: null, alert: 'calm', flanker: null, lastBark: -Infinity });
+  }
+  const sq = squads.get(id);
+  sq.members.push(e);
+  e.squad = sq;
+  return sq;
 }
 
 /** Everyone in `e`'s squad who's still standing, apart from `e`. */
