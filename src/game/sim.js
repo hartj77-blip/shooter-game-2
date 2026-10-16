@@ -204,10 +204,12 @@ export function createSim({
     const now = new Map();
     for (const p of team.values()) {
       const list = listFor(p);
-      // Catching up on a co-op client's backlog: the extra commands run first, in order.
+      // Catching up on a co-op client's backlog: the extra commands run first, in order,
+      // presses and all (a ping in one of them must not get lost).
       for (let i = 0; i < list.length - 1; i++) {
         p.soldier.move(list[i], dt);
         p.soldier.act(list[i], dt, { trace: false });
+        if (list[i].ping) ping(p, list[i]);
       }
       now.set(p.owner, list[list.length - 1]);
     }
