@@ -31,6 +31,10 @@ import { createRevives } from './revive.js';
 import { createInteractions } from './interact.js';
 import { createSupply } from './supply.js';
 import { createGrenades, blast, GRENADE } from '../weapons/grenades.js';
+import { createDirector } from './director.js';
+import { createOperation } from './operation.js';
+import { createHostage } from '../ai/hostage.js';
+import { createRandom } from '../core/random.js';
 import { PERSON_ZONES, targetPoint } from '../world/targets.js';
 import { pingFrom } from './pings.js';
 import { createEvents } from '../core/events.js';
@@ -40,6 +44,9 @@ export const MAX_PLAYERS = 4;
 
 // Where players 2 to 4 start, around the level's spawn point (metres: right, back).
 const SPAWN_OFFSETS = [[0, 0], [1.5, 0.9], [-1.5, 0.9], [0, 1.8]];
+
+// A demolition charge (sabotage): a much bigger bang than a grenade.
+const CHARGE = { ...GRENADE, radius: 11, inner: 3.5, damage: 420, noise: 160 };
 
 /** Where player `slot` starts on this level. */
 export function spawnFor(level, slot) {
@@ -113,7 +120,8 @@ export function createSim({
     if (victim.kind === 'player') return { killed: false };
     return targets.damage(victim, amount);
   };
-  const throughTeammates = (info) => info.target?.kind === 'player';
+  // (The hostage too: they're on your side.)
+  const throughTeammates = (info) => info.target?.kind === 'player' || info.target?.kind === 'civilian';
 
   function addPlayer(owner, { callsign = `Player ${owner + 1}` } = {}) {
     if (team.has(owner)) return team.get(owner);
@@ -153,7 +161,20 @@ export function createSim({
     });
   }
 
-  const encounter = enemies
+  // ---- a mission (levels/missions.js): the director paces the reinforcements,
+  // the operation runs the objectives, and maybe there's a hostage to bring home.
+  const mission = def.mission ?? null;
+  const director = mission && enemies
+    ? createDirector({ world, enemies, players: () => [...team.values()], entries: level.expanded.entries, events, seed, difficulty, mission })
+    : null;
+  let hostage = null;
+  function makeHostage(spawn) {
+    hostage = createHostage({ world, registry, nav, events, spawn: { pos: [...spawn.pos], yaw: spawn.yaw } });
+    world.step();
+    return hostage;
+  }
+
+  const encounter = enemies && !mission
     ? createEncounter({
       id: coop ? () => `${id}-${team.size}p` : id, // co-op best times are kept per squad size
       start: trigger('compound:start'),
@@ -171,6 +192,18 @@ export function createSim({
   const revives = createRevives();
   const interactions = createInteractions();
   const supply = createSupply({ crates: level.expanded.crates, emit: events.emit });
+  let charges = 0;
+  const operation = mission
+    ? createOperation({
+      mission, level, team, emit: events.emit, supply, records,
+      rng: createRandom(seed * 17 + 5),
+      recordId: coop ? () => `${mission.id}-${team.size}p` : () => mission.id,
+      enemies: () => enemies, director: () => director, hostage: () => hostage, makeHostage,
+      explode: (pos, { owner = null, kind = 'charge' } = {}) => explode({ id: `${kind}:${++charges}`, owner, pos, kind }, CHARGE),
+    })
+    : null;
+  // The rules keeping score: the Compound's encounter, or a mission's operation.
+  const rules = encounter ?? operation;
   // A crate refill: the host's copy of that player's guns fills up too (their
   // own browser does the same for its copy, net/client.js).
   events.on('ammo:resupply', (e) => team.get(e.owner)?.soldier.arsenal.resupply());
@@ -192,7 +225,7 @@ export function createSim({
    * away, walls protecting them; players never (friendly fire is off). Every
    * enemy who can hear it knows roughly where it was.
    */
-  function explode(g) {
+  function explode(g, tuning = GRENADE) {
     const victims = [];
     for (const e of enemies?.alive ?? []) {
       const s = e.soldier.state;
@@ -203,7 +236,7 @@ export function createSim({
       if (t.state !== 'up' && t.kind !== 'steel') continue;
       victims.push({ thing: t, points: [targetPoint(t, [0, PERSON_ZONES[1].y, 0])], ignore: t.colliders });
     }
-    for (const hit of blast(world, g.pos, victims)) {
+    for (const hit of blast(world, g.pos, victims, tuning)) {
       const v = hit.thing;
       const d = Math.max(hit.distance, 0.01);
       const dir = { x: (hit.point.x - g.pos.x) / d, y: (hit.point.y - g.pos.y) / d, z: (hit.point.z - g.pos.z) / d };
@@ -213,17 +246,18 @@ export function createSim({
         damage: hit.amount, headshot: false, killed: result.killed, area: true,
       });
     }
-    noise?.post({ pos: g.pos, radius: GRENADE.noise, kind: 'explosion', owner: g.owner });
-    events.emit('grenade:explode', { id: g.id, owner: g.owner, pos: { ...g.pos } });
+    noise?.post({ pos: g.pos, radius: tuning.noise, kind: 'explosion', owner: typeof g.owner === 'number' ? g.owner : 0 });
+    events.emit('explosion', { id: g.id, owner: g.owner, pos: { ...g.pos }, kind: g.kind ?? 'grenade', radius: tuning.radius });
   }
 
   /** Everything that can be used with F right now. */
-  const spots = () => supply.spots();
+  const spots = () => (operation ? [...supply.spots(), ...operation.spots()] : supply.spots());
   /** Is `p` busy reviving someone? (That comes before any other F.) */
   const reviving = (p) => { for (const r of revives.progress.values()) if (r.by === p.owner) return true; return false; };
   let time = 0;
-  events.on('player:down', (e) => { if (isPlayer(e.owner)) encounter?.onDown(e.owner); });
-  events.on('player:revive', (e) => { if (isPlayer(e.by)) encounter?.onRevive(e.by); });
+  events.on('player:down', (e) => { if (isPlayer(e.owner)) rules?.onDown(e.owner); });
+  events.on('player:revive', (e) => { if (isPlayer(e.by)) rules?.onRevive(e.by); });
+  events.on('hostage:revive', (e) => { if (isPlayer(e.by)) rules?.onRevive(e.by); });
 
   // Score-keeping: every player's shots and hits count towards the kill house
   // or the Compound's results card.
@@ -231,12 +265,12 @@ export function createSim({
     if (!isPlayer(e.owner)) return;
     for (let i = 0; i < e.pulls; i++) {
       course?.onShot();
-      encounter?.onShot(e.owner);
+      rules?.onShot(e.owner);
     }
   });
   events.on('target:hit', (e) => {
     if (!isPlayer(e.owner)) return;
-    if (e.kind === 'enemy') encounter?.onHit({ owner: e.owner, headshot: e.headshot, killed: e.killed, area: e.area });
+    if (e.kind === 'enemy') rules?.onHit({ owner: e.owner, headshot: e.headshot, killed: e.killed, area: e.area });
     else if (e.kind !== 'player') course?.onHit(e.target, { headshot: e.headshot });
   });
 
@@ -277,6 +311,7 @@ export function createSim({
     }
     for (const p of team.values()) p.soldier.move(now.get(p.owner), dt);
     enemies?.move(dt);
+    hostage?.move(dt, [...team.values()], enemies?.alive ?? []);
     targets.update(dt);
     world.step();
     const outs = new Map();
@@ -295,12 +330,16 @@ export function createSim({
     enemies?.think(dt);
     enemies?.act(dt);
     for (const p of team.values()) p.health.update(dt);
-    revives.update(dt, team.values(), now);
+    hostage?.health.update(dt);
+    revives.update(dt, team.values(), now, hostage ? [hostage] : []);
     interactions.update(dt, team.values(), now, spots(), reviving);
     time += dt;
     const feet = [...team.values()].map((p) => p.soldier.state.pos);
     if (course && feet[0]) course.update(dt, feet[0]);
     encounter?.update(dt, feet);
+    operation?.update(dt);
+    // Last: anyone the director sends is filed by the next tick's world.step().
+    if (operation?.state === 'active') director?.update(dt);
     return outs;
   }
 
@@ -328,13 +367,50 @@ export function createSim({
       p.lastCmd = idleCommand(p.spawn.yaw);
     }
     encounter?.reset();
+    if (operation) {
+      operation.restart();
+      director?.calmDown();
+    }
     world.step();
+  }
+
+  /**
+   * Retry from the last checkpoint (a mission; with none yet, from the start).
+   * The guards you'd already dealt with stay gone, everyone else is back where
+   * they started and calm, reinforcements are gone, and each player gets back
+   * the ammo they had (the host's copy here; each co-op browser keeps its own).
+   */
+  function retry() {
+    const cp = operation?.checkpoint;
+    if (!cp) { reset(); return null; }
+    revives.reset();
+    interactions.reset();
+    grenades.clear();
+    enemies?.reset({ retired: cp.retired });
+    for (const p of team.values()) {
+      const spot = cp.spots[p.owner % cp.spots.length];
+      p.soldier.teleport(spot.pos, spot.yaw);
+      p.health.reset(true);
+      const ammo = cp.ammo.get(p.owner);
+      if (ammo) {
+        p.soldier.arsenal.load(ammo.guns);
+        p.soldier.arsenal.state.grenades = ammo.grenades;
+      }
+      p.lastCmd = idleCommand(spot.yaw);
+    }
+    if (cp.crates) supply.restore(cp.crates);
+    if (hostage && cp.hostage) hostage.restore(cp.hostage);
+    operation.restore(cp);
+    director?.calmDown();
+    world.step();
+    return cp.n;
   }
 
   return {
     def, level, world, registry, targets, nav, cover, noise, events,
     get enemies() { return enemies; },
-    encounter, course, team, revives, interactions, supply,
+    encounter, course, team, revives, interactions, supply, operation, director,
+    get hostage() { return hostage; },
     spots,
     grenades,
     throwGrenade,
@@ -345,7 +421,11 @@ export function createSim({
     removePlayer,
     tick,
     reset,
+    retry,
     /** Free the physics engine's memory (it lives outside JavaScript's garbage collector). */
-    dispose() { world.free(); },
+    dispose() {
+      director?.dispose();
+      world.free();
+    },
   };
 }

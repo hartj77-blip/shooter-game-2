@@ -159,10 +159,10 @@ test('co-op: a client throws, the host decides the blast, the client sees its hi
     assert.equal(g.client(2).grenades.list.length, 1, 'and on the other client, in step with the thrower’s stand-in');
     g.run(GRENADE.fuse);
     assert.equal(guard.dead, true, 'the host’s blast got the guard');
-    assert.ok(g.logs.get(1).some((e) => e.name === 'grenade:explode' && e.predicted), 'the thrower saw it go off at once');
+    assert.ok(g.logs.get(1).some((e) => e.name === 'explosion' && e.predicted), 'the thrower saw it go off at once');
     assert.ok(g.logs.get(1).some((e) => e.name === 'target:hit' && e.area && e.owner === 1), 'and got the hit marker from the host');
-    assert.equal(g.logs.get(1).filter((e) => e.name === 'grenade:explode').length, 1, 'one bang, not two');
-    assert.ok(g.logs.get(2).some((e) => e.name === 'grenade:explode' && !e.predicted), 'the other client heard the host’s bang');
+    assert.equal(g.logs.get(1).filter((e) => e.name === 'explosion').length, 1, 'one bang, not two');
+    assert.ok(g.logs.get(2).some((e) => e.name === 'explosion' && !e.predicted), 'the other client heard the host’s bang');
     // G pressed with none left (in a practice map they never run out; take them away):
     c.local.soldier.arsenal.options.infiniteAmmo = false;
     c.local.soldier.arsenal.state.grenades = 0;

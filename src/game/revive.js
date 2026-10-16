@@ -26,10 +26,11 @@ export function createRevives({ tuning = REVIVE } = {}) {
    * @param {number} dt
    * @param {Iterable} team     sim.team values: { owner, soldier, health }
    * @param {Map} commands      this tick's command per owner
+   * @param {Array} [extras]    others who can be revived but don't help (the hostage, ai/hostage.js)
    */
-  function update(dt, team, commands) {
+  function update(dt, team, commands, extras = []) {
     const players = [...team];
-    for (const p of players) {
+    for (const p of [...players, ...extras]) {
       p.reviving = 0;
       p.reviver = null;
       if (!p.health.state.bleeding) {

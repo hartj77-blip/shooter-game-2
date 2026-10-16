@@ -33,6 +33,7 @@
 import { LOADOUT } from '../weapons/weapons-data.js';
 import { ROLES } from '../ai/enemy-data.js';
 import { USE_KINDS } from '../game/interact.js';
+import { PHASES } from '../game/objectives.js';
 export { PRESS_FLAGS } from '../core/input.js';
 
 export const PROTOCOL_VERSION = 2;
@@ -156,6 +157,54 @@ export function decodeEncounter(a) {
   return a ? { state: ENC_STATES[a[0]], time: a[1] / 100, remaining: a[2], total: a[3] } : null;
 }
 
+/**
+ * A mission's state (game/operation.js view): the stage, its phase and progress,
+ * which sites are in play, the drive, the helicopter. The client fills in the
+ * rest (what kind of stage it is, which landing zone) from the mission data.
+ */
+const OP_STATES = ['active', 'complete', 'failed'];
+const OP_REASONS = [null, 'down', 'hostage'];
+const HELI_PHASES = [null, 'inbound', 'landing', 'landed', 'leaving'];
+export function encodeOp(v) {
+  if (!v) return null;
+  return [
+    OP_STATES.indexOf(v.state), Math.round(v.time * 100), v.stage, PHASES.indexOf(v.phase), Math.round(v.progress * 1000),
+    Math.round(v.timer * 10), v.sites, v.done, v.armed, v.contested ? 1 : 0, v.carrier ?? -1,
+    v.drop ? [cm(v.drop.x), cm(v.drop.y), cm(v.drop.z)] : 0,
+    HELI_PHASES.indexOf(v.heli.phase), Math.round(v.heli.t * 100), Math.round(v.heli.inbound ?? 0),
+    v.aboard, v.checkpoint, Math.max(0, OP_REASONS.indexOf(v.reason)),
+  ];
+}
+export function decodeOp(a, mission) {
+  if (!a) return null;
+  const [state, time, stage, phase, progress, timer, sites, done, armed, contested, carrier, drop, heli, heliT, inbound, aboard, checkpoint, reason] = a;
+  const s = mission?.stages?.[stage] ?? null;
+  return {
+    state: OP_STATES[state], time: time / 100, stage, kind: s?.kind ?? null, phase: PHASES[phase] ?? 'done',
+    progress: progress / 1000, timer: timer / 10, sites, done, armed, contested: !!contested, carrier: carrier < 0 ? null : carrier,
+    drop: drop ? { x: fromCm(drop[0]), y: fromCm(drop[1]), z: fromCm(drop[2]) } : null,
+    heli: { phase: HELI_PHASES[heli] ?? null, t: heliT / 100, inbound }, lz: s?.lz ?? null,
+    aboard, checkpoint, reason: OP_REASONS[reason] ?? null,
+  };
+}
+
+/** The hostage (ai/hostage.js view): like a player row, plus "tied up", "aboard" and "waiting". */
+const H_FLAGS = ['crouched', 'sprinting', 'grounded', 'down', 'dead', 'bleeding', 'captive', 'aboard', 'waiting'];
+export function encodeHostage(v) {
+  return [
+    cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), packFlags(H_FLAGS, v), cm(v.speed), Math.round(v.hp),
+    Math.ceil((v.bleedLeft ?? 0) * 10), Math.round((v.reviving ?? 0) * 100), v.reviver ?? -1,
+  ];
+}
+export function decodeHostage(a) {
+  if (!a) return null;
+  const [x, y, z, yaw, flags, speed, hp, bleed, reviving, reviver] = a;
+  return unpackFlags(H_FLAGS, flags, {
+    pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: 0, speed: fromCm(speed), hp,
+    bleedLeft: bleed / 10, reviving: reviving / 100, reviver: reviver < 0 ? null : reviver,
+  });
+}
+
 // ---------------------------------------------------------------- events
 
 // Events the host passes on to clients. Anything else stays on the host
@@ -163,8 +212,11 @@ export function decodeEncounter(a) {
 const SHARED_EVENTS = new Set([
   'weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'bullet:nearmiss', 'player:hurt', 'player:down',
   'player:dead', 'player:revive', 'enemy:down', 'enemy:bark', 'mission:restart', 'ping:mark', 'player:joined', 'player:left',
-  'ammo:resupply', 'grenade:throw', 'grenade:explode',
+  'ammo:resupply', 'grenade:throw', 'explosion', 'player:respawn',
 ]);
+// Whole families of events everyone hears about: the encounter, the kill house,
+// a mission's objectives, the helicopter, the hostage and the reinforcements.
+const FOR_EVERYONE = ['encounter:', 'course:', 'mission:', 'objective:', 'extract:', 'hostage:', 'director:'];
 // Events about your own soldier that your browser already showed when you did it.
 const OWN_ECHO = new Set(['weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'grenade:throw']);
 // Events only the player they're about needs.
@@ -172,7 +224,7 @@ const PERSONAL = { 'player:hurt': 'owner', 'bullet:nearmiss': 'victim' };
 
 /** Should this event go to player `slot`? */
 export function eventFor(name, data, slot) {
-  if (name.startsWith('encounter:') || name.startsWith('course:')) return true;
+  if (FOR_EVERYONE.some((prefix) => name.startsWith(prefix))) return true;
   if (!SHARED_EVENTS.has(name)) return false;
   // (Your own grenade's blast is the host's to decide, so its hits come back to you.)
   if (OWN_ECHO.has(name) && data.owner === slot && !data.area) return false;
