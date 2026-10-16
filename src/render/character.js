@@ -32,6 +32,7 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { buildGun } from './gun-models.js';
 import { flatten } from './merge.js';
+import { addOutline } from './outline.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
 
 // Fitting the model to the game: our hitboxes put the head at 1.6 m (player/hitboxes.js).
@@ -190,6 +191,9 @@ export function createCharacter({ gltf, guns = null, weapon, colors }) {
     o.skeleton.dispose();
     o.bind(skeleton, o.bindMatrix);
   }
+  // A dark outline round the full body (render/outline.js; shown on medium and
+  // high quality). Not the far one: an outline that far off is thinner than a pixel.
+  const hulls = near.map(addOutline);
   const bone = (name) => body.getObjectByName(name);
   const B = {
     pelvis: bone('pelvis'), spine1: bone('spine_01'), spine2: bone('spine_02'), spine3: bone('spine_03'),
@@ -406,7 +410,7 @@ export function createCharacter({ gltf, guns = null, weapon, colors }) {
     detail(l) {
       if (l === level || !far.length) return;
       level = l;
-      for (const o of near) o.visible = l === 0;
+      for (const o of [...near, ...hulls]) o.visible = l === 0;
       for (const o of far) o.visible = l === 1;
     },
     dispose() {

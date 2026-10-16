@@ -7,19 +7,29 @@
 //
 // The colours and strengths of all that light come from the map's MOOD
 // (render/moods.js): midday, haze, golden hour, night. setMood() applies one.
+// On medium and high quality the picture then goes through post-processing
+// (render/post.js): the mood's colour grade, outlines, and on high, ambient
+// occlusion and bloom.
 
 import * as THREE from 'three';
 import { MOODS, DEFAULT_MOOD } from './moods.js';
+import { createPost } from './post.js';
+import { setOutlines } from './outline.js';
 
 // Graphics quality presets. "Pixel ratio" is how many real screen pixels each
 // CSS pixel gets: 2 is sharp on high-DPI screens but four times the work of 1.
+//   post      the colour grade (render/post.js); off, the world goes straight to the screen
+//   outlines  dark edges round soldiers (render/outline.js)
+//   ao, bloom ambient occlusion and glow (render/post.js)
 export const QUALITY = {
-  low: { pixelRatio: 1, shadows: false, shadowSize: 0 },
-  medium: { pixelRatio: 1.5, shadows: true, shadowSize: 1024 },
-  high: { pixelRatio: 2, shadows: true, shadowSize: 2048 },
+  low: { pixelRatio: 1, shadows: false, shadowSize: 0, post: false, outlines: false, ao: false, bloom: false },
+  medium: { pixelRatio: 1.5, shadows: true, shadowSize: 1024, post: true, outlines: true, ao: false, bloom: false },
+  high: { pixelRatio: 2, shadows: true, shadowSize: 2048, post: true, outlines: true, ao: true, bloom: true },
 };
 
 const SHADOW_RANGE = 36; // metres around you that get sharp shadows
+// Low quality has no grade, even when night vision borrows the chain.
+const NO_GRADE = { saturation: 1, contrast: 1, tint: '#ffffff', vignette: 0 };
 
 export function createRenderer(canvas, settings) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -91,6 +101,9 @@ export function createRenderer(canvas, settings) {
    * @param {{azimuth:number, elevation:number}} [sunAngles] the level's `sun`
    */
   let mood = MOODS[DEFAULT_MOOD];
+  let post = null;      // the post-processing chain for this quality (null on low)
+  let tier = null;
+  let nvg = 0;          // night vision, 0..1 (render/post.js)
   function setMood(m, sunAngles = { azimuth: 0.4, elevation: 0.9 }) {
     mood = m;
     sky.material.uniforms.top.value.set(m.skyTop);
@@ -105,6 +118,7 @@ export function createRenderer(canvas, settings) {
     hemi.intensity = m.hemiIntensity;
     renderer.toneMappingExposure = m.exposure;
     setSun({ azimuth: sunAngles.azimuth, elevation: m.elevation ?? sunAngles.elevation });
+    post?.setGrade(m.grade);
   }
   setMood(mood);
 
@@ -121,6 +135,10 @@ export function createRenderer(canvas, settings) {
 
   function applyQuality(name) {
     const q = QUALITY[name] ?? QUALITY.high;
+    tier = q;
+    post?.dispose();
+    post = null;
+    setOutlines(q.outlines);
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.pixelRatio));
     renderer.shadowMap.enabled = q.shadows;
     sun.castShadow = q.shadows;
@@ -138,6 +156,17 @@ export function createRenderer(canvas, settings) {
     renderer.setSize(innerWidth, innerHeight, false);
     camera.aspect = innerWidth / Math.max(innerHeight, 1);
     camera.updateProjectionMatrix();
+    post?.setSize(innerWidth, innerHeight, renderer.getPixelRatio());
+  }
+
+  /** The chain, made when first needed: on medium and high, or on low with night vision on. */
+  function chain() {
+    if (!post) {
+      post = createPost(renderer, scene, camera, tier);
+      post.setSize(innerWidth, innerHeight, renderer.getPixelRatio());
+      post.setGrade(tier.post ? mood.grade : NO_GRADE);
+    }
+    return post;
   }
   addEventListener('resize', resize);
 
@@ -147,9 +176,18 @@ export function createRenderer(canvas, settings) {
    * Draws the world, then (optionally) the gun in your hands on top of it.
    * The gun has its own scene and camera; clearing the depth in between means
    * it's always drawn in front, so it can never poke through a wall.
+   * @param {{scene, camera}|null} overlay  the gun in your hands
+   * @param {number} [dt] seconds since the last frame
    */
-  function render(overlay) {
+  function render(overlay, dt = 1 / 60) {
+    if (tier.post || nvg > 0) {
+      const p = chain();
+      p.nvg = nvg;
+      p.render(overlay, dt);
+      return;
+    }
     renderer.autoClear = false;
+    renderer.setRenderTarget(null);
     renderer.clear();
     renderer.render(scene, camera);
     if (overlay) {
@@ -170,5 +208,10 @@ export function createRenderer(canvas, settings) {
     followWithShadows,
     applyQuality,
     render,
+    /** Night vision, 0 (off) .. 1 (goggles fully down): drawn by render/post.js, even on low. */
+    set nvg(v) { nvg = v; },
+    get nvg() { return nvg; },
+    /** The post-processing chain in use (render/post.js), or null. For the tests and the tuning panel. */
+    get post() { return post; },
   };
 }

@@ -338,7 +338,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     ring.end();
     debug.update(alpha);
     // No gun in your face in the debug third-person view, or once you're down.
-    view.render(rig.tuning.thirdPerson || health.state.down ? null : viewmodel);
+    view.render(rig.tuning.thirdPerson || health.state.down ? null : viewmodel, dt);
   }
 
   let disposed = false;
