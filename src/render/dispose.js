@@ -10,7 +10,7 @@
 // built once and reused). Disposing one of those is still safe: three.js
 // quietly uploads it again the next time something draws with it.
 
-/** Dispose every geometry, material and texture under `root`. */
+/** Dispose every geometry, material, texture and skeleton under `root`. */
 export function disposeTree(root) {
   const seen = new Set();
   const once = (thing) => {
@@ -20,6 +20,9 @@ export function disposeTree(root) {
   };
   root.traverse((o) => {
     once(o.geometry);
+    // An animated character's skeleton keeps its bones' positions in a small texture
+    // of its own for the graphics card: one per soldier, so it adds up fast.
+    if (o.isSkinnedMesh) once(o.skeleton);
     const materials = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of materials) {
       if (!m) continue;

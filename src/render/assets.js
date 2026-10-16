@@ -25,7 +25,9 @@ const BASE = 'assets/';
 
 /** Everything to load: name -> file (under assets/). */
 export const MANIFEST = {
-  models: {},
+  models: {
+    soldier: 'models/soldier.glb', // tools/build-models.mjs, from Quaternius' Universal Animation Library
+  },
   textures: {},
 };
 

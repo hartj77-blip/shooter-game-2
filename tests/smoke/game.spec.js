@@ -141,6 +141,17 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
   await page.goto('/?map=compound&autostart');
   await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
   expect(await page.evaluate(() => window.fireteam.enemies.list.length)).toBe(16);
+  // The soldiers are the animated, skinned characters (render/character.js), not the fallback,
+  // and their skeletons move (the idle clip breathes).
+  expect(await page.evaluate(() => window.fireteam.assets.failed)).toEqual([]);
+  const bone = () => page.evaluate(() => {
+    const v = [...window.fireteam.mission.enemiesView.views.values()][0];
+    return { kind: v.model.kind, q: v.model.bone('spine_02').quaternion.toArray() };
+  });
+  const before = await bone();
+  expect(before.kind).toBe('skinned');
+  await page.waitForTimeout(500);
+  expect((await bone()).q).not.toEqual(before.q);
 
   // Hold everyone still, step in 3.5 m in front of the gate guard, and aim at their chest.
   await page.evaluate(() => {
