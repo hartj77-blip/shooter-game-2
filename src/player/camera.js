@@ -46,7 +46,7 @@ export function verticalFov(horizontalDeg) {
  * @param {object} opts
  * @param {() => {amount:number, zoom:number}} [opts.aim] how far you're aiming down the sights, and the gun's zoom
  */
-export function createCameraRig({ camera, player, input, settings, aim = () => ({ amount: 0, zoom: 1 }), tuning = { ...DEFAULT_CAMERA_TUNING }, events = gameEvents }) {
+export function createCameraRig({ camera, player, input, settings, aim = () => ({ amount: 0, zoom: 1 }), tuning = { ...DEFAULT_CAMERA_TUNING }, events = gameEvents, owner = 0 }) {
   const rig = {
     tuning,
     eyeY: player.eyeHeight(),
@@ -61,8 +61,9 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
     trauma: 0,      // 0..1, how shaken the camera is; fades over time
     flinch: 0,      // sideways jolt when you're hit (radians)
     flinchVel: 0,
-    down: 0,        // 0..1: you've gone down, the view sinks and tips over (main.js sets the target)
+    down: 0,        // 0..1: you've gone down, the view sinks and tips over (mission.js sets the target)
     downTarget: 0,
+    offset: { x: 0, y: 0, z: 0 }, // co-op: how far a correction just moved you; eased out by mission.js
     time: 0,
     update,
     snap,
@@ -71,8 +72,9 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
   // Each shot jolts the view up a touch (on top of the real recoil, which moves
   // your aim) and adds "trauma". Shake is trauma squared: small shots barely
   // wobble, a shotgun blast really shakes.
+  const mine = (e) => (e.owner ?? 0) === owner; // only your own body moves your camera
   events.on('weapon:fire', (e) => {
-    if ((e.owner ?? 0) !== 0) return;
+    if (!mine(e)) return;
     const kick = WEAPONS[e.weapon]?.kick;
     if (!kick) return;
     const k = 1 - aim().amount * 0.5;
@@ -80,7 +82,6 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
     rig.trauma = Math.min(1, rig.trauma + kick.shake * k);
   });
 
-  const mine = (e) => (e.owner ?? 0) === 0; // only your own body moves your camera
   events.on('player:land', (e) => {
     const { speed } = e;
     if (!mine(e) || speed < 2.5) return;
@@ -127,9 +128,9 @@ export function createCameraRig({ camera, player, input, settings, aim = () => (
 
     // Blend between the last two ticks so motion looks smooth between updates.
     feet.set(
-      p.x + (s.pos.x - p.x) * alpha,
-      p.y + (s.pos.y - p.y) * alpha,
-      p.z + (s.pos.z - p.z) * alpha,
+      p.x + (s.pos.x - p.x) * alpha + rig.offset.x,
+      p.y + (s.pos.y - p.y) * alpha + rig.offset.y,
+      p.z + (s.pos.z - p.z) * alpha + rig.offset.z,
     );
 
     // Eye height eases towards crouching or standing instead of snapping.

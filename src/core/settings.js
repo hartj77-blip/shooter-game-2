@@ -26,7 +26,24 @@ export const SETTINGS_SCHEMA = {
   showFps:      { default: false },
   showReadout:  { default: true },                        // speed and movement state, bottom left
   quality:      { default: 'high', options: ['low', 'medium', 'high'] },
+  callsign:     { default: '', text: true, maxLength: 16 },   // your name in co-op games
+  voiceMode:    { default: 'both', options: ['both', 'radio', 'off'] }, // co-op voice chat (net/voice-mix.js)
+  voiceVolume:  { default: 1.0,  min: 0,   max: 1 },
 };
+
+/**
+ * Text someone typed, made safe to show anywhere: no control characters or
+ * angle brackets, single spaces, trimmed, at most `max` characters.
+ */
+export function cleanText(value, max = 32) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001f\u007f-\u009f<>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
+    .trim();
+}
 
 export function defaultSettings() {
   const out = {};
@@ -43,6 +60,7 @@ export function sanitize(key, value) {
     return Math.min(rule.max, Math.max(rule.min, value));
   }
   if (typeof rule.default === 'boolean') return typeof value === 'boolean' ? value : rule.default;
+  if (rule.text) return typeof value === 'string' ? cleanText(value, rule.maxLength) : rule.default;
   if (rule.options) return rule.options.includes(value) ? value : rule.default;
   return rule.default;
 }

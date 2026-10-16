@@ -12,6 +12,7 @@
 // Without this, ten enemies seeing you at once would all fire at once and you'd
 // drop before you knew where they were. (The Marksman has a counter of its own,
 // with one ticket.) How many tickets there are is part of the difficulty.
+// In co-op, every player has their own counter: four players don't share two tickets.
 
 export function createSquads(enemies) {
   const squads = new Map();
@@ -33,9 +34,10 @@ export const squadMates = (e) => e.squad.members.filter((m) => m !== e && !m.dea
 /**
  * Tell the squad (and squads within radio range) where the player is or was.
  * @param {boolean} seen true if actually seen; false if only heard or shot at from there
+ * @param {number|null} [owner] which player it was, if they know
  */
-export function report(squads, e, pos, time, seen, radio = 35) {
-  const k = { pos: { x: pos.x, y: pos.y, z: pos.z }, time, seen };
+export function report(squads, e, pos, time, seen, owner = null, radio = 35) {
+  const k = { pos: { x: pos.x, y: pos.y, z: pos.z }, time, seen, owner };
   const sq = e.squad;
   if (!sq.knowledge || seen || !sq.knowledge.seen || time - sq.knowledge.time > 1) sq.knowledge = k;
   sq.alert = 'combat';
@@ -53,19 +55,21 @@ export function report(squads, e, pos, time, seen, radio = 35) {
  * @param {() => number} limit how many enemies may shoot at once (from the difficulty)
  */
 export function createTokens(limit) {
-  const holders = new Map(); // enemy -> { pool, since }
+  const holders = new Map(); // enemy -> { pool, target, since }
   const poolOf = (e) => (e.role === 'marksman' ? 'marksman' : 'general');
   const capacity = (pool) => (pool === 'marksman' ? 1 : limit());
   return {
     holders,
-    /** Ask for a ticket. True if `e` now holds one. */
-    take(e, now) {
-      if (holders.has(e)) return true;
+    /** Ask for a ticket to shoot at player `target` (their owner number). True if `e` now holds one. */
+    take(e, now, target = 0) {
+      const mine = holders.get(e);
+      if (mine && mine.target === target) return true;
+      if (mine) holders.delete(e); // switched targets: queue at the other counter
       const pool = poolOf(e);
       let used = 0;
-      for (const h of holders.values()) if (h.pool === pool) used++;
+      for (const h of holders.values()) if (h.pool === pool && h.target === target) used++;
       if (used >= capacity(pool)) return false;
-      holders.set(e, { pool, since: now });
+      holders.set(e, { pool, target, since: now });
       return true;
     },
     has: (e) => holders.has(e),

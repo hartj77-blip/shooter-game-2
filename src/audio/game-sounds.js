@@ -1,18 +1,27 @@
 // Connects game events to sounds. The simulation never plays sounds itself; it
 // posts events ("weapon:fire", "bullet:impact"...) and this file listens.
+// Other soldiers (enemies and teammates) are heard through their `view`
+// summaries, so this works the same on a co-op client as on the host.
 
 import { SURFACES } from '../world/surfaces.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
 import { SIGHT } from '../world/groups.js';
 import { RAPIER } from '../world/physics.js';
 
+const EYE = 1.6; // roughly where a standing soldier's head is, for placing their sounds
+
 /**
- * @param {object} [opts.enemies] ai/enemies.js: their footsteps, voices and lasers
+ * @param {Array<{list: Array}>} [opts.others] other soldiers (each with a `view`): their footsteps, gear and lasers
  * @param {object} [opts.health]  player/health.js: the heartbeat when you're badly hurt
+ * @param {number} [opts.owner]   your player slot
  */
-export function connectGameSounds({ audio, events, soldier, cameraRig, world, registry, enemies = null, health = null }) {
-  const mine = (e) => (e.owner ?? 0) === 0;
-  const enemyAt = (owner) => enemies?.list.find((e) => e.owner === owner) ?? null;
+export function connectGameSounds({ audio, events, soldier, cameraRig, world, registry, others = [], health = null, owner = 0 }) {
+  const mine = (e) => (e.owner ?? 0) === owner;
+  const viewOf = (who) => {
+    for (const src of others) for (const s of src.list) if (s.owner === who) return s.view;
+    return null;
+  };
+  const head = (v) => ({ x: v.pos.x, y: v.pos.y + (v.crouched ? 1 : EYE), z: v.pos.z });
 
   events.on('weapon:fire', (e) => {
     const def = WEAPONS[e.weapon];
@@ -30,8 +39,8 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
       if (e.pump) audio.play('casing', { delay: 0.5, rate: 0.7 });
       return;
     }
-    const en = enemyAt(e.owner);
-    if (en) audio.play(e.sound, { position: en.eye(), spatial: true, volume: 0.8 });
+    const v = viewOf(e.owner);
+    if (v) audio.play(e.sound, { position: head(v), spatial: true, volume: 0.8 });
   });
   events.on('weapon:dry', (e) => { if (mine(e)) audio.play('dry'); });
   events.on('weapon:switch', (e) => { if (mine(e) && e.stage === 'raise') audio.play('gear'); });
@@ -39,7 +48,7 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
 
   // Soldiers.
   events.on('player:hurt', (e) => { if (mine(e) && e.amount > 0) audio.play('hurt', { volume: Math.min(1, 0.5 + e.amount / 30) }); });
-  events.on('bullet:nearmiss', (e) => audio.play('whizz', { position: e.point, volume: Math.min(1, 1.4 - e.distance * 0.6) }));
+  events.on('bullet:nearmiss', (e) => e.victim === owner && audio.play('whizz', { position: e.point, volume: Math.min(1, 1.4 - e.distance * 0.6) }));
   events.on('enemy:down', (e) => audio.play('bodyfall', { position: e.pos, delay: 0.35 }));
   events.on('enemy:bark', (e) => audio.play('radio', { position: { x: e.pos.x, y: e.pos.y + 1.6, z: e.pos.z } }));
 
@@ -76,28 +85,30 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
     return hit ? registry.get(hit.collider).surface : 'concrete';
   }
 
-  // Enemy footsteps (so you can hear someone coming) and the Marksman's laser tone.
-  const steps = new Map(); // enemy -> distance walked since the last footstep
+  // Other soldiers' footsteps (so you can hear someone coming) and the Marksman's laser tone.
+  const steps = new Map(); // soldier id -> distance walked since the last footstep
   const lasers = new Set();
   let heartbeat = 0;
-  function enemyFrame(dt) {
-    if (!enemies) return;
+  function othersFrame(dt) {
     const me = soldier.state.pos;
-    for (const e of enemies.alive) {
-      const s = e.soldier.state;
-      const d = Math.hypot(s.pos.x - me.x, s.pos.z - me.z);
-      if (s.grounded && s.speed > 1 && d < 30) {
-        const walked = (steps.get(e) ?? 0) + s.speed * dt;
-        const stride = s.sprinting ? 1.6 : 1.1;
-        if (walked >= stride) {
-          steps.set(e, 0);
-          const volume = (s.crouched ? 0.35 : s.sprinting ? 1.3 : 0.9) * 1.6;
-          audio.play('step_concrete', { position: s.pos, spatial: true, volume });
-        } else steps.set(e, walked);
+    for (const src of others) {
+      for (const o of src.list) {
+        const v = o.view;
+        if (v.dead || v.down) { lasers.delete(o.id); continue; }
+        const d = Math.hypot(v.pos.x - me.x, v.pos.z - me.z);
+        if (v.grounded && v.speed > 1 && d < 30) {
+          const walked = (steps.get(o.id) ?? 0) + v.speed * dt;
+          const stride = v.sprinting ? 1.6 : 1.1;
+          if (walked >= stride) {
+            steps.set(o.id, 0);
+            const volume = (v.crouched ? 0.35 : v.sprinting ? 1.3 : 0.9) * 1.6;
+            audio.play('step_concrete', { position: v.pos, spatial: true, volume });
+          } else steps.set(o.id, walked);
+        }
+        if (v.laserOn && !lasers.has(o.id)) audio.play('laser', { position: head(v) });
+        if (v.laserOn) lasers.add(o.id);
+        else lasers.delete(o.id);
       }
-      if (e.motor.laserOn && !lasers.has(e)) audio.play('laser', { position: e.eye() });
-      if (e.motor.laserOn) lasers.add(e);
-      else lasers.delete(e);
     }
     if (health && !health.state.down && health.state.hp < health.tuning.low) {
       heartbeat -= dt;
@@ -115,7 +126,7 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
     },
     /** Call once per frame. */
     frame(dt = 1 / 60) {
-      enemyFrame(dt);
+      othersFrame(dt);
       const s = soldier.state;
       const step = Math.floor(cameraRig.bobPhase / Math.PI);
       if (step !== lastStep) {

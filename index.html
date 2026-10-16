@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Fireteam</title>
-<meta name="description" content="A co-op first-person shooter for the browser. Milestone 3: enemy soldiers who see, hear, take cover and flank, in a walled compound.">
+<meta name="description" content="A co-op first-person shooter for the browser. Milestone 4: up to four players against enemy soldiers who see, hear, take cover and flank, with voice chat.">
 <meta name="theme-color" content="#14170f">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314170f'/%3E%3Cpath d='M16 6v20M6 16h20' stroke='%23e8b14a' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='6' fill='none' stroke='%23e8b14a' stroke-width='2.5'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="src/ui/style.css">
@@ -58,6 +58,18 @@
   <div id="feed" class="feed" aria-live="polite"></div>
   <div id="subs" class="subs" aria-live="polite"></div>
   <div id="dmgNums" class="dmg-nums"></div>
+  <ol id="squad" class="squad" aria-label="Your squad" hidden></ol>
+  <div id="radioLight" class="radio-light" hidden><i></i>Radio</div>
+  <div id="marks" class="marks" aria-hidden="true"></div>
+  <div id="ring" class="ring" hidden>
+    <svg viewBox="0 0 64 64" aria-hidden="true"><circle class="ring-bg" cx="32" cy="32" r="28"></circle><circle id="ringFill" class="ring-fill" cx="32" cy="32" r="28"></circle></svg>
+    <span id="ringText">Reviving</span>
+  </div>
+  <div id="coopDown" class="down" hidden>
+    <div id="coopDownTitle" class="down-title"></div>
+    <div id="coopDownInfo" class="down-info"></div>
+    <div id="coopDownHint" class="down-hint"></div>
+  </div>
   <div id="down" class="down" hidden>
     <div class="down-title">You're down</div>
     <div id="downInfo" class="down-info"></div>
@@ -76,7 +88,8 @@
 <section id="title" class="screen" hidden>
   <div class="card">
     <div class="brand">FIRETEAM</div>
-    <p class="tag">Milestone 3 &middot; Enemies</p>
+    <p class="tag">Milestone 4 &middot; Co-op</p>
+    <p id="notice" class="note notice" role="status" hidden></p>
     <div class="maps" role="radiogroup" aria-label="Map">
       <button id="mapProving" class="map" type="button" role="radio" data-map="proving-ground">
         <b>Proving Ground</b><span>Practise: movement course, firing range, timed kill house.</span>
@@ -86,9 +99,15 @@
       </button>
     </div>
     <div class="actions">
-      <button id="btnDeploy" class="primary" type="button">Deploy</button>
+      <button id="btnDeploy" class="primary" type="button">Play solo</button>
+      <button id="btnHost" type="button">Host co-op</button>
+      <button id="btnJoin" type="button">Join co-op</button>
       <button id="btnSettingsT" type="button">Settings</button>
     </div>
+    <label class="field field-inline callsign">
+      <span>Callsign</span>
+      <input id="callsign" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Your name in co-op games">
+    </label>
     <div id="touchNote" class="note" hidden>This build needs a mouse and keyboard. Touch controls arrive in a later milestone.</div>
     <dl class="controls">
       <dt>W A S D</dt><dd>Move</dd>
@@ -100,6 +119,7 @@
       <dt>Right mouse</dt><dd>Aim down sights</dd>
       <dt>R</dt><dd>Reload</dd>
       <dt>1&ndash;4 &middot; wheel &middot; Q</dt><dd>Switch gun &middot; last gun</dd>
+      <dt>V &middot; Z &middot; F</dt><dd>Co-op: squad radio &middot; ping &middot; revive (hold)</dd>
       <dt>~ `</dt><dd>Tuning panel (the key under Esc)</dd>
       <dt>Esc</dt><dd>Pause</dd>
     </dl>
@@ -107,9 +127,63 @@
   </div>
 </section>
 
+<section id="join" class="screen" hidden>
+  <div class="card card-slim">
+    <h2>Join co-op</h2>
+    <form id="joinForm" class="stack" autocomplete="off">
+      <label class="field">
+        <span>Room code</span>
+        <input id="joinCode" class="code-input" type="text" maxlength="60" spellcheck="false" placeholder="KQXRT" aria-describedby="joinHelp">
+      </label>
+      <p id="joinError" class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button id="btnJoinGo" class="primary" type="submit">Join</button>
+        <button id="btnJoinBack" type="button">Back</button>
+      </div>
+    </form>
+    <p id="joinHelp" class="muted small">Ask the host for their 5-letter room code, or open the invite link they send you. Wear headphones, so your teammates don't hear themselves through your speakers.</p>
+  </div>
+</section>
+
+<section id="lobby" class="screen" hidden>
+  <div class="card">
+    <h2>Lobby</h2>
+    <div class="room">
+      <div><span class="muted">Room code</span><b id="roomCode" class="room-code">&middot; &middot; &middot; &middot; &middot;</b></div>
+      <button id="btnCopyLink" type="button">Copy invite link</button>
+    </div>
+    <ol id="roster" class="roster" aria-label="Players"></ol>
+    <div class="lobby-settings">
+      <label class="field">
+        <span>Map</span>
+        <select id="lobbyMap">
+          <option value="compound">The Compound</option>
+          <option value="proving-ground">Proving Ground</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Difficulty</span>
+        <select id="lobbyDifficulty">
+          <option value="recruit">Recruit</option>
+          <option value="regular">Regular</option>
+          <option value="veteran">Veteran</option>
+        </select>
+      </label>
+    </div>
+    <p id="lobbyInfo" class="muted" aria-live="polite"></p>
+    <p id="lobbyError" class="error" role="alert" hidden></p>
+    <div class="actions">
+      <button id="btnStart" class="primary" type="button">Start</button>
+      <button id="btnLeave" type="button">Leave</button>
+    </div>
+  </div>
+</section>
+
 <section id="pause" class="screen" hidden>
   <div class="card card-slim">
     <h2>Paused</h2>
+    <p id="pauseCoop" class="note" hidden>A co-op game keeps going while this menu is open. Stay safe!</p>
+    <div id="muteList" class="mute-list" hidden></div>
     <div class="stack">
       <button id="btnResume" class="primary" type="button">Resume</button>
       <button id="btnRespawn" type="button">Back to spawn</button>

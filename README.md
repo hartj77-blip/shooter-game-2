@@ -4,10 +4,27 @@ A co-op first-person shooter for the browser, built step by step as a game-devel
 
 **Play:** https://hartj77-blip.github.io/shooter-game-2/
 
-**Now:** Milestone 3, **Enemies**. Pick a map on the title screen:
+**Now:** Milestone 4, **Co-op**: play with up to three friends, with voice chat. Pick a map on the title screen:
 
 - **The Compound:** clear a walled compound held by 16 enemy soldiers. Riflemen take cover and peek, Rushers charge and flank, and Marksmen warn you with a laser before each shot. They see and hear you, call out to each other, and search where they last saw you. Health recovers if you get out of the fire.
 - **The Proving Ground:** the practice area from milestones 1 and 2: the movement course, four guns, the firing range and the timed kill house.
+
+Then press **Play solo**, **Host co-op** or **Join co-op**.
+
+### Playing co-op
+
+1. Type a **callsign** (your name in game) on the title screen.
+2. One of you presses **Host co-op** and shares the **room code** (or the invite link from *Copy invite link*).
+3. Everyone else presses **Join co-op** and types the code (or just opens the link).
+4. The host picks the map and difficulty and presses **Start**. Friends can also join a game that's already running.
+
+In the game:
+- Hold **V** to talk on the **squad radio**. Teammates close by also hear you without it (**nearby voice**).
+- Press **Z** (or click the mouse wheel) to **ping** an enemy or a spot.
+- If someone goes down, they have 30 seconds: hold **F** next to them for 3 seconds to **revive** them.
+- Friendly fire is off. Wear headphones, so your teammates don't hear themselves echo.
+
+No accounts and no servers to rent: browsers connect directly (WebRTC), introduced by PeerJS's free service. On some strict networks (some schools and offices) players can't connect.
 
 Every number (movement, guns, enemies) has a slider in the live tuning panel.
 
@@ -24,11 +41,14 @@ Every number (movement, guns, enemies) has a slider in the live tuning panel.
 | Right mouse | Aim down the sights |
 | R | Reload |
 | 1–4, mouse wheel, Q | Switch gun; Q swaps back to the last one |
-| R (when you're down) | Try the fight again |
+| R (when you're down) | Try the fight again (solo; in co-op, the host once everyone's down) |
+| V (hold) | Squad radio (co-op) |
+| Z or middle mouse | Ping what you're aiming at (co-op) |
+| F (hold) | Revive a downed teammate (co-op) |
 | `` ` `` (under Esc) | Tuning panel (pauses the game) |
 | Esc | Pause |
 
-Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of view, hold-or-toggle for crouch, sprint and aiming, volume, reduced camera motion and graphics quality are in **Settings**.
+Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of view, hold-or-toggle for crouch, sprint and aiming, volume, reduced camera motion, graphics quality, your callsign and voice chat (radio + nearby, push-to-talk only, or off; volume) are in **Settings**.
 
 ## Learn how it works
 
@@ -44,6 +64,9 @@ Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of v
   8. [How enemies think](docs/lessons/08-how-enemies-think.md)
   9. [Pathfinding and cover](docs/lessons/09-pathfinding-and-cover.md)
   10. [Health, hits and bodies](docs/lessons/10-health-hits-and-bodies.md)
+  11. [How co-op works](docs/lessons/11-how-co-op-works.md)
+  12. [Prediction and trust](docs/lessons/12-prediction-and-trust.md)
+  13. [Voice, rooms and the internet](docs/lessons/13-voice-rooms-and-the-internet.md)
 - [`docs/GLOSSARY.md`](docs/GLOSSARY.md): every term in plain English
 - [`docs/DESIGN.md`](docs/DESIGN.md): the game design document and roadmap
 
@@ -58,12 +81,16 @@ python3 -m http.server 8000
 
 Add `?debug` to the address to open the tuning panel straight away, and `?map=compound` to go straight to the Compound.
 
+To try co-op on your own, open two tabs with `?net=local` (for example `http://localhost:8000/?net=local`), host in one and join with the code in the other. That uses the browser's `BroadcastChannel` instead of the internet. Voice chat needs the real online version.
+
 ## Tests
 
 ```sh
 npm install        # once: installs Playwright, used only by the browser test
-npm test           # unit tests: movement, weapons, hitscan, targets, kill house, enemy AI, pathfinding, the Compound...
-npm run smoke      # opens the real game in a headless browser: walks, shoots, runs the kill house, fights in the Compound
+npm test           # unit tests: movement, weapons, enemy AI, pathfinding, the Compound, and co-op over a pretend
+                   # network with delay, jitter and packet loss (prediction, revives, the lobby, voice mixing)
+npm run smoke      # opens the real game in a headless browser: walks, shoots, fights in the Compound, switches maps,
+                   # and plays co-op in two tabs (host, join, shoot, revive, ping) with a pretend microphone
 ```
 
 GitHub runs both on every pull request (`.github/workflows/ci.yml`).
@@ -72,22 +99,24 @@ GitHub runs both on every pull request (`.github/workflows/ci.yml`).
 
 ```
 index.html        the page, the import map, menus and HUD
-src/main.js       boots everything and runs the game flow
+src/main.js       the app shell: boots everything and runs the game flow
+src/mission.js    one map, built and torn down without a page reload
 src/core/         game loop, input, events, settings, state machine, seeded random, tuning panel
 src/world/        physics (Rapier), collision groups, the level kit, level building, surfaces, targets
 src/weapons/      the weapon table, guns, the arsenal, hitscan
 src/player/       movement controller, soldier (movement + guns + hitboxes), health, first-person camera
 src/ai/           enemies: roles, senses, brains, squads, the nav grid, A*, cover, noise
-src/game/         the kill house course, the Compound's rules
+src/game/         the shared simulation (sim.js), the kill house course, the Compound's rules, revives, pings
+src/net/          co-op: transports, the protocol, rooms, the host, clients (prediction), stand-ins, voice
 src/render/       renderer, materials, level meshes, signs, guns, viewmodel, effects, targets,
                   block soldiers, ragdolls, AI debug views
 src/audio/        sound engine, sound bank, game sounds
-src/ui/           HUD, menus, styles
+src/ui/           HUD, squad HUD, lobby, menus, styles
 levels/           maps, written as data
-vendor/           pinned copies of three.js, Rapier and lil-gui
+vendor/           pinned copies of three.js, Rapier, lil-gui and PeerJS
 assets/           fonts and sounds
 tools/            build-sounds.py (cuts the CC0 recordings into game sounds)
-tests/            unit tests (Node) and the smoke test (Playwright)
+tests/            unit tests (Node) and the smoke tests (Playwright)
 docs/             design document, glossary, lessons
 ```
 
@@ -99,8 +128,8 @@ docs/             design document, glossary, lessons
 | ✅ | M1 Move like a pro | movement, Proving Ground, tuning panel |
 | ✅ | M2 Gunfeel | four guns, recoil, aiming, effects, sound, range, kill house |
 | ✅ | M3 Enemies | AI soldiers, senses, squads, pathfinding, cover, ragdolls, the Compound |
-| ⏭ | M4 Co-op | 1–4 players, peer to peer, voice |
-| | M5 Missions | objectives, the director, extraction |
+| ✅ | M4 Co-op | 1–4 players, peer to peer, prediction, revives, pings, voice |
+| ⏭ | M5 Missions | objectives, the director, extraction |
 | | M6 Art pass | stylized models, animation, lighting |
 | | M7 Progression | XP, unlocks, loadouts |
 | | M8 Polish | audio, HUD, settings, gamepad, touch |

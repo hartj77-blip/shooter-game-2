@@ -2,7 +2,8 @@
 //
 // Shared between all of them: the navigation grid and cover points (built once
 // per level), the noise board, squads, attack tokens, a queue of route
-// requests, and what they currently know about the player.
+// requests, and what they currently know about the players (1 to 4 of them:
+// each enemy picks one as its target, see ai/senses.js).
 //
 // One tick, in the order main.js calls them:
 //   enemies.move(dt)          each enemy's motor makes a command; its soldier moves
@@ -16,7 +17,7 @@
 // give the same fight, which is what co-op (milestone 4) will rely on.
 
 import { createEnemy, command, afterShots } from './enemy.js';
-import { DIFFICULTY, BARKS } from './enemy-data.js';
+import { DIFFICULTY, BARKS, PLAYER_SCALING } from './enemy-data.js';
 import { sense } from './senses.js';
 import { createSquads, createTokens, report, squadMates } from './squad.js';
 import { route } from './astar.js';
@@ -34,17 +35,19 @@ const NEAR_MISS = 1.3;        // metres: a bullet passing this close to your hea
  * @param {object} opts.cover   ai/cover.js
  * @param {object} opts.noise   ai/noise.js
  * @param {Array}  opts.specs   enemy pieces from the level
- * @param {object} opts.player  { soldier, health }
+ * @param {Array}  [opts.players] [{ soldier, health }]: the people they fight (up to 4)
+ * @param {object} [opts.player]  one { soldier, health } (the same as players: [player])
  * @param {string} [opts.difficulty]
  */
-export function createEnemies({ world, registry, nav, cover, noise, specs, player, events = gameEvents, seed = 1, difficulty = 'regular' }) {
+export function createEnemies({ world, registry, nav, cover, noise, specs, players = null, player = null, events = gameEvents, seed = 1, difficulty = 'regular' }) {
   const ai = {
     world, registry, nav, cover, noise, events, seed,
     time: 0,
     tick: 0,
     rng: createRandom(seed),
     difficulty: DIFFICULTY[difficulty] ?? DIFFICULTY.regular,
-    player: { owner: player.soldier.owner, pos: { x: 0, y: 0, z: 0 }, eye: null, chest: null, head: null, crouched: false, speed: 0, sprinting: false, down: false, firedAt: -Infinity },
+    players: [],  // everyone they could fight, as plain records (see playerRecord below)
+    targets: [],  // the players still standing (not down): the ones worth shooting at
     alive: [],
     options: { freeze: false, noBarks: false },
   };
@@ -53,11 +56,12 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
   let list = [];
   let squads = new Map();
   const tokens = createTokens(() => ai.difficulty.tokens);
+  const recordOf = (owner) => ai.players.find((p) => p.owner === owner) ?? null;
   let lastBarkAt = -Infinity;
 
   // ---- what the brains and motors can ask for
-  ai.report = (e, pos, seen) => report(squads, e, pos, ai.time, seen);
-  ai.takeToken = (e) => tokens.take(e, ai.time);
+  ai.report = (e, pos, seen, owner = e.target?.owner ?? null) => report(squads, e, pos, ai.time, seen, owner);
+  ai.takeToken = (e) => (e.target ? tokens.take(e, ai.time, e.target.owner) : false);
   ai.release = (e) => tokens.release(e);
   ai.claim = (e, id) => {
     for (const [k, v] of taken) if (v === e) taken.delete(k);
@@ -86,33 +90,64 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     const text = e.rng.pick(BARKS[kind]);
     events.emit('enemy:bark', { id: e.id, owner: e.owner, role: e.role, kind, text, pos: { ...e.pos } });
   };
-  // An enemy's bullet hit something: only you get hurt (no friendly fire between enemies).
+  // An enemy's bullet hit something: only players get hurt (no friendly fire between enemies).
   ai.hurt = (shooter, victim, amount, hit) => {
     if (victim.kind !== 'player') return { killed: false };
-    return player.health.damage(amount * ai.difficulty.damage, hit.from);
+    const p = recordOf(victim.owner);
+    return p ? p.health.damage(amount * ai.difficulty.damage, hit.from) : { killed: false };
   };
 
   function spawnAll() {
     list = specs.map((spec, i) => createEnemy(spec, i, ai));
+    // More players, a little more health each (PLAYER_SCALING in ai/enemy-data.js).
+    const scale = PLAYER_SCALING.health[Math.min(PLAYER_SCALING.health.length, Math.max(1, ai.players.length)) - 1];
+    for (const e of list) { e.health = e.maxHealth = Math.round(e.def.health * scale); }
     squads = createSquads(list);
     ai.alive = list.slice();
     for (const e of list) e.brain.start();
   }
 
-  function updatePlayer() {
-    const s = player.soldier.state;
-    const body = player.soldier.body;
-    const h = body.height();
-    const P = ai.player;
-    P.pos = { ...s.pos };
-    P.eye = { x: s.pos.x, y: s.pos.y + body.eyeHeight(), z: s.pos.z };
-    P.head = { x: s.pos.x, y: s.pos.y + h - 0.2, z: s.pos.z };
-    P.chest = { x: s.pos.x, y: s.pos.y + h * 0.62, z: s.pos.z };
-    P.crouched = s.crouched;
-    P.speed = s.speed;
-    P.sprinting = s.sprinting;
-    P.down = player.health.state.down;
+  /** A player as the enemies see it: plain numbers, refreshed every tick. */
+  function playerRecord({ soldier, health }) {
+    return {
+      owner: soldier.owner, soldier, health,
+      pos: { x: 0, y: 0, z: 0 }, eye: null, chest: null, head: null,
+      crouched: false, speed: 0, sprinting: false, down: false, firedAt: -Infinity,
+    };
   }
+
+  function updatePlayers() {
+    for (const P of ai.players) {
+      const s = P.soldier.state;
+      const body = P.soldier.body;
+      const h = body.height();
+      P.pos = { ...s.pos };
+      P.eye = { x: s.pos.x, y: s.pos.y + body.eyeHeight(), z: s.pos.z };
+      P.head = { x: s.pos.x, y: s.pos.y + h - 0.2, z: s.pos.z };
+      P.chest = { x: s.pos.x, y: s.pos.y + h * 0.62, z: s.pos.z };
+      P.crouched = s.crouched;
+      P.speed = s.speed;
+      P.sprinting = s.sprinting;
+      P.down = P.health.state.down || !!P.health.state.bleeding || !!P.health.state.dead;
+    }
+    ai.targets = ai.players.filter((P) => !P.down);
+    // Anyone whose target went down (or left) looks for someone else.
+    for (const e of ai.alive) if (e.target && !ai.targets.includes(e.target)) { tokens.release(e); e.target = null; }
+  }
+
+  /** Someone joined: from now on they can be seen, heard and shot. */
+  function addPlayer(p) {
+    if (!recordOf(p.soldier.owner)) ai.players.push(playerRecord(p));
+    updatePlayers();
+  }
+
+  /** Someone left: forget them. */
+  function removePlayer(owner) {
+    ai.players = ai.players.filter((p) => p.owner !== owner);
+    updatePlayers();
+  }
+
+  for (const p of players ?? (player ? [player] : [])) ai.players.push(playerRecord(p));
 
   // ------------------------------------------------------------------ the tick
 
@@ -120,18 +155,23 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     ai.time += dt;
     ai.tick++;
     noise.now = ai.time;
-    updatePlayer();
+    updatePlayers();
     for (const e of ai.alive) {
       e.cmd = ai.options.freeze ? { ...e.cmd, moveX: 0, moveZ: 0, fire: false, firePressed: false, sprint: false } : command(e, ai, dt);
       e.soldier.move(e.cmd, dt);
     }
   }
 
-  /** Your bullets this tick: anyone they hit or flew close past is now being shot at. */
-  function playerShots(shots) {
+  /**
+   * A player's bullets this tick: anyone they hit or flew close past is now being shot at.
+   * @param {Array} shots  [{ origin, end }]
+   * @param {number} [owner] who fired (defaults to the first player, for solo play)
+   */
+  function playerShots(shots, owner = ai.players[0]?.owner) {
     if (!shots?.length) return;
-    ai.player.firedAt = ai.time;
-    const from = ai.player.eye;
+    const shooter = recordOf(owner);
+    if (shooter) shooter.firedAt = ai.time;
+    const from = shooter?.eye ?? shots[0].origin;
     for (const e of ai.alive) {
       const c = { x: e.pos.x, y: e.pos.y + 1.1, z: e.pos.z };
       for (const shot of shots) {
@@ -185,20 +225,21 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
 
   function act(dt) {
     if (ai.options.freeze) return;
-    const head = ai.player.eye;
     for (const e of ai.alive.slice()) {
       const out = e.soldier.act(e.cmd, dt);
       if (!out.shots.length) continue;
       const pulls = out.shots.length / out.shots[0].weapon.pellets;
       afterShots(e, ai, pulls);
-      // Near misses: a bullet that didn't hit you but passed close to your head.
-      const hitYou = [...(out.hitTargets?.keys() ?? [])].some((t) => t.kind === 'player');
-      if (hitYou || ai.player.down) continue;
-      for (const shot of out.shots) {
-        const near = closestApproach(shot.origin, shot.end, head);
-        if (near.distance < NEAR_MISS && near.t > 0.02 && near.t < 0.999) {
-          events.emit('bullet:nearmiss', { owner: e.owner, point: near.point, distance: near.distance, from: { ...shot.origin } });
-          break;
+      // Near misses: a bullet that didn't hit a player but passed close to their head.
+      const hit = new Set([...(out.hitTargets?.keys() ?? [])].filter((t) => t.kind === 'player').map((t) => t.owner));
+      for (const P of ai.targets) {
+        if (hit.has(P.owner)) continue;
+        for (const shot of out.shots) {
+          const near = closestApproach(shot.origin, shot.end, P.eye);
+          if (near.distance < NEAR_MISS && near.t > 0.02 && near.t < 0.999) {
+            events.emit('bullet:nearmiss', { owner: e.owner, victim: P.owner, point: near.point, distance: near.distance, from: { ...shot.origin } });
+            break;
+          }
         }
       }
     }
@@ -212,9 +253,12 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     e.health -= amount;
     e.pain += amount;
     e.senses.underFire = ai.time;
-    e.senses.shotFrom = hit.from ? { ...hit.from } : { ...ai.player.eye };
+    const shooter = recordOf(hit.owner) ?? ai.players[0] ?? null;
+    e.senses.shotFrom = hit.from ? { ...hit.from } : shooter ? { ...shooter.eye } : { ...e.pos };
+    // Shot by someone you weren't watching? They're your problem now.
+    if (shooter && !shooter.down && (!e.target || !e.senses.visible)) e.target = shooter;
     if (!e.inCombat) {
-      ai.report(e, e.senses.shotFrom, false);
+      ai.report(e, e.senses.shotFrom, false, shooter?.owner ?? null);
       e.brain.alarm();
     } else if (e.rng.next() < 0.3) {
       ai.bark(e, 'hit');
@@ -234,7 +278,10 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
       point: hit.point ? { ...hit.point } : null, dir: hit.dir ? { ...hit.dir } : null,
       weapon: hit.weapon ?? null, zone: hit.zone ?? null, time: ai.time,
     };
+    // Their ragdoll takes over the drawing: switch off the hitboxes and the body
+    // they moved with, or it would stand there as an invisible wall.
     e.soldier.hitboxes.setEnabled(false);
+    e.soldier.body.collider.setEnabled(false);
     tokens.release(e);
     for (const [k, v] of taken) if (v === e) taken.delete(k);
     if (e.squad.flanker === e.id) e.squad.flanker = null;
@@ -270,6 +317,9 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     tokens,
     taken,
     options: ai.options,
+    get players() { return ai.players; },
+    addPlayer,
+    removePlayer,
     move,
     playerShots,
     think,

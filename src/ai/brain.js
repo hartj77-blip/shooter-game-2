@@ -61,7 +61,7 @@ export function createBrain(e, ai) {
       ai.bark(e, seen ? 'spotted' : 'hit');
     }
     e.alert = 'combat';
-    if (S.visible) ai.report(e, ai.player.pos, true);
+    if (S.visible && e.target) ai.report(e, e.target.pos, true);
     go('engage');
   }
 
@@ -73,7 +73,7 @@ export function createBrain(e, ai) {
     if (h && !h.handled) {
       h.handled = true;
       if (h.alarm) {
-        ai.report(e, h.pos, false);
+        ai.report(e, h.pos, false, h.owner);
         enterCombat({ seen: false });
         return true;
       }
@@ -88,7 +88,7 @@ export function createBrain(e, ai) {
 
   /** Things every combat state keeps an eye on. Returns true if it changed state. */
   function combatChecks() {
-    if (S.visible) ai.report(e, ai.player.pos, true);
+    if (S.visible && e.target) ai.report(e, e.target.pos, true);
     if (ai.time - S.underFire < 0.2 && S.shotFrom && !S.visible) ai.report(e, S.shotFrom, false);
     if (knowAge() > 30 && !S.visible) { calmDown(); return true; }
     return false;
@@ -397,7 +397,7 @@ export function createBrain(e, ai) {
       update() {
         if (combatChecks()) return;
         // Caught in the open close up: fight back.
-        if (S.visible && flat(ai.player.pos, e.pos) < def.range.ideal) {
+        if (S.visible && e.target && flat(e.target.pos, e.pos) < def.range.ideal) {
           I.aim = true; I.fireOk = true; I.pace = 'run';
         }
         if (e.arrived) { go('inCover'); return; }

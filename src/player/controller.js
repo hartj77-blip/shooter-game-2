@@ -16,7 +16,7 @@
 
 import { RAPIER, IDENTITY_ROTATION } from '../world/physics.js';
 import { events as gameEvents } from '../core/events.js';
-import { MOVE, CHARACTER_GROUPS } from '../world/groups.js';
+import { MOVE, LEVEL, CHARACTER_GROUPS } from '../world/groups.js';
 
 const deg = (d) => (d * Math.PI) / 180;
 
@@ -63,6 +63,14 @@ export const DEFAULT_TUNING = {
 
 const GROUND_STICK = -1.5; // small downward push while grounded, so we notice the moment the floor disappears
 
+// Rapier measures a rounded cylinder without its rounded rim, so subtract it.
+export const bodyHalfHeight = (height) => height / 2 - BODY.rim;
+
+/** The shape every soldier moves with: a cylinder with rounded edges, `height` tall. */
+export function bodyCollider(height = BODY.standHeight) {
+  return RAPIER.ColliderDesc.roundCylinder(bodyHalfHeight(height), BODY.radius - BODY.rim, BODY.rim).setCollisionGroups(CHARACTER_GROUPS);
+}
+
 // How the gun in your hands changes movement this tick (see weapons/arsenal.js).
 // Aiming slows you down; pressing fire or aiming stops a sprint.
 export const NO_MODS = Object.freeze({ speedScale: 1, canSprint: true });
@@ -79,13 +87,9 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
   // Every event says whose body it was, so the camera only dips when *you* land.
   const emit = (name, data) => events.emit(name, { owner, ...data });
   const r = BODY.radius;
-  const rim = BODY.rim;
-  // Rapier measures a rounded cylinder without its rounded rim, so subtract it.
-  const halfOf = (height) => height / 2 - rim;
+  const halfOf = bodyHalfHeight;
 
-  const collider = world.createCollider(
-    RAPIER.ColliderDesc.roundCylinder(halfOf(BODY.standHeight), r - rim, rim).setCollisionGroups(CHARACTER_GROUPS),
-  );
+  const collider = world.createCollider(bodyCollider(BODY.standHeight));
 
   // Rapier's kinematic character controller: it moves our capsule and handles
   // sliding along walls, climbing slopes and stepping up stairs.
@@ -225,12 +229,14 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     const top = feetY + t.mantleReach + 0.05;
     const center = centerAt(state.pos, height());
 
+    // Ledges are part of the level (LEVEL): you climb walls and crates, not people.
+    // (Room to stand up there, below, still counts people: MOVE.)
     for (const probe of [r + 0.12, r + 0.35, r + 0.6]) {
       const ox = state.pos.x + dirX * probe;
       const oz = state.pos.z + dirZ * probe;
       const down = world.castRayAndGetNormal(
         new RAPIER.Ray({ x: ox, y: top, z: oz }, { x: 0, y: -1, z: 0 }),
-        top - (feetY + t.mantleMin), true, undefined, MOVE, collider,
+        top - (feetY + t.mantleMin), true, undefined, LEVEL,
       );
       if (!down) continue;
       if (down.timeOfImpact < 1e-3) return null; // the stick started inside a wall: too tall to climb
@@ -241,7 +247,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
       // There must be an actual wall face in front of us, just below the ledge.
       const wall = world.castRay(
         new RAPIER.Ray({ x: center.x, y: ledgeY - 0.12, z: center.z }, { x: dirX, y: 0, z: dirZ }),
-        probe + 0.05, true, undefined, MOVE, collider,
+        probe + 0.05, true, undefined, LEVEL,
       );
       if (!wall) continue;
 
@@ -252,7 +258,7 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
       let ty = ledgeY;
       const onTop = world.castRay(
         new RAPIER.Ray({ x: tx, y: ledgeY + 0.3, z: tz }, { x: 0, y: -1, z: 0 }),
-        0.45, true, undefined, MOVE, collider,
+        0.45, true, undefined, LEVEL,
       );
       if (onTop) ty = ledgeY + 0.3 - onTop.timeOfImpact;
       else { tx = ox; tz = oz; } // thin wall: land where the stick touched instead
@@ -591,6 +597,18 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     world.removeCollider(collider, false);
   }
 
+  /** A copy of the movement state. Co-op prediction keeps these (see net/client.js). */
+  function save() {
+    return structuredClone(state);
+  }
+
+  /** Back to a saved state, collider and all ("rewind"). */
+  function restore(saved) {
+    Object.assign(state, structuredClone(saved));
+    collider.setHalfHeight(halfOf(height()));
+    syncCollider();
+  }
+
   return {
     state,
     prev,
@@ -600,6 +618,8 @@ export function createPlayer({ world, spawn, tuning = { ...DEFAULT_TUNING }, eve
     update,
     teleport,
     remove,
+    save,
+    restore,
     height,
     eyeHeight: () => height() - BODY.eyeBelowTop,
   };

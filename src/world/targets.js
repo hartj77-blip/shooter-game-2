@@ -175,6 +175,8 @@ export function createTargets(world, registry, specs) {
     list,
     update,
     damage,
+    /** Move a target's colliders to match its state (a co-op client sets the state from snapshots). */
+    sync: place,
     raise,
     lower,
     inGroup,
