@@ -20,6 +20,7 @@ import { traceShot } from '../weapons/hitscan.js';
 import { createRandom } from '../core/random.js';
 import { events as gameEvents } from '../core/events.js';
 import { NOISE } from '../ai/noise.js';
+import { throwFrom } from '../weapons/grenades.js';
 
 /**
  * @param {object} opts
@@ -57,7 +58,7 @@ export function createSoldier({
   // Holding "interact" (F: reviving a teammate) means your hands are busy: no
   // shooting or aiming. It's decided from the command alone, so a co-op client's
   // prediction and the host always agree.
-  const busyHands = (cmd) => (cmd.interact ? { ...cmd, fire: false, firePressed: false, ads: false } : cmd);
+  const busyHands = (cmd) => (cmd.interact ? { ...cmd, fire: false, firePressed: false, ads: false, grenade: false } : cmd);
 
   /** How the gun changes movement for this command (co-op prediction records it for replays). */
   const movementMods = (command) => arsenal.movementMods(busyHands(command));
@@ -90,14 +91,16 @@ export function createSoldier({
    * @param {boolean} [opts.trace] false: run the gun (ammo, reloads, aiming) but trace no bullets,
    *        make no noise and post no events. The co-op host does this for other players: their own
    *        browsers trace their shots and send them in (net/host.js applies them).
-   * @returns {{look:{yaw:number, pitch:number}, shots:Array, hitTargets?:Map}} recoil for the view, and what each shot did
+   * @returns {{look:{yaw:number, pitch:number}, shots:Array, hitTargets?:Map, thrown?:object}} recoil for the view,
+   *          what each shot did, and a grenade that left your hand this tick ({ origin, vel }: weapons/grenades.js)
    */
   function act(command, dt, { trace = true } = {}) {
     const cmd = busyHands(command);
     const s = body.state;
     const eye = { x: s.pos.x, y: s.pos.y + body.eyeHeight(), z: s.pos.z };
-    const { shots, look } = arsenal.update(cmd, dt, { ...s, eye, walkSpeed: body.tuning.walkSpeed });
-    if (!shots.length || !trace) return { look, shots: [] };
+    const { shots, look, thrown: threw } = arsenal.update(cmd, dt, { ...s, eye, walkSpeed: body.tuning.walkSpeed });
+    const thrown = threw ? throwFrom(eye, cmd.yaw, cmd.pitch, s.vel) : null;
+    if (!shots.length || !trace) return { look, shots: [], thrown };
 
     const def = shots[0].weapon;
     const traced = [];
@@ -141,7 +144,7 @@ export function createSoldier({
         killed: hit.killed,
       });
     }
-    return { look, shots: traced, hitTargets };
+    return { look, shots: traced, hitTargets, thrown };
   }
 
   /** Puts the soldier somewhere instantly, with its hitboxes. */

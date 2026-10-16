@@ -28,6 +28,7 @@ export const ROLES = {
     fireOnMove: 0.35,                    // chance to shoot while running to cover
     suppress: 1.2,                       // keeps firing at where you were for this long after losing sight
     ads: true,
+    evade: 0.65,                         // chance to run from a grenade they spot landing nearby
   },
   rusher: {
     name: 'Rusher',
@@ -48,6 +49,7 @@ export const ROLES = {
     suppress: 0.5,
     ads: false,
     sprint: true,
+    evade: 0.45,
   },
   marksman: {
     name: 'Marksman',
@@ -68,6 +70,7 @@ export const ROLES = {
     fireOnMove: 0,
     suppress: 0,
     ads: true,
+    evade: 0.75,
   },
 };
 
@@ -115,4 +118,5 @@ export const BARKS = {
   // Reinforcements (game/director.js): on the way in, and arriving.
   inbound: ['Moving up!', 'On our way!', 'Reinforcements moving in!'],
   arrive: ['In position. Where are they?', "We're here!", 'Spread out, find them!'],
+  grenade: ['Grenade!', 'Get down!', 'Move, move!'],
 };

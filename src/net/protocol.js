@@ -11,6 +11,8 @@
 //                                       case a packet goes missing (unreliable: fast, may be lost)
 //   fire   { ... }                      shots you fired this tick: where they went, what they hit
 //                                       ("hit claims", checked by the host before it applies them)
+//   throw  { id, origin, vel }          a grenade left your hand (your browser flies it at once;
+//                                       the host checks it and flies its own copy, which decides the blast)
 //   ping   { at }                       for measuring the round trip ("ping" in the latency sense)
 //
 // Host → client
@@ -47,7 +49,7 @@ const fromMrad = (v) => v / 1000;
 // ---------------------------------------------------------------- commands
 
 // On/off buttons packed into one number, one bit each (like a row of light switches).
-const CMD_BITS = ['jump', 'jumpHeld', 'crouch', 'crouchPressed', 'sprint', 'fire', 'firePressed', 'ads', 'reload', 'lastWeapon', 'interact', 'ping'];
+const CMD_BITS = ['jump', 'jumpHeld', 'crouch', 'crouchPressed', 'sprint', 'fire', 'firePressed', 'ads', 'reload', 'lastWeapon', 'interact', 'ping', 'grenade'];
 
 const ANGLE = 1e4; // command angles: a tenth of a milliradian (aim must stay precise)
 
@@ -161,10 +163,10 @@ export function decodeEncounter(a) {
 const SHARED_EVENTS = new Set([
   'weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'bullet:nearmiss', 'player:hurt', 'player:down',
   'player:dead', 'player:revive', 'enemy:down', 'enemy:bark', 'mission:restart', 'ping:mark', 'player:joined', 'player:left',
-  'ammo:resupply',
+  'ammo:resupply', 'grenade:throw', 'grenade:explode',
 ]);
 // Events about your own soldier that your browser already showed when you did it.
-const OWN_ECHO = new Set(['weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit']);
+const OWN_ECHO = new Set(['weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'grenade:throw']);
 // Events only the player they're about needs.
 const PERSONAL = { 'player:hurt': 'owner', 'bullet:nearmiss': 'victim' };
 
@@ -172,7 +174,8 @@ const PERSONAL = { 'player:hurt': 'owner', 'bullet:nearmiss': 'victim' };
 export function eventFor(name, data, slot) {
   if (name.startsWith('encounter:') || name.startsWith('course:')) return true;
   if (!SHARED_EVENTS.has(name)) return false;
-  if (OWN_ECHO.has(name) && data.owner === slot) return false;
+  // (Your own grenade's blast is the host's to decide, so its hits come back to you.)
+  if (OWN_ECHO.has(name) && data.owner === slot && !data.area) return false;
   if (PERSONAL[name]) return data[PERSONAL[name]] === slot;
   return true;
 }

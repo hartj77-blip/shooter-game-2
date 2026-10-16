@@ -2,6 +2,9 @@
 // the sights, and turning each shot into a direction in the world.
 //
 // Each tick it:
+//   0. handles a grenade throw (G): a short gesture that keeps your trigger
+//      finger busy. Whether a grenade actually leaves your hand depends on how
+//      many you have; the gesture doesn't, so it's decided from the command alone
 //   1. handles switching guns (1-4, mouse wheel, Q for your last gun)
 //   2. moves "aim" towards hip or sights
 //   3. works out the current spread (bigger when moving, jumping, firing a lot)
@@ -13,6 +16,7 @@
 
 import { WEAPONS, LOADOUT } from './weapons-data.js';
 import { createGun } from './gun.js';
+import { GRENADE } from './grenades.js';
 
 const RAD = Math.PI / 180;
 
@@ -49,6 +53,9 @@ export function createArsenal({ loadout = LOADOUT, rng, emit = () => {}, owner =
     ads: 0,            // 0 = hip, 1 = fully aimed
     sprintBlock: 0,    // seconds until you can fire after sprinting
     spread: 0,         // current spread in degrees (the HUD crosshair uses it)
+    grenades: GRENADE.max,
+    throwing: 0,       // seconds left of a throw gesture
+    released: true,    // the grenade has left your hand (this throw)
   };
   const opts = { infiniteAmmo: false, ...options };
 
@@ -80,10 +87,30 @@ export function createArsenal({ loadout = LOADOUT, rng, emit = () => {}, owner =
    * @param {object} cmd   this tick's command
    * @param {number} dt
    * @param {object} body  the player's movement state, plus `eye` {x,y,z} and `walkSpeed`
-   * @returns {{shots: Array, look: {yaw:number, pitch:number}}}
+   * @returns {{shots: Array, look: {yaw:number, pitch:number}, thrown: boolean}} `thrown`: a grenade left your hand
    */
   function update(cmd, dt, body) {
     const look = { yaw: 0, pitch: 0 };
+
+    // 0. A grenade: the gesture always plays; the grenade only flies if you have one.
+    let thrown = false;
+    if (cmd.grenade && state.throwing <= 0) {
+      state.throwing = GRENADE.gesture;
+      state.released = false;
+      emit('grenade:gesture', { owner });
+    }
+    if (state.throwing > 0) {
+      state.throwing = Math.max(0, state.throwing - dt);
+      if (!state.released && GRENADE.gesture - state.throwing >= GRENADE.release) {
+        state.released = true;
+        if (opts.infiniteAmmo || state.grenades > 0) {
+          if (!opts.infiniteAmmo) state.grenades--;
+          thrown = true;
+        } else {
+          emit('grenade:none', { owner }); // reached for one: none left
+        }
+      }
+    }
 
     // 1. Switching.
     if (cmd.slot >= 1) switchTo(cmd.slot - 1);
@@ -125,8 +152,8 @@ export function createArsenal({ loadout = LOADOUT, rng, emit = () => {}, owner =
     spread += gun().bloom * (1 + (sp.adsBloom - 1) * state.ads);
     state.spread = spread;
 
-    // 4. Firing.
-    const canFire = state.sprintBlock <= 0 && !body.sprinting && body.mode !== 'mantle';
+    // 4. Firing (not mid-throw).
+    const canFire = state.sprintBlock <= 0 && !body.sprinting && body.mode !== 'mantle' && state.throwing <= 0;
     const fired = gun().update(
       { fire: cmd.fire, firePressed: cmd.firePressed, reload: cmd.reload, canFire, ads: state.ads },
       dt, look, opts,
@@ -146,7 +173,7 @@ export function createArsenal({ loadout = LOADOUT, rng, emit = () => {}, owner =
         });
       }
     }
-    return { shots, look };
+    return { shots, look, thrown };
   }
 
   /** What you're carrying: [magazine, spare] for each gun. */
@@ -172,13 +199,20 @@ export function createArsenal({ loadout = LOADOUT, rng, emit = () => {}, owner =
    */
   function resupply() {
     for (const g of guns) g.reserve = Math.max(g.reserve, g.def.reserve);
+    state.grenades = Math.max(state.grenades, GRENADE.max);
   }
 
   /** A full load: what you start a mission with. */
   const fresh = () => guns.map((g) => [g.def.mag, g.def.reserve]);
 
+  /** Everything back to a full load, grenades too (a mission starting again). */
+  function rearm() {
+    load(fresh());
+    state.grenades = GRENADE.max;
+  }
+
   /** True if a crate would give you nothing. */
-  const full = () => guns.every((g) => g.reserve >= g.def.reserve);
+  const full = () => guns.every((g) => g.reserve >= g.def.reserve) && state.grenades >= GRENADE.max;
 
   return {
     guns,
@@ -190,6 +224,7 @@ export function createArsenal({ loadout = LOADOUT, rng, emit = () => {}, owner =
     update,
     ammo,
     fresh,
+    rearm,
     load,
     resupply,
     full,

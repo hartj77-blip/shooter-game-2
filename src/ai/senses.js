@@ -47,6 +47,7 @@ export function createSenseState() {
 }
 
 const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+const HAZARD_RANGE = 8; // metres: grenades closer than this are their problem (the blast reaches 7 m)
 
 function clear(world, from, to, groups, skip) {
   const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
@@ -132,6 +133,19 @@ export function sense(e, ai, dt) {
     if (!e.inCombat) S.awareness = Math.max(0, S.awareness - AWARENESS.decay * dt);
   }
 
+  // ---- grenades: one landing nearby is worth noticing (and maybe running from, ai/brain.js).
+  // They have to see it, unless it lands right by their feet (they hear it clatter).
+  S.hazard = null;
+  for (const g of ai.hazards ?? []) {
+    const d = Math.hypot(g.pos.x - e.pos.x, g.pos.z - e.pos.z);
+    if (d > HAZARD_RANGE || Math.abs(g.pos.y - e.pos.y) > 3) continue;
+    if (d > 2.5) {
+      const off = Math.abs(wrap(Math.atan2(-(g.pos.x - eye.x), -(g.pos.z - eye.z)) - e.motor.yaw)) / DEG;
+      if (off > def.sight.fov / 2 || !clear(ai.world, eye, g.pos, SIGHT)) continue;
+    }
+    if (!S.hazard || d < S.hazard.d) S.hazard = { id: g.id, pos: { ...g.pos }, from: g.from, owner: g.owner, d };
+  }
+
   // ---- hearing
   const ear = eye;
   for (const n of ai.noise.since(S.heardAt)) {
@@ -139,10 +153,11 @@ export function sense(e, ai, dt) {
     const d = Math.hypot(n.pos.x - ear.x, n.pos.y - ear.y, n.pos.z - ear.z);
     let radius = n.radius * def.hearing;
     if (d > radius) continue;
-    const source = { x: n.pos.x, y: n.pos.y + (n.kind === 'gunshot' ? 0 : 0.6), z: n.pos.z };
+    const loud = n.kind === 'gunshot' || n.kind === 'explosion';
+    const source = { x: n.pos.x, y: n.pos.y + (loud ? 0.3 : 0.6), z: n.pos.z };
     if (d > radius / 2 && !clear(ai.world, ear, source, SIGHT)) continue; // a wall muffles it: half the range
-    const rank = n.kind === 'gunshot' ? 2 : 1;
-    const prev = S.heard && ai.time - S.heard.time < 1 ? (S.heard.kind === 'gunshot' ? 2 : 1) : 0;
+    const rank = loud ? 2 : 1;
+    const prev = S.heard && ai.time - S.heard.time < 1 ? (S.heard.kind === 'gunshot' || S.heard.kind === 'explosion' ? 2 : 1) : 0;
     if (rank < prev) continue;
     // You can tell roughly where a sound came from, better when it's close.
     const err = d * 0.12;
@@ -150,7 +165,8 @@ export function sense(e, ai, dt) {
       pos: { x: n.pos.x + e.rng.range(-err, err), y: n.pos.y, z: n.pos.z + e.rng.range(-err, err) },
       kind: n.kind,
       time: ai.time,
-      alarm: n.kind === 'gunshot' && d < radius * 0.35, // a gunshot this close: they know roughly where you are
+      // A gunshot this close (or any explosion they can hear): they know roughly where you are.
+      alarm: (n.kind === 'gunshot' && d < radius * 0.35) || (n.kind === 'explosion' && d < radius * 0.6),
       owner: n.owner,
       handled: false,
     };

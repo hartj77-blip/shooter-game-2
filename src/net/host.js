@@ -30,6 +30,7 @@ import {
   SNAPSHOT_EVERY, DEAD_KEPT, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, eventFor, wireEvent,
 } from './protocol.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
+import { GRENADE } from '../weapons/grenades.js';
 import { NOISE } from '../ai/noise.js';
 
 const MAX_PULLS = 3;   // trigger pulls one fire message may claim (one tick, plus a little catch-up)
@@ -57,8 +58,9 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
   const spent = new Map(); // slot -> Map(weapon id -> rounds)
 
   sim.events.onAny((name, data) => { if (clients.size) pending.push([name, data]); });
-  sim.events.on('ammo:resupply', (e) => spent.delete(e.owner));
-  sim.events.on('mission:restart', () => spent.clear());
+  const lobbed = new Map(); // slot -> grenades thrown since their last refill
+  sim.events.on('ammo:resupply', (e) => { spent.delete(e.owner); lobbed.delete(e.owner); });
+  sim.events.on('mission:restart', () => { spent.clear(); lobbed.clear(); });
 
   /** Could they really have fired this many? A full load since their last refill, plus a magazine to spare. */
   function canSpend(slot, def, rounds) {
@@ -110,6 +112,8 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
       }
     } else if (msg.t === 'fire') {
       applyFire(slot, msg);
+    } else if (msg.t === 'throw') {
+      applyThrow(slot, msg);
     } else if (msg.t === 'ping') {
       c.link.send({ t: 'pong', at: msg.at }, { reliable: false });
     }
@@ -155,6 +159,28 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
         owner: slot, target, id: target.id, kind: target.kind, hostage: target.hostage, ...sum,
       });
     }
+  }
+
+  /**
+   * A client threw a grenade (its own browser decided, the moment G was pressed).
+   * Loose checks again: standing, thrown from about where they are, not more
+   * than they could carry, and no faster than an arm can throw.
+   */
+  function applyThrow(slot, msg) {
+    const p = sim.player(slot);
+    if (!p || !msg.origin || !msg.vel || typeof msg.id !== 'string' || !msg.id.startsWith(`${slot}:`)) return;
+    const h = p.health.state;
+    if (h.down || h.bleeding || h.dead) return;
+    const s = p.soldier.state;
+    const o = msg.origin;
+    if (Math.hypot(o.x - s.pos.x, o.y - s.pos.y - 1.5, o.z - s.pos.z) > REACH) return;
+    if (Math.hypot(msg.vel.x, msg.vel.y, msg.vel.z) > GRENADE.speed * 1.6) return;
+    if (!sim.infiniteAmmo) {
+      const n = (lobbed.get(slot) ?? 0) + 1;
+      if (n > GRENADE.max) return;
+      lobbed.set(slot, n);
+    }
+    sim.throwGrenade(slot, { origin: o, vel: msg.vel, id: msg.id });
   }
 
   /** An enemy or practice target that can still be hurt, by name. Never a player: friendly fire is off. */
@@ -224,6 +250,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     encounter: sim.encounter,
     course: sim.course,
     supply: sim.supply,
+    grenades: sim.grenades,
     get local() { return sim.player(me); },
     enemies: sim.enemies ?? { list: [] },
     teammates,
