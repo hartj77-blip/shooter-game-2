@@ -16,6 +16,8 @@
 //   reinforcements start in advance (run in along their route, eyes open), then
 //   are radioed where the squad is and go into combat
 //
+//   any state ─(spotted a grenade landing close)─▶ evade (sprint clear) ─▶ combat
+//
 // The brain only decides INTENT: where to go, how fast, which stance, what to
 // look at, whether shooting is OK. ai/enemy.js turns that into a command each
 // tick (walking the path, turning, pulling the trigger), the same kind of
@@ -25,6 +27,7 @@
 
 import { createStateMachine } from '../core/fsm.js';
 import { AWARENESS } from './enemy-data.js';
+import { GRENADE } from '../weapons/grenades.js';
 import { squadMates } from './squad.js';
 
 const DEG = Math.PI / 180;
@@ -123,6 +126,23 @@ export function createBrain(e, ai) {
     ai.bark(e, 'arrive');
     ai.report(e, P.pos, false, P.owner);
     enterCombat({ seen: false });
+  }
+
+  /**
+   * A grenade they've spotted (ai/senses.js). Once they've had a moment to take
+   * it in (their reaction time), they may run: a dice roll per grenade, the
+   * role's `evade` chance. Returns true if they're off.
+   */
+  let dodging = null; // { id, since, roll }
+  function dodge() {
+    const h = S.hazard;
+    if (!h || fsmIs('evade', 'dead')) return false;
+    if (dodging?.id !== h.id) dodging = { id: h.id, since: ai.time, roll: rng.next() };
+    if (ai.time - dodging.since < def.reaction * ai.difficulty.reaction) return false;
+    if (dodging.roll >= (def.evade ?? 0) || dodging.done) return false;
+    dodging.done = true;
+    go('evade', h);
+    return true;
   }
 
   const lowAmmo = () => {
@@ -263,6 +283,30 @@ export function createBrain(e, ai) {
           I.dest = ai.nearestWalkable({ x: this.center.x + Math.cos(a) * r, y: this.center.y, z: this.center.z + Math.sin(a) * r });
           const yaw = rng.range(-Math.PI, Math.PI);
           I.look = { x: e.pos.x - Math.sin(yaw) * 5, y: e.pos.y + 1.4, z: e.pos.z - Math.cos(yaw) * 5 };
+        }
+      },
+    },
+
+    // Sprint clear of a grenade, then fight whoever threw it.
+    evade: {
+      enter(h) {
+        this.h = h;
+        const dx = e.pos.x - h.pos.x, dz = e.pos.z - h.pos.z;
+        const d = Math.hypot(dx, dz) || 1;
+        const far = GRENADE.radius + 2;
+        I.dest = ai.nearestWalkable({ x: h.pos.x + (dx / d) * far, y: e.pos.y, z: h.pos.z + (dz / d) * far });
+        I.pace = 'sprint';
+        I.aim = false; I.fireOk = false; I.ads = false; I.strafe = 0; I.look = null; I.stance = 'stand'; I.reload = false;
+        e.alert = 'combat';
+        ai.release(e);
+        ai.bark(e, 'grenade');
+      },
+      update() {
+        if (e.arrived || e.pathFailed || t > 2.6) {
+          // Someone threw that: they know roughly where from.
+          if (this.h.from) ai.report(e, this.h.from, false, this.h.owner);
+          if (e.inCombat) go('engage');
+          else enterCombat({ seen: false });
         }
       },
     },
@@ -534,7 +578,7 @@ export function createBrain(e, ai) {
     think(dt) {
       if (e.dead) return;
       t += dt;
-      fsm.update(dt);
+      if (!dodge()) fsm.update(dt);
       flush();
     },
     /** Something big happened (shot, or the squad says so): fight now. */

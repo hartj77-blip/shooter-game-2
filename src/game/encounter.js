@@ -110,12 +110,14 @@ export function createEncounter({ id: name, start, enemies, health = null, squad
     stat(owner).shots++;
   }
 
-  /** A trigger pull hit an enemy (once per enemy per pull). */
-  function onHit({ owner = 0, headshot = false, killed = false } = {}) {
+  /** A trigger pull hit an enemy (once per enemy per pull). A grenade's blast (`area`) counts kills, not accuracy. */
+  function onHit({ owner = 0, headshot = false, killed = false, area = false } = {}) {
     if (enc.state !== 'running' && enc.state !== 'ready') return;
     const s = stat(owner);
-    enc.hits++;
-    s.hits++;
+    if (!area) {
+      enc.hits++;
+      s.hits++;
+    }
     if (headshot) { enc.headshots++; s.headshots++; }
     if (killed) { enc.kills++; s.kills++; }
   }

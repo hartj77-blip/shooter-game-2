@@ -35,6 +35,7 @@ import { spawnFor } from '../game/sim.js';
 import { createEvents } from '../core/events.js';
 import { idleCommand } from '../core/input.js';
 import { createProxy, blend } from './proxies.js';
+import { createGrenades } from '../weapons/grenades.js';
 import {
   INTERP_DELAY, CMD_REDUNDANCY, encodeCommand, roundCommand, decodePlayer, decodeEnemy, decodeTarget, decodeEncounter, enemyIdFor,
 } from './protocol.js';
@@ -42,7 +43,10 @@ import {
 const MATCH = 0.01;    // metres: closer than this to the host's answer counts as a match
 const KEEP = 40;       // snapshots kept for interpolation (2 s)
 // Events drawn in step with the proxies (0.1 s behind); the rest play at once.
-const ON_TIMELINE = new Set(['weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'enemy:down', 'enemy:bark', 'player:down', 'player:dead', 'player:revive', 'ping:mark']);
+const ON_TIMELINE = new Set([
+  'weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'enemy:down', 'enemy:bark', 'player:down', 'player:dead',
+  'player:revive', 'ping:mark', 'grenade:throw', 'grenade:explode',
+]);
 const r2 = (v) => Math.round(v * 100) / 100;
 const round = (p) => (p ? { x: r2(p.x), y: r2(p.y), z: r2(p.z) } : null);
 
@@ -140,6 +144,21 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     list: level.expanded.crates.map((c, i) => ({ id: c.id ?? `crate${i}`, pos: { x: c.at[0], y: c.at[1] ?? 0, z: c.at[2] }, left: c.refills ?? 4 })),
   };
 
+  // Grenades: every one flies here too, with the same code as on the host (they
+  // only bounce off the level, the same on every computer). Yours leave your hand
+  // the moment you throw; everyone else's when the host says, in step with their
+  // stand-ins. The host's explosion is the one that hurts.
+  const exploded = new Set(); // ids of grenades already shown going off here
+  let throws = 0;
+  const grenades = createGrenades({
+    world, emit: quietEvents.emit,
+    onExplode: (g) => {
+      if (g.owner !== me) return; // someone else's: wait for the host's bang (it's on the timeline)
+      exploded.add(g.id);
+      events.emit('grenade:explode', { id: g.id, owner: g.owner, pos: { ...g.pos }, predicted: true });
+    },
+  });
+
   // The encounter's scoreboard, as the host last told us.
   const encounter = specs.length
     ? { id: def.name, state: 'ready', time: 0, remaining: specs.length, total: specs.length, result: null, players: new Map() }
@@ -184,7 +203,8 @@ export function createClient({ def, me, link, roster = [], events = createEvents
    */
   function restarted(data) {
     restartPending = true;
-    soldier.arsenal.load(soldier.arsenal.fresh()); // a fresh start: a full load
+    soldier.arsenal.rearm(); // a fresh start: a full load
+    grenades.clear();
     const from = data?.tick ?? 0;
     for (let i = timeline.length - 1; i >= 0; i--) if (timeline[i].tick < from) timeline.splice(i, 1);
     for (let i = snaps.length - 1; i >= 0; i--) if (snaps[i].tick < from) snaps.splice(i, 1);
@@ -196,6 +216,11 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   /** Play a host event here, after tidying up anything that needs it. */
   function play(name, data) {
     if (name === 'mission:restart') restarted(data);
+    if (name === 'grenade:throw' && data.owner !== me) grenades.spawn(data);
+    if (name === 'grenade:explode') {
+      grenades.remove(data.id);
+      if (exploded.has(data.id)) return; // ours: we showed it already
+    }
     if (name === 'ammo:resupply') {
       // Your ammo is yours: the host says a crate refilled you, so fill your own guns.
       if (data.owner === me) soldier.arsenal.resupply();
@@ -372,6 +397,13 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     hits = [];
     const result = soldier.act(cmd, dt);
     history.push({ seq, cmd, mods, dt, state: soldier.body.save() });
+    if (result.thrown) {
+      // Your grenade flies now, here; the host is told and flies its own.
+      const id = `${me}:${++throws}`;
+      grenades.spawn({ id, owner: me, ...result.thrown });
+      link.send({ t: 'throw', id, origin: result.thrown.origin, vel: result.thrown.vel });
+    }
+    grenades.update(dt);
     if (history.length > 240) history.shift();
 
     // Tell the host: this command (plus the last few again, in case one got lost).
@@ -420,6 +452,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     encounter,
     course: null,
     supply,
+    grenades,
     local,
     enemies,
     teammates,

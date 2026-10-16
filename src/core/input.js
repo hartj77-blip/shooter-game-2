@@ -27,8 +27,9 @@ export const DEFAULT_BINDINGS = {
   slot2:   ['Digit2'],
   slot3:   ['Digit3'],
   slot4:   ['Digit4'],
-  // Co-op.
-  interact: ['KeyF'],            // hold next to a downed teammate to revive them
+  grenade: ['KeyG'],             // throw a grenade
+  // Co-op and missions.
+  interact: ['KeyF'],            // hold next to a downed teammate to revive them (or a crate, a laptop...)
   ping:    ['KeyZ', 'Mouse1'],   // Mouse1 = the middle button (the wheel, pressed)
   radio:   ['KeyV'],             // hold to talk on the squad radio
 };
@@ -198,6 +199,7 @@ export function createInput({ target = globalThis, doc = globalThis.document, se
       lastWeapon: pressed.has('last'),
       interact: on('interact'),
       ping: pressed.has('ping'),
+      grenade: pressed.has('grenade'),
     };
     pressed.clear();
     wheel = 0;
@@ -240,12 +242,12 @@ export function idleCommand(yaw = 0, pitch = 0) {
     moveX: 0, moveZ: 0, yaw, pitch,
     jump: false, jumpHeld: false, crouch: false, crouchPressed: false, sprint: false,
     fire: false, firePressed: false, ads: false, reload: false, slot: 0, cycle: 0, lastWeapon: false,
-    interact: false, ping: false,
+    interact: false, ping: false, grenade: false,
   };
 }
 
 // The one-off parts of a command: "pressed this tick" rather than "held".
-export const PRESS_FLAGS = ['jump', 'crouchPressed', 'firePressed', 'reload', 'lastWeapon', 'ping'];
+export const PRESS_FLAGS = ['jump', 'crouchPressed', 'firePressed', 'reload', 'lastWeapon', 'ping', 'grenade'];
 
 /**
  * The same command without its one-off presses: what to repeat when a new one
