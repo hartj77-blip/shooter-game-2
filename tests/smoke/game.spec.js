@@ -44,7 +44,7 @@ test('the title screen and settings open', async ({ page }) => {
   await expect(page.locator('#title')).toBeVisible();
   await page.click('#btnSettingsT');
   await expect(page.locator('#settings')).toBeVisible();
-  await expect(page.locator('#settingsForm .setting')).toHaveCount(14);
+  await expect(page.locator('#settingsForm .setting')).toHaveCount(15);
   await page.screenshot({ path: 'test-results/settings.png' });
   await page.click('#btnSettingsDone');
   await expect(page.locator('#settings')).toBeHidden();
