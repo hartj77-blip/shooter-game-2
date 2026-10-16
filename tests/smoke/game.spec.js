@@ -227,6 +227,47 @@ test('the Harbour: a mission loads, you can walk, the objective shows, and it dr
   expect(problems).toEqual([]);
 });
 
+test('graphics quality: low, medium and high all draw, with post-processing on medium and high', async ({ page }) => {
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
+  });
+  await page.goto('/?map=compound&autostart');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
+  /** Switch quality, let a few frames draw, and count one whole frame's draw calls. */
+  const frame = (quality) => page.evaluate(async (q) => {
+    const f = window.fireteam;
+    f.view.applyQuality(q);
+    const next = () => new Promise((res) => requestAnimationFrame(res));
+    for (let i = 0; i < 4; i++) await next();
+    const info = f.view.renderer.info;
+    info.autoReset = false;
+    await next();
+    info.reset();
+    await next();
+    info.autoReset = true;
+    return { calls: info.render.calls, post: !!f.view.post, nvg: f.view.post?.nvg ?? null };
+  }, quality);
+  const low = await frame('low');
+  expect(low.post, 'low draws straight to the screen').toBe(false);
+  const medium = await frame('medium');
+  expect(medium.post, 'medium has the grade').toBe(true);
+  expect(medium.calls).toBeLessThan(450);
+  const high = await frame('high');
+  expect(high.post).toBe(true);
+  expect(high.calls).toBeLessThan(900);
+  await page.screenshot({ path: 'test-results/quality-high.png' });
+  // Night vision draws through the chain even on low.
+  await page.evaluate(() => { window.fireteam.view.nvg = 1; });
+  const goggles = await frame('low');
+  expect(goggles.post).toBe(true);
+  expect(goggles.nvg).toBe(1);
+  await page.screenshot({ path: 'test-results/quality-nvg.png' });
+  await page.evaluate(() => { window.fireteam.view.nvg = 0; });
+  expect(problems).toEqual([]);
+});
+
 test('changing map needs no page reload, and leaves nothing behind', async ({ page }) => {
   const problems = [];
   page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));

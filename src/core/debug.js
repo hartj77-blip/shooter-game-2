@@ -15,6 +15,8 @@ import { NOISE } from '../ai/noise.js';
 import { GRENADE } from '../weapons/grenades.js';
 import { SUPPLY } from '../game/supply.js';
 import { OBJECTIVES } from '../game/objectives.js';
+import { POST } from '../render/post.js';
+import { OUTLINE, setOutlineWidth } from '../render/outline.js';
 
 // Copies of the tables as they were at the start, for "Reset everything".
 const DEFAULT_WEAPONS = structuredClone(WEAPONS);
@@ -257,6 +259,18 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
   addSliders(missions.addFolder('Objectives').close(), OBJECTIVES, OBJECTIVE_ROWS);
   addSliders(missions.addFolder('Grenades').close(), GRENADE, GRENADE_ROWS);
   addSliders(missions.addFolder('Ammo crates').close(), SUPPLY, SUPPLY_ROWS);
+
+  // Graphics (render/post.js, render/outline.js): the look on medium and high quality.
+  const graphics = gui.addFolder('Graphics').close();
+  addSliders(graphics, POST, [
+    ['bloomStrength', 0, 2, 0.05, 'Bloom strength (high)'],
+    ['bloomRadius', 0, 1, 0.05, 'Bloom spread (high)'],
+    ['bloomThreshold', 0, 2, 0.05, 'Bloom from brightness (high)'],
+    ['aoIntensity', 0, 1.5, 0.05, 'Corner shading, AO (high)'],
+    ['nvgGain', 1, 6, 0.1, 'Night vision gain'],
+    ['nvgGrain', 0, 0.5, 0.01, 'Night vision grain'],
+  ]);
+  graphics.add(OUTLINE, 'width', 0, 0.04, 0.001).name('Outline width (m)').onChange(setOutlineWidth);
 
   // What the physics engine sees: every collider drawn as lines.
   const lines = new THREE.LineSegments(

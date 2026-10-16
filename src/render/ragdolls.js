@@ -100,7 +100,7 @@ export function createRagdolls(scene, levelDef) {
     // A ragdoll's bones can fly metres from where the soldier stood, beyond the
     // ball three.js judges "on screen" by: always draw it, in full.
     model.detail?.(0);
-    model.root.traverse((o) => { if (o.isSkinnedMesh) o.frustumCulled = false; });
+    model.root.traverse((o) => { if (o.isSkinnedMesh) o.frustumCulled = false; }); // (outlines too)
     const vel = death.vel ?? { x: 0, y: 0, z: 0 };
     const parts = {};
     for (const [name, boneName, childName, radius] of SEGMENTS) {
