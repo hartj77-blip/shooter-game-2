@@ -18,6 +18,7 @@
 
 import * as THREE from 'three';
 import { buildSoldier, SOLDIER_COLORS } from './soldier-model.js';
+import { createCharacter } from './character.js';
 import { RAPIER } from '../world/physics.js';
 import { BULLET } from '../world/groups.js';
 
@@ -70,10 +71,11 @@ export function viewForEvent(views, ev) {
  * @param {string|null} [opts.downEvent] the event that turns one of these into a ragdoll
  *   (null: never; they just lie down, and vanish while `dead`. The hostage can come back at a checkpoint.)
  * @param {string} [opts.name]   the group's name in the scene
+ * @param {object} [opts.assets]  render/assets.js: the animated soldier, if it loaded (else block soldiers)
  */
 export function createSoldiersView({
   scene, source, effects, ragdolls = null, world, registry, camera, events,
-  colors = SOLDIER_COLORS.enemy, icons: showIcons = true, downEvent = 'enemy:down', name = null,
+  colors = SOLDIER_COLORS.enemy, icons: showIcons = true, downEvent = 'enemy:down', name = null, assets = null,
 }) {
   const group = new THREE.Group();
   group.name = name ?? (showIcons ? 'enemies' : 'teammates');
@@ -94,7 +96,10 @@ export function createSoldiersView({
 
   function viewFor(s) {
     const first = s.view;
-    const model = buildSoldier({ weapon: first.weapon, colors });
+    const gltf = assets?.model('soldier');
+    const model = gltf
+      ? createCharacter({ gltf, weapon: first.weapon ?? null, colors })
+      : buildSoldier({ weapon: first.weapon, colors });
     group.add(model.root);
     const icon = new THREE.Sprite(icons.suspicious);
     icon.visible = false;
@@ -120,7 +125,7 @@ export function createSoldiersView({
       stride: 0, swing: 0, crouch: 0, ready: 0, sprint: 0, reload: 0, lying: 0,
       kick: 0, kickVel: 0,
       flinch: { x: 0, z: 0 }, flinchVel: { x: 0, z: 0 },
-      flashTime: 0, spottedAt: -Infinity, wasCombat: false,
+      flashTime: 0, spottedAt: -Infinity, wasCombat: false, heading: 0, throwT: -1,
       last: new THREE.Vector3(first.pos.x, first.pos.y, first.pos.z),
       dead: false,
     };
@@ -129,6 +134,7 @@ export function createSoldiersView({
   }
 
   function remove(v) {
+    v.model.dispose?.();
     group.remove(v.model.root, v.icon, v.flash);
     if (v.laser) group.remove(v.laser, v.dot);
     views.delete(v.id);
@@ -161,6 +167,11 @@ export function createSoldiersView({
     effects.muzzleLight(muzzle);
     for (const s of ev.shots) if (s.tracer) effects.tracer(muzzle, s.end);
   });
+  // Someone else throwing a grenade: their arm swings (render/character.js).
+  events.on('grenade:throw', (ev) => {
+    const v = byOwner(ev.owner);
+    if (v && !v.dead) v.throwT = 0;
+  });
   events.on('target:hit', (ev) => {
     const v = views.get(ev.target?.id ?? ev.id);
     if (!v) return;
@@ -191,11 +202,20 @@ export function createSoldiersView({
       root.rotation.y = v.yaw;
       // A downed teammate lies on their back, waiting for help.
       v.lying = approach(v.lying, e.down ? 1 : 0, 6, dt);
-      root.rotation.x = -1.35 * v.lying;
-      root.position.y += 0.25 * v.lying;
+      const skinned = v.model.kind === 'skinned';
+      if (!skinned) {
+        root.rotation.x = -1.35 * v.lying;
+        root.position.y += 0.25 * v.lying;
+      }
 
-      // How far it walked this frame drives the stride.
-      const moved = Math.hypot(root.position.x - v.last.x, root.position.z - v.last.z);
+      // How far it walked this frame drives the stride (and, for an animated
+      // soldier, which way it's going compared with where it faces).
+      const mx = root.position.x - v.last.x, mz = root.position.z - v.last.z;
+      const moved = Math.hypot(mx, mz);
+      if (moved > 0.002) {
+        const toward = wrap(Math.atan2(-mx, -mz) - v.yaw);
+        v.heading += wrap(toward - v.heading) * (1 - Math.exp(-10 * dt));
+      }
       v.last.copy(root.position);
       v.stride += (moved / 1.5) * Math.PI * 2;
       v.swing = approach(v.swing, Math.min(1, e.speed / 5) * (1 - v.lying), 10, dt);
@@ -214,10 +234,26 @@ export function createSoldiersView({
           v.flinch[k] += v.flinchVel[k] * h * 0.05;
         }
       }
-      v.model.pose({
-        stride: v.stride, swing: v.swing, crouch: v.crouch, pitch: e.pitch,
-        ready: v.ready, sprint: v.sprint, reload: v.reload, kick: -v.kick, flinch: v.flinch,
-      });
+      if (v.throwT >= 0) { v.throwT += dt / 0.6; if (v.throwT > 1) v.throwT = -1; }
+      // Far away, an animated soldier is posed less often (you can't see the difference
+      // at that distance, and posing a skeleton costs time): every 2nd frame past 35 m,
+      // every 4th past 70 m. Their time adds up, so the animation keeps its pace.
+      v.poseDt = (v.poseDt ?? 0) + dt;
+      let posing = true;
+      if (skinned) {
+        const far = camera.position.distanceTo(root.position);
+        const every = far > 70 ? 4 : far > 35 ? 2 : 1;
+        v.frame = ((v.frame ?? 0) + 1) % every;
+        posing = v.frame === 0;
+      }
+      if (posing) {
+        v.model.pose({
+          stride: v.stride, swing: v.swing, crouch: v.crouch, pitch: e.pitch,
+          ready: v.ready, sprint: v.sprint, reload: v.reload, kick: -v.kick, flinch: v.flinch,
+          dt: v.poseDt, speed: e.speed ?? 0, heading: v.heading, lying: v.lying, throwing: Math.max(0, v.throwT), captive: !!e.captive,
+        });
+        v.poseDt = 0;
+      }
 
       // Muzzle flash.
       v.flashTime -= dt;

@@ -118,18 +118,18 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const ragdolls = hasEnemies ? createRagdolls(root, def) : null;
   const camera = view.camera;
   const enemiesView = hasEnemies
-    ? createSoldiersView({ scene: root, source: session.enemies, effects, ragdolls, world, registry, camera, events })
+    ? createSoldiersView({ scene: root, source: session.enemies, effects, ragdolls, world, registry, camera, events, assets: app.assets })
     : null;
   // Teammates: the same block soldiers in friendly colours, with no "?" or "!".
   const teammatesView = createSoldiersView({
-    scene: root, source: session.teammates, effects, ragdolls, world, registry, camera, events,
+    scene: root, source: session.teammates, effects, ragdolls, world, registry, camera, events, assets: app.assets,
     colors: SOLDIER_COLORS.friend, icons: false, downEvent: 'player:dead',
   });
   // The hostage: an orange, unarmed soldier. (They can come back at a checkpoint, so no ragdoll.)
   const hostages = { get list() { return session.hostage ? [session.hostage] : []; } };
   const hostageView = def.mission
     ? createSoldiersView({
-      scene: root, source: hostages, effects, world, registry, camera, events,
+      scene: root, source: hostages, effects, world, registry, camera, events, assets: app.assets,
       colors: SOLDIER_COLORS.hostage, icons: false, downEvent: null, name: 'hostage',
     })
     : null;

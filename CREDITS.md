@@ -12,6 +12,16 @@ Third-party code and assets in this repository, with their licences.
 | [Barlow and Barlow Condensed](https://github.com/jpt/barlow) fonts | Google Fonts v13 | `assets/fonts/` | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
 | [Playwright](https://playwright.dev/) (tests only, not shipped) | 1.56.1 | `package.json` | Apache-2.0 |
 
+## Models
+
+All CC0 (public domain). Credit isn't required, but these people made them. `tools/build-models.mjs` turns the original packs into the files in `assets/models/` (keeping only what the game uses).
+
+| Model | Source | Author |
+|---|---|---|
+| The soldiers and the hostage, and their animations (`assets/models/soldier.glb`: the mannequin and 10 clips) | [Universal Animation Library](https://quaternius.itch.io/universal-animation-library) and [Universal Animation Library 2](https://quaternius.itch.io/universal-animation-library-2), Standard (free) editions | Quaternius |
+
+The helmets, vests, packs and goggles on them are built by code (`src/render/character.js`).
+
 ## Sounds
 
 All sounds are CC0 (public domain). Credit isn't required, but these people made them. `tools/build-sounds.py` turns the original recordings into the files in `assets/sounds/`.
