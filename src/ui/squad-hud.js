@@ -30,10 +30,12 @@ const BOTTOM = 130; // ...and clear of the speed readout and gun panel at the bo
  * @param {object} opts.events
  * @param {object} opts.hud       ui/hud.js (for feed lines)
  * @param {boolean} opts.hosting  are we the host (who restarts a failed mission)?
+ * @param {() => object|null} [opts.voice] net/voice.js, for "who's talking" and your radio light
  */
-export function createSquadHud({ session, camera, events, hud, hosting }) {
+export function createSquadHud({ session, camera, events, hud, hosting, voice = () => null }) {
   const el = (id) => document.getElementById(id);
   const squad = el('squad');
+  const radioLight = el('radioLight');
   const marks = el('marks');
   const ring = el('ring');
   const ringFill = el('ringFill');
@@ -101,10 +103,12 @@ export function createSquadHud({ session, camera, events, hud, hosting }) {
 
   function updateRoster(list) {
     const keep = new Set();
+    const vc = voice();
     list.forEach(({ owner, view: v }, i) => {
       keep.add(owner);
       const r = rowFor(owner);
       if (squad.children[i] !== r.li) squad.insertBefore(r.li, squad.children[i] ?? null);
+      r.li.classList.toggle('talking', !!vc?.talking(owner));
       const name = v.callsign ?? nameOf(owner);
       const state = v.dead ? 'Out' : v.bleeding ? `Down ${Math.ceil(v.bleedLeft)}s` : v.down ? 'Down' : owner === me ? 'You' : '';
       const key = `${name}|${state}|${Math.round(v.hp)}`;
@@ -241,6 +245,7 @@ export function createSquadHud({ session, camera, events, hud, hosting }) {
     update(dt, { watching = null } = {}) {
       const list = people();
       updateRoster(list);
+      radioLight.hidden = !voice()?.radioHeld || !voice()?.hasMic;
       updateMarks(dt, list);
       updateRing(list);
       updateDown(list, watching);
@@ -251,6 +256,7 @@ export function createSquadHud({ session, camera, events, hud, hosting }) {
       marks.replaceChildren();
       ring.hidden = true;
       down.hidden = true;
+      radioLight.hidden = true;
     },
   };
 }

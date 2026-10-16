@@ -379,3 +379,15 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 .ring-fill { stroke: var(--good); stroke-linecap: round; stroke-dasharray: 176; stroke-dashoffset: 176; }
 .ring span { font: 600 15px var(--head); letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; background: rgba(0, 0, 0, 0.5); }
 @media (max-width: 700px) { .squad { width: 160px; } }
+
+/* Voice: your radio light, and mute buttons in the pause menu. */
+.radio-light {
+  position: absolute; left: calc(18px + env(safe-area-inset-left, 0px)); bottom: calc(118px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 4px; background: rgba(0, 0, 0, 0.55);
+  font: 600 14px var(--head); letter-spacing: 0.14em; text-transform: uppercase; color: var(--good); text-shadow: none;
+}
+.radio-light i { width: 10px; height: 10px; border-radius: 50%; background: var(--good); animation: pulse 0.5s ease-in-out infinite alternate; }
+.roster li.talking .dot, .squad li.talking .dot { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9); }
+.mute-list { display: grid; gap: 6px; margin: 0 0 12px; }
+.mute-list button { font-size: 15px; min-height: 38px; padding: 6px 12px; }
+.mute-list button[aria-pressed="true"] { color: var(--danger); border-color: rgba(224, 88, 62, 0.6); }

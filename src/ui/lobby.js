@@ -19,6 +19,7 @@ export function createLobbyUi() {
 
   function row(slot, member, room) {
     const li = document.createElement('li');
+    li.dataset.slot = String(slot);
     li.style.setProperty('--c', SLOT_COLORS[slot]);
     const dot = document.createElement('i');
     dot.className = 'dot';
@@ -49,7 +50,7 @@ export function createLobbyUi() {
      * @param {object|null} room
      * @param {object} [opts] { info, error } shown while there's no room yet (connecting, failed)
      */
-    render(room, { info: note = null, error: problem = null } = {}) {
+    render(room, { info: note = null, error: problem = null, voice = '' } = {}) {
       code.textContent = room?.code ?? '· · · · ·';
       copy.disabled = !room;
       const members = room?.roster ?? [];
@@ -66,9 +67,13 @@ export function createLobbyUi() {
         if (host) text = members.length < 2 ? 'Share the room code or the invite link. You can also start on your own and friends can join in later.' : 'Everyone in? Press Start.';
         else text = room.lobby?.started ? 'Joining the game in progress…' : 'Waiting for the host to start…';
       }
-      info.textContent = text;
+      info.textContent = [text, room ? voice : ''].filter(Boolean).join(' ');
       error.textContent = problem ?? '';
       error.hidden = !problem;
+    },
+    /** Light up whoever's talking (called every frame while the lobby shows). */
+    talking(isTalking) {
+      for (const li of roster.children) li.classList.toggle('talking', !li.classList.contains('empty') && isTalking(Number(li.dataset.slot)));
     },
   };
 }

@@ -27,6 +27,8 @@ export const SETTINGS_SCHEMA = {
   showReadout:  { default: true },                        // speed and movement state, bottom left
   quality:      { default: 'high', options: ['low', 'medium', 'high'] },
   callsign:     { default: '', text: true, maxLength: 16 },   // your name in co-op games
+  voiceMode:    { default: 'both', options: ['both', 'radio', 'off'] }, // co-op voice chat (net/voice-mix.js)
+  voiceVolume:  { default: 1.0,  min: 0,   max: 1 },
 };
 
 /**

@@ -59,6 +59,7 @@
   <div id="subs" class="subs" aria-live="polite"></div>
   <div id="dmgNums" class="dmg-nums"></div>
   <ol id="squad" class="squad" aria-label="Your squad" hidden></ol>
+  <div id="radioLight" class="radio-light" hidden><i></i>Radio</div>
   <div id="marks" class="marks" aria-hidden="true"></div>
   <div id="ring" class="ring" hidden>
     <svg viewBox="0 0 64 64" aria-hidden="true"><circle class="ring-bg" cx="32" cy="32" r="28"></circle><circle id="ringFill" class="ring-fill" cx="32" cy="32" r="28"></circle></svg>
@@ -118,6 +119,7 @@
       <dt>Right mouse</dt><dd>Aim down sights</dd>
       <dt>R</dt><dd>Reload</dd>
       <dt>1&ndash;4 &middot; wheel &middot; Q</dt><dd>Switch gun &middot; last gun</dd>
+      <dt>V &middot; Z &middot; F</dt><dd>Co-op: squad radio &middot; ping &middot; revive (hold)</dd>
       <dt>~ `</dt><dd>Tuning panel (the key under Esc)</dd>
       <dt>Esc</dt><dd>Pause</dd>
     </dl>
@@ -181,6 +183,7 @@
   <div class="card card-slim">
     <h2>Paused</h2>
     <p id="pauseCoop" class="note" hidden>A co-op game keeps going while this menu is open. Stay safe!</p>
+    <div id="muteList" class="mute-list" hidden></div>
     <div class="stack">
       <button id="btnResume" class="primary" type="button">Resume</button>
       <button id="btnRespawn" type="button">Back to spawn</button>

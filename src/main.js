@@ -41,6 +41,7 @@ import { hostRoom, joinRoom, cleanCode } from './net/room.js';
 import { createPeerNet, createLocalNet } from './net/transport.js';
 import { loadPeer } from './net/peer-loader.js';
 import { createLobbyUi } from './ui/lobby.js';
+import { createVoice } from './net/voice.js';
 import provingGround from '../levels/proving-ground.js';
 import compound from '../levels/compound.js';
 
@@ -96,9 +97,16 @@ async function boot() {
       mission?.update(dt, flow.is('playing'));
     },
     render(alpha, dt) {
-      if (!mission) return;
-      mission.render(alpha, dt, flow.is('playing'));
-      audio.update(view.camera);
+      if (mission) {
+        mission.render(alpha, dt, flow.is('playing'));
+        audio.update(view.camera);
+      }
+      if (voice) {
+        // Hold V for the squad radio (only while playing: the keys are menus' otherwise).
+        voice.setRadio(input.isHeld('radio'));
+        voice.update(dt, { positionOf: mission?.room ? mission.positionOf : null, listener: view.camera.position });
+        if (flow.is('lobby')) lobbyUi.talking((slot) => voice.talking(slot));
+      }
     },
   });
   const app = { view, audio, input, settings, loop, debugOpen: params.has('debug') };
@@ -193,6 +201,7 @@ async function boot() {
   // ---------------------------------------------------------------- co-op
   let net = null;  // how we reach other players (made when first needed)
   let room = null; // the lobby we're hosting or have joined
+  let voice = null; // voice chat while in a room (net/voice.js)
   const local = params.get('net') === 'local';
   const lobbyUi = createLobbyUi();
 
@@ -205,6 +214,26 @@ async function boot() {
     net?.close?.();
     net = null;
   }
+  /** Voice chat: from the moment you're in a lobby until you leave it. */
+  function startVoice(r) {
+    voice = createVoice({ audio, settings: settings.values, room: r, peer: local ? null : net?.peer ?? null });
+    app.voice = voice;
+    r.on('radio', ({ slot, on }) => voice?.setTalkerRadio(slot, on));
+    r.on('change', () => voice?.connect());
+    voice.start().then(() => { if (room === r && flow.is('lobby')) lobbyUi.render(r, { voice: voiceStatus() }); });
+  }
+  function stopVoice() {
+    voice?.dispose();
+    voice = null;
+    app.voice = null;
+  }
+  function voiceStatus() {
+    if (!voice || settings.values.voiceMode === 'off') return 'Voice chat is off (Settings).';
+    if (voice.problem) return voice.problem;
+    if (!voice.linked) return 'Voice chat needs the online game (not ?net=local).';
+    return voice.hasMic ? 'Voice on: hold V for the squad radio; teammates close by hear you anyway.' : 'Asking for your microphone…';
+  }
+
   /** A message on the title screen ("The host left the game."). */
   function notice(text) {
     el('notice').textContent = text ?? '';
@@ -213,6 +242,7 @@ async function boot() {
   const inviteLink = () => `${location.origin}${location.pathname}?join=${room.code}${local ? '&net=local' : ''}`;
 
   async function hostCoop() {
+    audio.unlock(); // voice chat needs sound on, and this click allows it
     notice(null);
     flow.go('lobby');
     lobbyUi.render(null, { info: local ? 'Opening a room for other tabs…' : 'Opening a room on the matchmaking service…' });
@@ -222,7 +252,8 @@ async function boot() {
         lobby: { map: mission?.mapId ?? pickMap(), difficulty: settings.values.difficulty },
       });
       watchRoom(room);
-      lobbyUi.render(room);
+      startVoice(room);
+      lobbyUi.render(room, { voice: voiceStatus() });
     } catch (err) {
       dropNet();
       lobbyUi.render(null, { error: err.message });
@@ -239,13 +270,15 @@ async function boot() {
       return;
     }
     el('btnJoinGo').disabled = true;
+    audio.unlock();
     try {
       const n = await getNet();
       room = await joinRoom({ net: n, code, callsign: settings.values.callsign, peer: n.id ?? null });
       watchRoom(room);
+      startVoice(room);
       notice(null);
       flow.go('lobby');
-      lobbyUi.render(room);
+      lobbyUi.render(room, { voice: voiceStatus() });
       if (room.lobby.started) playCoop(); // a game in progress: straight in
     } catch (err) {
       dropNet();
@@ -257,7 +290,7 @@ async function boot() {
   }
 
   function watchRoom(r) {
-    r.on('change', () => { if (room === r && flow.is('lobby')) lobbyUi.render(r); });
+    r.on('change', () => { if (room === r && flow.is('lobby')) lobbyUi.render(r, { voice: voiceStatus() }); });
     if (r.role !== 'client') return;
     r.on('start', () => { if (room === r) playCoop(); });
     r.on('stop', () => { if (room === r) backToLobby(); });
@@ -278,13 +311,14 @@ async function boot() {
     if (room?.role === 'host') room.stop();
     flow.go('lobby');
     await openMap(mission?.mapId ?? room.lobby.map); // a solo copy, as the backdrop
-    if (room) lobbyUi.render(room);
+    if (room) lobbyUi.render(room, { voice: voiceStatus() });
   }
 
   /** Leave the room altogether (or it closed under us), back to the title screen. */
   async function leaveCoop(message = null) {
     const r = room;
     room = null;
+    stopVoice();
     r?.close();
     dropNet();
     flow.go('title');
@@ -300,6 +334,22 @@ async function boot() {
     el('btnMaps').hidden = coop;
     el('btnQuit').textContent = !coop ? 'Quit to title' : hosting ? 'End game (back to lobby)' : 'Leave game';
     el('pauseCoop').hidden = !coop;
+    // Mute anyone (voice chat).
+    const list = el('muteList');
+    const others = coop && voice ? room.roster.filter((m) => m.slot !== room.me) : [];
+    list.hidden = !others.length;
+    list.replaceChildren(...others.map((m) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const label = () => {
+        const on = voice.isMuted(m.slot);
+        b.textContent = `${on ? 'Unmute' : 'Mute'} ${m.callsign}`;
+        b.setAttribute('aria-pressed', String(on));
+      };
+      label();
+      b.addEventListener('click', () => { voice.mute(m.slot, !voice.isMuted(m.slot)); label(); });
+      return b;
+    }));
   }
 
   addEventListener('keydown', (e) => {
@@ -389,6 +439,7 @@ async function boot() {
     input, loop, view, flow, settings, audio, app, openMap, hostCoop, joinCoop, ready: true,
     get mission() { return mission; },
     get room() { return room; },
+    get voice() { return voice; },
     get session() { return mission?.session; },
     get map() { return mission?.mapId; },
     get events() { return mission?.events; },

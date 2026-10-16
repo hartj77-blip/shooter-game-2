@@ -250,5 +250,8 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     update,
     applyVolumes,
     get ready() { return !!ctx && ctx.state === 'running'; },
+    /** The Web Audio context and master volume (voice chat plugs in here), once unlocked. */
+    get context() { return ctx; },
+    get master() { return master; },
   };
 }
