@@ -19,8 +19,9 @@ All CC0 (public domain). Credit isn't required, but these people made them. `too
 | Model | Source | Author |
 |---|---|---|
 | The soldiers and the hostage, and their animations (`assets/models/soldier.glb`: the mannequin and 10 clips) | [Universal Animation Library](https://quaternius.itch.io/universal-animation-library) and [Universal Animation Library 2](https://quaternius.itch.io/universal-animation-library-2), Standard (free) editions | Quaternius |
+| The guns (`assets/models/guns.glb`: AssaultRifle2_2, SubmachineGun_2, Shotgun_1, Pistol_1 and SniperRifle_4, repainted in our colours) | [Ultimate Gun Pack](https://quaternius.itch.io/50-lowpoly-guns) | Quaternius |
 
-The helmets, vests, packs and goggles on them are built by code (`src/render/character.js`).
+The helmets, vests, packs and goggles on the soldiers, and the red dot sight on the carbine, are built by code (`src/render/character.js`, `src/render/gun-models.js`).
 
 ## Sounds
 

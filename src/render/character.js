@@ -74,20 +74,20 @@ function materialsFor(colors) {
   return materials.get(key);
 }
 
+// One flattened gun per weapon (and per kind: model or blocks), shared by every soldier.
 const gunGeometries = new Map();
-function gunGeometry(weaponId) {
-  if (!gunGeometries.has(weaponId)) {
-    const def = WEAPONS[weaponId];
-    const model = buildGun(def, { hands: false });
-    const laser = def.model.parts.find((p) => p.name === 'laser');
-    gunGeometries.set(weaponId, {
+function gunGeometry(weaponId, guns) {
+  const key = `${weaponId}:${guns ? 'model' : 'blocks'}`;
+  if (!gunGeometries.has(key)) {
+    const model = buildGun(WEAPONS[weaponId], { hands: false, guns });
+    gunGeometries.set(key, {
       geometry: flatten(model.group),
-      muzzle: new THREE.Vector3(...def.model.muzzle),
-      laser: laser ? new THREE.Vector3(...laser.at) : null,
-      support: def.model.support ? new THREE.Vector3(...def.model.support) : new THREE.Vector3(-0.02, -0.09, 0.03),
+      muzzle: model.muzzle,
+      laser: model.laser,
+      support: model.support ?? new THREE.Vector3(-0.02, -0.09, 0.03),
     });
   }
-  return gunGeometries.get(weaponId);
+  return gunGeometries.get(key);
 }
 
 // ---------------------------------------------------------------- bone helpers
@@ -150,10 +150,11 @@ function reach(upper, lower, hand, target, pole) {
 /**
  * @param {object} opts
  * @param {object} opts.gltf    the loaded soldier model (render/assets.js)
+ * @param {object} [opts.guns]  the loaded gun models (else block-built guns)
  * @param {string|null} opts.weapon  the gun they carry (null: unarmed, the hostage)
  * @param {object} opts.colors  render/soldier-model.js SOLDIER_COLORS entry
  */
-export function createCharacter({ gltf, weapon, colors }) {
+export function createCharacter({ gltf, guns = null, weapon, colors }) {
   const root = new THREE.Group();
   const body = cloneSkinned(gltf.scene);
   body.scale.setScalar(SCALE);
@@ -206,7 +207,7 @@ export function createCharacter({ gltf, weapon, colors }) {
   root.add(gunPivot);
   let gunMesh = null, muzzle = new THREE.Object3D(), laser = null, support = new THREE.Vector3();
   if (weapon) {
-    const g = gunGeometry(weapon);
+    const g = gunGeometry(weapon, guns);
     gunMesh = new THREE.Mesh(g.geometry, gunMaterial());
     gunMesh.castShadow = true;
     gunMesh.position.copy(GRIP).negate(); // so the pivot is the grip

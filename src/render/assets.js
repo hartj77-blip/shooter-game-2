@@ -27,6 +27,7 @@ const BASE = 'assets/';
 export const MANIFEST = {
   models: {
     soldier: 'models/soldier.glb', // tools/build-models.mjs, from Quaternius' Universal Animation Library
+    guns: 'models/guns.glb',       // tools/build-models.mjs, from Quaternius' Ultimate Gun Pack
   },
   textures: {},
 };

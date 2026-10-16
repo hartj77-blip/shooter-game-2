@@ -111,10 +111,11 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const aim = () => ({ amount: soldier.arsenal.state.ads, zoom: soldier.arsenal.current.def.ads.zoom });
   const rig = createCameraRig({ camera: view.camera, player, input, settings: settings.values, aim, events, owner: me });
   const viewmodel = createViewmodel({
-    soldier, input, settings: settings.values, cameraRig: rig, worldCamera: view.camera, sunDir: view.sunDir, mood: () => view.mood, events, owner: me,
+    soldier, input, settings: settings.values, cameraRig: rig, worldCamera: view.camera, sunDir: view.sunDir, mood: () => view.mood,
+    guns: app.assets?.model('guns') ?? null, events, owner: me,
   });
   const effects = createEffects(root);
-  const targetsView = createTargetsView(root, session.targets, session.level.expanded.racks);
+  const targetsView = createTargetsView(root, session.targets, session.level.expanded.racks, app.assets?.model('guns') ?? null);
   const ragdolls = hasEnemies ? createRagdolls(root, def) : null;
   const camera = view.camera;
   const enemiesView = hasEnemies
