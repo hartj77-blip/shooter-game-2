@@ -154,7 +154,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     return {
       t: 'snap',
       tick,
-      p: [...sim.team.values()].map((p) => encodePlayer({ ...p.view, bleeding: p.health.state.bleeding })),
+      p: [...sim.team.values()].map((p) => encodePlayer(p.view)),
       e: sim.enemies ? sim.enemies.list.map((e, i) => encodeEnemy(i, e.view, e.health)) : [],
       g: sim.targets.list.map((t, i) => encodeTarget(i, t)),
       enc: encodeEncounter(sim.encounter),

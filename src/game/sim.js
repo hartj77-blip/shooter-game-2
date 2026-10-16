@@ -6,8 +6,8 @@
 // player (1 to 4). Then tick() runs one fixed step, always in the same order
 // (CLAUDE.md, "One tick, in order"):
 //
-//   players move → enemies move → targets → world.step() → players shoot →
-//   enemies think → enemies shoot → health → the encounter / kill house
+//   players move → enemies move → targets → world.step() → players shoot (and ping) →
+//   enemies think → enemies shoot → health → revives → the encounter / kill house
 //
 // Solo play, the co-op host (net/host.js) and the tests all run this same
 // code. A co-op client runs a cut-down version of its own (net/client.js).
@@ -26,8 +26,10 @@ import { createNoiseBoard } from '../ai/noise.js';
 import { createEnemies } from '../ai/enemies.js';
 import { createCourse, createRecords } from './course.js';
 import { createEncounter } from './encounter.js';
+import { createRevives } from './revive.js';
+import { pingFrom } from './pings.js';
 import { createEvents } from '../core/events.js';
-import { idleCommand } from '../core/input.js';
+import { idleCommand, heldOnly } from '../core/input.js';
 
 export const MAX_PLAYERS = 4;
 
@@ -56,6 +58,8 @@ export function playerView(p) {
     crouched: s.crouched, speed: s.speed, sprinting: s.sprinting, grounded: s.grounded,
     ready: !s.sprinting, reloading: gun.status === 'reloading',
     hp: h.hp, down: !!(h.down || h.bleeding), dead: !!h.dead,
+    bleeding: !!h.bleeding, bleedLeft: h.bleedLeft ?? 0,
+    reviving: p.reviving ?? 0, reviver: p.reviver ?? null, // a teammate is getting them up
   };
 }
 
@@ -105,7 +109,7 @@ export function createSim({
   function addPlayer(owner, { callsign = `Player ${owner + 1}` } = {}) {
     if (team.has(owner)) return team.get(owner);
     const start = spawnFor(level, owner);
-    const health = createHealth({ events, owner });
+    const health = createHealth({ events, owner, revivable: coop }); // co-op: bleed out, teammates revive
     const soldier = createSoldier({
       world, registry, targets, damage, noise, events, owner,
       seed: seed * 101 + owner * 7 + 1,
@@ -154,9 +158,14 @@ export function createSim({
     : null;
   world.step();
 
+  const isPlayer = (owner) => typeof owner === 'number';
+  const revives = createRevives();
+  let time = 0;
+  events.on('player:down', (e) => { if (isPlayer(e.owner)) encounter?.onDown(e.owner); });
+  events.on('player:revive', (e) => { if (isPlayer(e.by)) encounter?.onRevive(e.by); });
+
   // Score-keeping: every player's shots and hits count towards the kill house
   // or the Compound's results card.
-  const isPlayer = (owner) => typeof owner === 'number';
   events.on('weapon:fire', (e) => {
     if (!isPlayer(e.owner)) return;
     for (let i = 0; i < e.pulls; i++) {
@@ -176,7 +185,7 @@ export function createSim({
    * @param {Map<number, object|object[]>|object} commands this tick's command per player (a single
    *        command is the first player's). A co-op client's entry is a list: usually one command,
    *        none while their first ones are on the way, two while the host catches up (net/jitter.js).
-   *        A player with no entry repeats their last command.
+   *        A player with no entry repeats their last command, without its one-off presses.
    * @param {object} [opts]
    * @param {Set<number>} [opts.remote] players whose shots are traced by their own browsers (co-op clients)
    * @returns {Map<number, object>} each player's act() result (recoil to apply, shots fired)
@@ -185,12 +194,12 @@ export function createSim({
     const cmds = commands instanceof Map ? commands : new Map([[[...team.keys()][0], commands]]);
     const listFor = (p) => {
       const given = cmds.get(p.owner);
-      const list = given === undefined ? [p.lastCmd] : Array.isArray(given) ? given : [given];
+      const list = given === undefined ? [heldOnly(p.lastCmd)] : Array.isArray(given) ? given : [given];
       if (!list.length) return [idleCommand(p.lastCmd.yaw, p.lastCmd.pitch)];
       p.lastCmd = list[list.length - 1];
-      // Downed players can look around, nothing else.
+      // Downed players can look around (and point things out), nothing else.
       const out = p.health.state.down || p.health.state.bleeding || p.health.state.dead;
-      return out ? list.map((c) => idleCommand(c.yaw, c.pitch)) : list;
+      return out ? list.map((c) => ({ ...idleCommand(c.yaw, c.pitch), ping: c.ping })) : list;
     };
     const now = new Map();
     for (const p of team.values()) {
@@ -211,18 +220,33 @@ export function createSim({
       const out = p.soldier.act(now.get(p.owner), dt, { trace: !remote?.has(p.owner) });
       outs.set(p.owner, out);
       enemies?.playerShots(out.shots, p.owner);
+      const cmd = now.get(p.owner);
+      if (cmd.ping && time - (p.pingedAt ?? -Infinity) > 0.4) ping(p, cmd);
     }
     enemies?.think(dt);
     enemies?.act(dt);
     for (const p of team.values()) p.health.update(dt);
+    revives.update(dt, team.values(), now);
+    time += dt;
     const feet = [...team.values()].map((p) => p.soldier.state.pos);
     if (course && feet[0]) course.update(dt, feet[0]);
     encounter?.update(dt, feet);
     return outs;
   }
 
+  /** Player `p` pointed at something: tell the squad what. */
+  function ping(p, cmd) {
+    const s = p.soldier.state;
+    const eye = { x: s.pos.x, y: s.pos.y + p.soldier.body.eyeHeight(), z: s.pos.z };
+    const mark = pingFrom(world, registry, eye, cmd.yaw, cmd.pitch, p.soldier.owns);
+    if (!mark) return;
+    p.pingedAt = time;
+    events.emit('ping:mark', { owner: p.owner, ...mark });
+  }
+
   /** Back to the start: enemies respawn, everyone's healed and back at their spawn. */
   function reset() {
+    revives.reset();
     enemies?.reset();
     for (const p of team.values()) {
       p.soldier.teleport(p.spawn.pos, p.spawn.yaw);
@@ -236,7 +260,7 @@ export function createSim({
   return {
     def, level, world, registry, targets, nav, cover, noise, events,
     get enemies() { return enemies; },
-    encounter, course, team,
+    encounter, course, team, revives,
     damage, // who gets hurt by a player's bullet (the co-op host applies clients' hits through it)
     player: (owner) => team.get(owner) ?? null,
     addPlayer,

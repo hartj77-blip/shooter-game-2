@@ -54,14 +54,23 @@ export function createSoldier({
     ? targets.damage(victim, amount)
     : { killed: false }));
 
+  // Holding "interact" (F: reviving a teammate) means your hands are busy: no
+  // shooting or aiming. It's decided from the command alone, so a co-op client's
+  // prediction and the host always agree.
+  const busyHands = (cmd) => (cmd.interact ? { ...cmd, fire: false, firePressed: false, ads: false } : cmd);
+
+  /** How the gun changes movement for this command (co-op prediction records it for replays). */
+  const movementMods = (command) => arsenal.movementMods(busyHands(command));
+
   /** Is this collider part of me? Bullets I fire pass through my own body. */
   const owns = (collider) => collider.handle === body.collider.handle || hitboxes.owns(collider);
   const skip = passThrough ? (c) => owns(c) || passThrough(registry.get(c)) : owns;
 
-  function move(cmd, dt) {
+  function move(command, dt) {
+    const cmd = busyHands(command);
     const wasGrounded = body.state.grounded;
     const fallSpeed = -body.state.vel.y;
-    body.update(cmd, dt, arsenal.movementMods(cmd));
+    body.update(cmd, dt, movementMods(command));
     const s = body.state;
     hitboxes.sync(s.pos, s.yaw, s.crouched);
     if (noise) {
@@ -83,7 +92,8 @@ export function createSoldier({
    *        browsers trace their shots and send them in (net/host.js applies them).
    * @returns {{look:{yaw:number, pitch:number}, shots:Array, hitTargets?:Map}} recoil for the view, and what each shot did
    */
-  function act(cmd, dt, { trace = true } = {}) {
+  function act(command, dt, { trace = true } = {}) {
+    const cmd = busyHands(command);
     const s = body.state;
     const eye = { x: s.pos.x, y: s.pos.y + body.eyeHeight(), z: s.pos.z };
     const { shots, look } = arsenal.update(cmd, dt, { ...s, eye, walkSpeed: body.tuning.walkSpeed });
@@ -160,6 +170,7 @@ export function createSoldier({
     owner,
     entity: me,
     owns,
+    movementMods,
     move,
     act,
     teleport,

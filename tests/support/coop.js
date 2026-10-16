@@ -20,7 +20,7 @@ import { SIM_DT } from '../../src/core/loop.js';
 export async function makeCoop({ def, clients = 1, net: netOpts = {}, seed = 3, difficulty = 'regular' }) {
   await initPhysics();
   const net = createLoopbackNet({ seed, ...netOpts });
-  const sim = createSim({ def, id: 'test', seed, difficulty });
+  const sim = createSim({ def, id: 'test', seed, difficulty, coop: true });
   const host = createHost({ sim, coop: true, clock: () => net.now });
   const listener = await net.listen('TESTS');
   const pending = [];

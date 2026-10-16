@@ -55,6 +55,7 @@ export function createProxy({ world, registry, id, owner, kind, role = null, wea
     crouched: false, speed: 0, sprinting: false, grounded: true, ready: false, reloading: false,
     alert: 'calm', awareness: 0, inCombat: false, fresh: false, target: null, sees: false,
     laserOn: false, laserCharge: 0, hp: 100, down: false, bleeding: false, dead: false,
+    bleedLeft: 0, reviving: 0, reviver: null,
   };
   let crouched = null;
 
@@ -65,7 +66,8 @@ export function createProxy({ world, registry, id, owner, kind, role = null, wea
       Object.assign(view.prev, view.pos);
       Object.assign(view.pos, s.pos);
       for (const k of ['yaw', 'pitch', 'crouched', 'speed', 'sprinting', 'grounded', 'ready', 'reloading', 'alert',
-        'awareness', 'inCombat', 'fresh', 'target', 'sees', 'laserOn', 'laserCharge', 'hp', 'down', 'bleeding', 'dead', 'weapon']) {
+        'awareness', 'inCombat', 'fresh', 'target', 'sees', 'laserOn', 'laserCharge', 'hp', 'down', 'bleeding', 'dead', 'weapon',
+        'bleedLeft', 'reviving', 'reviver']) {
         if (s[k] !== undefined) view[k] = s[k];
       }
       if (kind === 'player') view.down = !!(s.down || s.bleeding);
