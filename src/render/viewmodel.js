@@ -67,7 +67,7 @@ function flashTexture() {
   return t;
 }
 
-export function createViewmodel({ soldier, input, settings, cameraRig, worldCamera, sunDir, mood = () => null, events = gameEvents, owner = 0 }) {
+export function createViewmodel({ soldier, input, settings, cameraRig, worldCamera, sunDir, mood = () => null, guns = null, events = gameEvents, owner = 0 }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, worldCamera.aspect, 0.01, 10);
 
@@ -82,7 +82,7 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
   // One model per gun you carry; only the one in your hands is visible.
   const models = {};
   for (const g of soldier.arsenal.guns) {
-    const model = buildGun(g.def);
+    const model = buildGun(g.def, { guns });
     model.group.visible = false;
     rig.add(model.group);
     models[g.def.id] = model;
@@ -227,8 +227,8 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
 
     // Pose: hip and aim, blended.
     const ads = smooth(ars.state.ads);
-    hip.set(...def.model.hip);
-    aim.set(-def.model.sight[0], -def.model.sight[1], -def.model.sight[2] - def.ads.distance);
+    hip.copy(model.hip);
+    aim.copy(model.sight).negate().add(tmp.set(0, 0, -def.ads.distance));
     pos.lerpVectors(hip, aim, ads);
     // At the hip the gun angles in a little towards the middle of the screen.
     rot.set(0, 0.05 * (1 - ads), -0.02 * (1 - ads));

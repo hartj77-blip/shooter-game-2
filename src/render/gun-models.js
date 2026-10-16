@@ -1,11 +1,22 @@
-// Block-built guns: each gun's `model.parts` list (in weapons-data.js) becomes
-// a little 3D model made of boxes and cylinders, plus chunky gloved hands.
+// The guns you see: real models when they've loaded, block-built ones if not.
 //
-// Parts with a `name` (mag, slide, pump) are kept separately so the viewmodel
-// can animate them: the magazine drops out during a reload, the pistol's slide
-// snaps back when it fires, the shotgun's pump slides back and forth.
+// Real models come from a free (CC0) pack, built into assets/models/guns.glb by
+// tools/build-models.mjs. A model is just a shape: it doesn't know where you
+// hold it or where the bullets come out. GUN_MODELS writes that down for each
+// gun, measured once from side views of the model, like marking a toy's
+// handholds with stickers.
 //
-// Model space: x right, y up, -z towards the muzzle. Units are metres.
+// Block-built guns (the fallback, and what the tests use): each gun's
+// `model.parts` list (in weapons-data.js) becomes a little model made of boxes
+// and cylinders.
+//
+// Either way you get chunky gloved hands, and parts with a name (mag, slide,
+// pump) are kept separately so the viewmodel can animate them: the magazine
+// drops out during a reload, the pistol's slide snaps back when it fires, the
+// shotgun's pump slides back and forth.
+//
+// Gun space: the grip (where the right hand holds) is the origin; x right, y up,
+// -z towards the muzzle. Units are metres.
 
 import * as THREE from 'three';
 import { GUN_COLORS } from '../weapons/weapons-data.js';
@@ -22,6 +33,43 @@ function material(color) {
   }
   return materials.get(color);
 }
+
+/**
+ * Where things are on each model gun, in the model's own space (as guns.glb
+ * stores it: standing on y = 0, centred, the barrel along -z). `buildGun` moves
+ * the model so its grip is the origin, like the block-built guns.
+ *   grip     where the right hand holds
+ *   sight    the point your eye lines up when aiming (on the sight line)
+ *   muzzle   where the bullets (and the flash) come out
+ *   eject    where spent shells fly out
+ *   support  where the left hand holds (null: both hands on the grip)
+ *   laser    where a marksman's laser starts (render/soldiers-view.js)
+ *   reticle  'dot' adds a red dot sight on top
+ * The DMR is only carried by enemy marksmen, so nobody looks through its scope:
+ * give it to the player and the viewmodel would need a scope view.
+ */
+export const GUN_MODELS = {
+  carbine: {
+    grip: [0, 0.2, 0.13], sight: [0, 0.316, 0.1], muzzle: [0, 0.2415, -0.43],
+    eject: [0.024, 0.25, 0.03], support: [0, 0.215, -0.17], reticle: 'dot',
+  },
+  smg: {
+    grip: [0, 0.17, 0.045], sight: [0, 0.285, 0.07], muzzle: [0, 0.219, -0.31],
+    eject: [0.024, 0.22, -0.02], support: [0, 0.185, -0.17], reticle: 'irons',
+  },
+  shotgun: {
+    grip: [0, 0.085, 0.2], sight: [0, 0.178, 0.1], muzzle: [0, 0.15, -0.5],
+    eject: [0.024, 0.13, 0], support: [0, 0.085, -0.2], reticle: 'bead',
+  },
+  pistol: {
+    grip: [0, 0.08, 0.06], sight: [0, 0.134, 0.07], muzzle: [0, 0.112, -0.105],
+    eject: [0.019, 0.125, -0.035], support: null, reticle: 'irons',
+  },
+  dmr: {
+    grip: [0, 0.13, 0.28], sight: [0, 0.219, 0.3], muzzle: [0, 0.171, -0.579],
+    eject: [0.03, 0.18, 0.2], support: [0, 0.12, -0.05], laser: [0.04, 0.14, -0.15], reticle: 'scope',
+  },
+};
 
 const SLEEVE = '#4b5638';
 const GLOVE = '#2a2c27';
@@ -92,7 +140,7 @@ function arm(handAt, handSize, sleeveAt, sleeveRot) {
 }
 
 /** The glowing reticle you aim with: a red dot, or nothing extra for iron sights. */
-function reticle(kind, sight) {
+function reticle(kind, sight, glassSize = 0.04) {
   if (kind !== 'dot') return null;
   const dot = new THREE.Mesh(
     new THREE.CircleGeometry(0.0022, 16),
@@ -100,7 +148,7 @@ function reticle(kind, sight) {
   );
   dot.position.set(sight[0], sight[1], sight[2] - 0.03);
   const glass = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.04, 0.04),
+    new THREE.PlaneGeometry(glassSize, glassSize),
     new THREE.MeshBasicMaterial({ color: '#7fd6ff', transparent: true, opacity: 0.12, depthWrite: false }),
   );
   glass.position.set(sight[0], sight[1], sight[2] - 0.031);
@@ -109,16 +157,68 @@ function reticle(kind, sight) {
   return g;
 }
 
+/** The model gun for `def` from the loaded guns.glb, or null if there isn't one. */
+function modelGun(def, guns, group, parts) {
+  const spec = GUN_MODELS[def.id];
+  const src = spec && guns?.scene.getObjectByName(def.id);
+  if (!src?.isMesh) return null;
+  const grip = new THREE.Vector3(...spec.grip);
+  const at = (p) => (p ? new THREE.Vector3(...p).sub(grip) : null);
+  // The geometry and material are shared by every copy (it's the same shape);
+  // only the position is ours. Moving parts get a pivot each, like the block guns.
+  const place = (mesh) => {
+    const m = new THREE.Mesh(mesh.geometry, mesh.material);
+    m.position.copy(grip).negate();
+    return m;
+  };
+  group.add(place(src));
+  for (const child of src.children) {
+    const name = child.name.slice(def.id.length + 1);
+    if (!child.isMesh || !name) continue;
+    const pivot = new THREE.Group();
+    pivot.add(place(child));
+    pivot.userData.rest = new THREE.Vector3();
+    parts[name] = pivot;
+    group.add(pivot);
+  }
+  return {
+    sight: at(spec.sight), muzzle: at(spec.muzzle), eject: at(spec.eject),
+    support: at(spec.support), laser: at(spec.laser), reticle: spec.reticle,
+  };
+}
+
 /**
- * Builds the viewmodel for one gun.
+ * Builds one gun.
  * @param {object} def a row from WEAPONS
- * @param {{hands?:boolean}} [opts] hands: false for guns lying on a table
+ * @param {{hands?:boolean, guns?:object}} [opts] hands: false for guns lying on a
+ *   table or in a soldier's hands; guns: the loaded guns.glb (assets.model('guns'))
+ *   to use the real models, or nothing for block-built guns.
+ * @returns {{group, parts, muzzle, eject, sight, hip, support, laser, reticle, kind}}
+ *   points are Vector3s in gun space; hip is where the grip sits on screen when
+ *   firing from the hip; support and laser may be null.
  */
-export function buildGun(def, { hands = true } = {}) {
+export function buildGun(def, { hands = true, guns = null } = {}) {
   const m = def.model;
   const group = new THREE.Group();
   group.name = def.id;
   const parts = {};
+
+  const real = modelGun(def, guns, group, parts);
+  if (real) {
+    if (real.reticle === 'dot') {
+      // The model has plain iron sights, so a small red dot sight sits on top:
+      // a hollow box around the sight line, its glass, and the dot.
+      const housing = hollowBox([0.036, 0.032, 0.045], 'dark', 0.006);
+      housing.position.copy(real.sight);
+      group.add(housing, reticle('dot', real.sight.toArray(), 0.026));
+    }
+    if (hands) addHands(group, real.support);
+    group.traverse((o) => { o.frustumCulled = false; });
+    return {
+      kind: 'model', group, parts, ...real,
+      hip: new THREE.Vector3(...m.hip),
+    };
+  }
 
   for (const p of m.parts) {
     const mesh = partMesh(p);
@@ -137,26 +237,34 @@ export function buildGun(def, { hands = true } = {}) {
   const ret = reticle(m.reticle, m.sight);
   if (ret) group.add(ret);
 
-  if (hands) {
-    // Right hand on the grip, arm reaching back towards the bottom-right of the screen.
-    group.add(arm([0.0, -0.05, 0.02], [0.055, 0.075, 0.1], [0.03, -0.16, 0.22], [0.55, 0.12, 0]));
-    if (m.support) {
-      // Left hand on the front grip, arm reaching back to the bottom-left.
-      const [sx, sy, sz] = m.support;
-      group.add(arm([sx, sy - 0.035, sz], [0.075, 0.055, 0.1], [sx - 0.1, sy - 0.15, sz + 0.2], [0.5, -0.45, 0]));
-    } else {
-      // Pistol: the left hand cups the right.
-      group.add(arm([-0.012, -0.075, 0.02], [0.05, 0.06, 0.095], [-0.09, -0.19, 0.22], [0.55, -0.35, 0]));
-    }
-  }
+  if (hands) addHands(group, m.support && new THREE.Vector3(...m.support));
 
   group.traverse((o) => { o.frustumCulled = false; });
 
+  const laser = m.parts.find((p) => p.name === 'laser');
   return {
+    kind: 'blocks',
     group,
     parts,
     muzzle: new THREE.Vector3(...m.muzzle),
     eject: new THREE.Vector3(...m.eject),
     sight: new THREE.Vector3(...m.sight),
+    hip: new THREE.Vector3(...m.hip),
+    support: m.support ? new THREE.Vector3(...m.support) : null,
+    laser: laser ? new THREE.Vector3(...laser.at) : null,
+    reticle: m.reticle,
   };
+}
+
+function addHands(group, support) {
+  // Right hand on the grip, arm reaching back towards the bottom-right of the screen.
+  group.add(arm([0.0, -0.05, 0.02], [0.055, 0.075, 0.1], [0.03, -0.16, 0.22], [0.55, 0.12, 0]));
+  if (support) {
+    // Left hand on the front grip, arm reaching back to the bottom-left.
+    const { x: sx, y: sy, z: sz } = support;
+    group.add(arm([sx, sy - 0.035, sz], [0.075, 0.055, 0.1], [sx - 0.1, sy - 0.15, sz + 0.2], [0.5, -0.45, 0]));
+  } else {
+    // Pistol: the left hand cups the right.
+    group.add(arm([-0.012, -0.075, 0.02], [0.05, 0.06, 0.095], [-0.09, -0.19, 0.22], [0.55, -0.35, 0]));
+  }
 }

@@ -98,7 +98,7 @@ export function createSoldiersView({
     const first = s.view;
     const gltf = assets?.model('soldier');
     const model = gltf
-      ? createCharacter({ gltf, weapon: first.weapon ?? null, colors })
+      ? createCharacter({ gltf, guns: assets.model('guns'), weapon: first.weapon ?? null, colors })
       : buildSoldier({ weapon: first.weapon, colors });
     group.add(model.root);
     const icon = new THREE.Sprite(icons.suspicious);

@@ -152,6 +152,9 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
   expect(before.kind).toBe('skinned');
   await page.waitForTimeout(500);
   expect((await bone()).q).not.toEqual(before.q);
+  // The guns in your hands are the real models too (render/gun-models.js).
+  expect(await page.evaluate(() => Object.values(window.fireteam.mission.viewmodel.models).map((m) => m.kind)))
+    .toEqual(['model', 'model', 'model', 'model']);
 
   // Hold everyone still, step in 3.5 m in front of the gate guard, and aim at their chest.
   await page.evaluate(() => {
