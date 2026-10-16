@@ -36,7 +36,7 @@ import { createEvents } from '../core/events.js';
 import { idleCommand } from '../core/input.js';
 import { createProxy, blend } from './proxies.js';
 import {
-  INTERP_DELAY, CMD_REDUNDANCY, encodeCommand, roundCommand, decodePlayer, decodeEnemy, decodeTarget, decodeEncounter,
+  INTERP_DELAY, CMD_REDUNDANCY, encodeCommand, roundCommand, decodePlayer, decodeEnemy, decodeTarget, decodeEncounter, enemyIdFor,
 } from './protocol.js';
 
 const MATCH = 0.01;    // metres: closer than this to the host's answer counts as a match
@@ -103,18 +103,40 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   const local = { owner: me, soldier, health, get callsign() { return callsigns.get(me); }, spawn };
 
   // ---------------------------------------------------------------- everyone else (proxies)
-  const enemyList = level.expanded.enemies.map((spec, i) => createProxy({
-    world, registry, id: spec.id ?? `e${i}`, owner: `e${i}`, kind: 'enemy', role: spec.role,
-    weapon: ROLES[spec.role]?.weapon ?? 'carbine', pos: { x: spec.at[0], y: spec.at[1] ?? 0, z: spec.at[2] },
-  }));
-  const enemyById = new Map(enemyList.map((p) => [p.id, p]));
-  const enemies = { list: enemyList };
+  // Enemies get a stand-in the first time a snapshot mentions them, so ones that
+  // arrive mid-mission (reinforcements) work just like the ones the level started with.
+  const specs = level.expanded.enemies;
+  const enemyByIndex = new Map(); // the host's number for it -> proxy
+  const enemyById = new Map();
+  const enemies = { list: [] };
   const mates = new Map(); // owner -> proxy
   const teammates = { list: [] };
 
+  function enemyProxy(index, s) {
+    let p = enemyByIndex.get(index);
+    if (p) return p;
+    p = createProxy({
+      world, registry, id: enemyIdFor(specs, index), owner: `e${index}`, kind: 'enemy', role: s.role,
+      weapon: ROLES[s.role]?.weapon ?? 'carbine', pos: s.pos,
+    });
+    p.index = index;
+    enemyByIndex.set(index, p);
+    enemyById.set(p.id, p);
+    enemies.list = [...enemyByIndex.values()].sort((a, b) => a.index - b.index);
+    p.place(s);
+    return p;
+  }
+
+  function forgetEnemies() {
+    for (const p of enemyByIndex.values()) p.remove();
+    enemyByIndex.clear();
+    enemyById.clear();
+    enemies.list = [];
+  }
+
   // The encounter's scoreboard, as the host last told us.
-  const encounter = level.expanded.enemies.length
-    ? { id: def.name, state: 'ready', time: 0, remaining: enemyList.length, total: enemyList.length, result: null, players: new Map() }
+  const encounter = specs.length
+    ? { id: def.name, state: 'ready', time: 0, remaining: specs.length, total: specs.length, result: null, players: new Map() }
     : null;
 
   // ---------------------------------------------------------------- messages
@@ -131,6 +153,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   const correction = { x: 0, y: 0, z: 0 }; // how far the last fix moved you (the camera eases it out)
   let rate = 1;
   let restartPending = false;
+  let restartTick = 0;       // snapshots and events from before the last restart are ignored
 
   const offs = [
     link.onMessage((msg) => inbox.push(msg)),
@@ -140,15 +163,36 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     if (msg.t === 'snap') onSnapshot(msg);
     else if (msg.t === 'ev') {
       for (const [name, data] of msg.list) {
+        if (msg.tick < restartTick) continue; // about the game before the restart
         if (ON_TIMELINE.has(name) && renderTick !== null) timeline.push({ tick: msg.tick, name, data });
         else play(name, data);
       }
     } else if (msg.t === 'pong') stats.rtt = clock() - msg.at;
   }
 
+  /**
+   * The host restarted. Anything older still on its way is about the old game:
+   * an "enemy down" from before the restart must not knock over the new enemy
+   * with the same name (a real bug, lesson 14). So: forget the stand-ins and the
+   * old snapshots and events, and start again from the restart's tick.
+   */
+  function restarted(data) {
+    restartPending = true;
+    const from = data?.tick ?? 0;
+    for (let i = timeline.length - 1; i >= 0; i--) if (timeline[i].tick < from) timeline.splice(i, 1);
+    for (let i = snaps.length - 1; i >= 0; i--) if (snaps[i].tick < from) snaps.splice(i, 1);
+    restartTick = Math.max(restartTick, from);
+    forgetEnemies();
+    renderTick = null;
+  }
+
   /** Play a host event here, after tidying up anything that needs it. */
   function play(name, data) {
-    if (name === 'mission:restart') restartPending = true;
+    if (name === 'mission:restart') restarted(data);
+    if (name === 'enemy:down') {
+      const p = enemyById.get(data.id);
+      if (p) p.view.dead = true; // in case every snapshot showing the fall went missing
+    }
     if (name === 'player:joined') callsigns.set(data.owner, data.callsign);
     if (name === 'player:hurt' && data.owner === me) healthState.sinceHit = 0;
     if (name === 'target:hit' && data.kind !== 'enemy' && data.kind !== 'player') {
@@ -162,11 +206,12 @@ export function createClient({ def, me, link, roster = [], events = createEvents
 
   function onSnapshot(msg) {
     if (snaps.length && msg.tick <= snaps[snaps.length - 1].tick) return; // old news (unreliable messages can overtake)
+    if (msg.tick < restartTick) return; // from before a restart
     stats.snapshots++;
     const snap = {
       tick: msg.tick,
       players: new Map(msg.p.map((a) => { const d = decodePlayer(a); return [d.owner, d]; })),
-      enemies: msg.e.map(decodeEnemy),
+      enemies: new Map(msg.e.map((a) => { const d = decodeEnemy(a); return [d.index, d]; })), // by the host's number
     };
     snaps.push(snap);
     if (snaps.length > KEEP) snaps.shift();
@@ -261,10 +306,13 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     }
     const t = b ? (renderTick - a.tick) / (b.tick - a.tick) : 0;
 
-    enemyList.forEach((p, i) => {
-      const sa = a.enemies[i];
-      if (sa) p.set(blend(sa, b?.enemies[i], t));
-    });
+    // Enemies the snapshot doesn't mention (fallen a while ago) stay as they were.
+    for (const [index, sa] of a.enemies) {
+      const s = blend(sa, b?.enemies.get(index), t);
+      const p = enemyByIndex.get(index);
+      if (p) p.set(s);
+      else enemyProxy(index, s);
+    }
 
     const present = new Set();
     for (const [owner, sa] of a.players) {

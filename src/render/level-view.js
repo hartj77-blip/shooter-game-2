@@ -48,6 +48,7 @@ export function buildLevelView(expanded, materials) {
   group.name = 'level';
 
   for (const solid of expanded.solids) {
+    if (solid.hidden) continue; // invisible walls at the map's edge: felt, not seen
     const geometry = solid.kind === 'box'
       ? new THREE.BoxGeometry(...solid.size).toNonIndexed()
       : wedgeGeometry(solid.width, solid.length, solid.height);

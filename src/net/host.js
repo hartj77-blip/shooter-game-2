@@ -27,7 +27,7 @@
 
 import { createJitterBuffer } from './jitter.js';
 import {
-  SNAPSHOT_EVERY, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, eventFor, wireEvent,
+  SNAPSHOT_EVERY, DEAD_KEPT, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, eventFor, wireEvent,
 } from './protocol.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
 import { NOISE } from '../ai/noise.js';
@@ -149,13 +149,24 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
 
   // ---------------------------------------------------------------- what clients are told
 
+  /** Enemies worth telling clients about: everyone standing, and anyone who fell a moment ago. */
+  function enemyRows() {
+    const en = sim.enemies;
+    if (!en) return [];
+    const rows = [];
+    en.list.forEach((e, i) => {
+      if (!e.dead || en.ai.time - e.deadAt < DEAD_KEPT) rows.push(encodeEnemy(i, e.view, e.health));
+    });
+    return rows;
+  }
+
   /** The parts of a snapshot that are the same for everyone. */
   function snapshotBase() {
     return {
       t: 'snap',
       tick,
       p: [...sim.team.values()].map((p) => encodePlayer(p.view)),
-      e: sim.enemies ? sim.enemies.list.map((e, i) => encodeEnemy(i, e.view, e.health)) : [],
+      e: enemyRows(),
       g: sim.targets.list.map((t, i) => encodeTarget(i, t)),
       enc: encodeEncounter(sim.encounter),
     };
@@ -218,10 +229,13 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
       return outs.get(me);
     },
 
-    /** Everyone back to the start. */
+    /**
+     * Everyone back to the start. The event carries the tick it happened on, so
+     * clients can throw away older news still on its way (net/client.js).
+     */
     restart() {
       sim.reset();
-      sim.events.emit('mission:restart', {});
+      sim.events.emit('mission:restart', { tick: tick + 1 });
     },
 
     /** Just you, back to your spawn (the Proving Ground's "Back to spawn"). */
