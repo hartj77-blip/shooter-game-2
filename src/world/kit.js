@@ -200,8 +200,9 @@ const expanders = {
   // MISSIONS (game/operation.js). These are invisible: what's there depends on the mission.
   //
   // A place an objective can be: where a hostage is held, a laptop sits, a weapons
-  // cache is hidden, or a position must be held. `safe` [x, z, yaw] is where the
-  // squad starts again if they retry from the checkpoint this site gives.
+  // cache is hidden, or a position must be held. `safe` [x, z, yaw] (or [x, z, yaw, y]
+  // if it isn't on the ground) is where the squad starts again if they retry from
+  // the checkpoint this site gives.
   // `radius` (hold the line): how big the area to hold is.
   site(p) {
     return {

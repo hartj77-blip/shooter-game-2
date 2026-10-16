@@ -44,8 +44,11 @@ import { createLobbyUi } from './ui/lobby.js';
 import { createVoice } from './net/voice.js';
 import provingGround from '../levels/proving-ground.js';
 import compound from '../levels/compound.js';
+import harbour from '../levels/harbour.js';
+import { missionLevels } from '../levels/missions.js';
 
-const LEVELS = { 'proving-ground': provingGround, compound };
+// Every map you can pick: the practice maps, and each mission (a map with a job attached).
+const LEVELS = { 'proving-ground': provingGround, compound, ...missionLevels({ harbour }) };
 const params = new URLSearchParams(location.search);
 const canvas = document.getElementById('view');
 
