@@ -4,7 +4,16 @@ A co-op first-person shooter for the browser, built step by step as a game-devel
 
 **Play:** https://hartj77-blip.github.io/shooter-game-2/
 
-**Now:** Milestone 4, **Co-op**: play with up to three friends, with voice chat. Pick a map on the title screen:
+**Now:** Milestone 5, **Missions**: four missions on a new, bigger map, the Harbour, solo or with up to three friends. Pick one on the title screen:
+
+- **Lifeline** (rescue): find the hostage somewhere in the fishing village, free them, and get them to the helicopter alive.
+- **Dead Drop** (intel): find the laptop, defend it while it downloads, and carry the drive out.
+- **Short Fuse** (sabotage): blow up three hidden weapons caches.
+- **Last Light** (hold the line): switch on the lighthouse radio and hold the headland for three minutes.
+
+Every mission ends with **extraction**: call the helicopter, survive while it flies in, and get aboard. A **director** watches how the fight is going: it sends reinforcements while things are calm and gives you a breather after a hard fight. Ammo is limited in missions (refill at the ammo crates), you carry two **grenades** (G), and if everyone goes down you retry from the last **checkpoint**. A debrief shows how it went.
+
+Or practise:
 
 - **The Compound:** clear a walled compound held by 16 enemy soldiers. Riflemen take cover and peek, Rushers charge and flank, and Marksmen warn you with a laser before each shot. They see and hear you, call out to each other, and search where they last saw you. Health recovers if you get out of the fire.
 - **The Proving Ground:** the practice area from milestones 1 and 2: the movement course, four guns, the firing range and the timed kill house.
@@ -16,7 +25,7 @@ Then press **Play solo**, **Host co-op** or **Join co-op**.
 1. Type a **callsign** (your name in game) on the title screen.
 2. One of you presses **Host co-op** and shares the **room code** (or the invite link from *Copy invite link*).
 3. Everyone else presses **Join co-op** and types the code (or just opens the link).
-4. The host picks the map and difficulty and presses **Start**. Friends can also join a game that's already running.
+4. The host picks the mission (or practice map) and difficulty and presses **Start**. Friends can also join a game that's already running.
 
 In the game:
 - Hold **V** to talk on the **squad radio**. Teammates close by also hear you without it (**nearby voice**).
@@ -26,7 +35,7 @@ In the game:
 
 No accounts and no servers to rent: browsers connect directly (WebRTC), introduced by PeerJS's free service. On some strict networks (some schools and offices) players can't connect.
 
-Every number (movement, guns, enemies) has a slider in the live tuning panel.
+Every number (movement, guns, enemies, the director, grenades) has a slider in the live tuning panel.
 
 ## Controls
 
@@ -41,10 +50,11 @@ Every number (movement, guns, enemies) has a slider in the live tuning panel.
 | Right mouse | Aim down the sights |
 | R | Reload |
 | 1–4, mouse wheel, Q | Switch gun; Q swaps back to the last one |
-| R (when you're down) | Try the fight again (solo; in co-op, the host once everyone's down) |
+| G | Throw a grenade (missions) |
+| F (hold) | Use: revive a teammate, free the hostage, start the download, plant a charge, take ammo, call the helicopter |
+| R (when you're down) | Try again: from the last checkpoint in a mission, from the start in the Compound (in co-op, the host once everyone's down) |
 | V (hold) | Squad radio (co-op) |
 | Z or middle mouse | Ping what you're aiming at (co-op) |
-| F (hold) | Revive a downed teammate (co-op) |
 | `` ` `` (under Esc) | Tuning panel (pauses the game) |
 | Esc | Pause |
 
@@ -67,6 +77,10 @@ Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of v
   11. [How co-op works](docs/lessons/11-how-co-op-works.md)
   12. [Prediction and trust](docs/lessons/12-prediction-and-trust.md)
   13. [Voice, rooms and the internet](docs/lessons/13-voice-rooms-and-the-internet.md)
+  14. [Missions as data](docs/lessons/14-missions-as-data.md)
+  15. [The director](docs/lessons/15-the-director.md)
+  16. [Building a big map](docs/lessons/16-building-a-big-map.md)
+  17. [Supplies, grenades and escorts](docs/lessons/17-supplies-grenades-and-escorts.md)
 - [`docs/GLOSSARY.md`](docs/GLOSSARY.md): every term in plain English
 - [`docs/DESIGN.md`](docs/DESIGN.md): the game design document and roadmap
 
@@ -79,7 +93,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-Add `?debug` to the address to open the tuning panel straight away, and `?map=compound` to go straight to the Compound.
+Add `?debug` to the address to open the tuning panel straight away, and `?map=compound` (or `?map=harbour-rescue`, `harbour-intel`, `harbour-sabotage`, `harbour-hold`) to go straight to a map.
 
 To try co-op on your own, open two tabs with `?net=local` (for example `http://localhost:8000/?net=local`), host in one and join with the code in the other. That uses the browser's `BroadcastChannel` instead of the internet. Voice chat needs the real online version.
 
@@ -87,10 +101,11 @@ To try co-op on your own, open two tabs with `?net=local` (for example `http://l
 
 ```sh
 npm install        # once: installs Playwright, used only by the browser test
-npm test           # unit tests: movement, weapons, enemy AI, pathfinding, the Compound, and co-op over a pretend
-                   # network with delay, jitter and packet loss (prediction, revives, the lobby, voice mixing)
-npm run smoke      # opens the real game in a headless browser: walks, shoots, fights in the Compound, switches maps,
-                   # and plays co-op in two tabs (host, join, shoot, revive, ping) with a pretend microphone
+npm test           # unit tests: movement, weapons, enemy AI, pathfinding, the Compound, the Harbour, every mission,
+                   # the director, grenades, ammo crates, checkpoints, and co-op over a pretend network with delay,
+                   # jitter and packet loss (prediction, revives, the lobby, voice mixing)
+npm run smoke      # opens the real game in a headless browser: walks, shoots, fights in the Compound, loads the
+                   # Harbour, switches maps, and plays co-op in two tabs (the Compound, then a rescue)
 ```
 
 GitHub runs both on every pull request (`.github/workflows/ci.yml`).
@@ -103,16 +118,17 @@ src/main.js       the app shell: boots everything and runs the game flow
 src/mission.js    one map, built and torn down without a page reload
 src/core/         game loop, input, events, settings, state machine, seeded random, tuning panel
 src/world/        physics (Rapier), collision groups, the level kit, level building, surfaces, targets
-src/weapons/      the weapon table, guns, the arsenal, hitscan
+src/weapons/      the weapon table, guns, the arsenal, hitscan, grenades
 src/player/       movement controller, soldier (movement + guns + hitboxes), health, first-person camera
-src/ai/           enemies: roles, senses, brains, squads, the nav grid, A*, cover, noise
-src/game/         the shared simulation (sim.js), the kill house course, the Compound's rules, revives, pings
+src/ai/           enemies: roles, senses, brains, squads, the nav grid, A*, cover, noise; the hostage
+src/game/         the shared simulation (sim.js), the kill house course, the Compound's rules, revives, pings,
+                  missions (operation, objectives, the director, the helicopter), hold-to-interact, ammo crates
 src/net/          co-op: transports, the protocol, rooms, the host, clients (prediction), stand-ins, voice
 src/render/       renderer, materials, level meshes, signs, guns, viewmodel, effects, targets,
-                  block soldiers, ragdolls, AI debug views
+                  block soldiers, ragdolls, AI debug views, mission props, the helicopter
 src/audio/        sound engine, sound bank, game sounds
-src/ui/           HUD, squad HUD, lobby, menus, styles
-levels/           maps, written as data
+src/ui/           HUD, squad HUD, objective HUD, markers, debrief, lobby, menus, styles
+levels/           maps and missions, written as data
 vendor/           pinned copies of three.js, Rapier, lil-gui and PeerJS
 assets/           fonts and sounds
 tools/            build-sounds.py (cuts the CC0 recordings into game sounds)
@@ -129,8 +145,8 @@ docs/             design document, glossary, lessons
 | ✅ | M2 Gunfeel | four guns, recoil, aiming, effects, sound, range, kill house |
 | ✅ | M3 Enemies | AI soldiers, senses, squads, pathfinding, cover, ragdolls, the Compound |
 | ✅ | M4 Co-op | 1–4 players, peer to peer, prediction, revives, pings, voice |
-| ⏭ | M5 Missions | objectives, the director, extraction |
-| | M6 Art pass | stylized models, animation, lighting |
+| ✅ | M5 Missions | the Harbour, four missions, the director, extraction, grenades, checkpoints |
+| ⏭ | M6 Art pass | stylized models, animation, lighting |
 | | M7 Progression | XP, unlocks, loadouts |
 | | M8 Polish | audio, HUD, settings, gamepad, touch |
 | | M9 Content | maps, mission types, difficulty |

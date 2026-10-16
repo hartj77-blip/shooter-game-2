@@ -6,9 +6,11 @@
 // player (1 to 4). Then tick() runs one fixed step, always in the same order
 // (CLAUDE.md, "One tick, in order"):
 //
-//   players move → enemies move → targets → world.step() → players shoot (and ping,
-//   and throw) → grenades fly (and explode) → enemies think → enemies shoot →
-//   health → revives → hold-F (crates...) → the encounter / kill house
+//   players move → enemies move → the hostage moves → targets → world.step() →
+//   players shoot (and ping, and throw) → grenades fly (and explode) → enemies
+//   think → enemies shoot → health → revives → hold-F (crates, objectives) →
+//   the encounter / kill house / mission → the director (last: who it sends is
+//   filed by the next tick's world.step())
 //
 // Solo play, the co-op host (net/host.js) and the tests all run this same
 // code. A co-op client runs a cut-down version of its own (net/client.js).
