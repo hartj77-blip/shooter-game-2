@@ -117,3 +117,21 @@ test('leaving: the host hears about it; the host closing sends everyone home wit
   await join(net, 'CDEFG', 'One');
   host2.close();
 });
+
+test('loadouts: each friend\'s guns arrive with "loaded", checked, and the roster shares them', async () => {
+  const net = createLoopbackNet({ delay: 10 });
+  const host = await hostRoom({ net, callsign: 'Host', code: 'ABCDE', loadout: ['smg', 'pistol'], clock: () => net.now });
+  const a = await join(net, 'ABCDE', 'Alpha');
+  const got = [];
+  host.on('loaded', (m) => got.push(m.loadout));
+  // A sensible loadout, with a few things a broken (or meddling) browser might send mixed in.
+  a.loaded([{ id: 'dmr', attachments: { muzzle: 'suppressor', optic: 'scope', mag: 42 } }, 'pistol', 'pistol', 'rocket', { id: '__proto__' }]);
+  net.advance(50);
+  net.advance(50); // (the roster comes back on the next delivery)
+  assert.deepEqual(got[0], [{ id: 'dmr', attachments: { muzzle: 'suppressor' } }, 'pistol'], 'a scope doesn\'t fit the DMR; repeats and made-up guns are dropped');
+  assert.deepEqual(a.roster.map((r) => r.loadout), [['smg', 'pistol'], got[0]], 'everyone can draw everyone\'s attachments');
+  a.loaded('nonsense');
+  net.advance(50);
+  assert.deepEqual(got[1], ['carbine', 'smg', 'shotgun', 'pistol'], 'nothing usable: the default');
+  host.close();
+});

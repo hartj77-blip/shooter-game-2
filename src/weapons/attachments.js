@@ -14,7 +14,7 @@
 //
 // No DOM, no three.js: this runs in Node.
 
-import { WEAPONS, LOADOUT } from './weapons-data.js';
+import { WEAPONS, LOADOUT, ARMORY } from './weapons-data.js';
 import { NOISE } from '../ai/noise.js';
 
 /**
@@ -128,6 +128,34 @@ export function withAttachments(def, picks = {}) {
   out.reload.cues = Object.fromEntries(Object.entries(def.reload.cues ?? {})
     .map(([kind, cues]) => [kind, Array.isArray(cues) ? cues.map(([t, s]) => [t * k, s]) : cues]));
   return out;
+}
+
+/**
+ * A loadout that came from somewhere we don't control (another player's
+ * browser, in co-op), made safe: real guns, each once, at most every gun, and
+ * only attachments that fit. Anything unusable gives the default loadout.
+ * Entries come out as ids, or { id, attachments } when there are any.
+ */
+export function cleanArsenal(list) {
+  if (!Array.isArray(list)) return [...LOADOUT];
+  const out = [];
+  for (const e of list.slice(0, ARMORY.length)) {
+    const id = typeof e === 'string' ? e : e?.id;
+    if (!ARMORY.includes(id) || out.some((o) => (o.id ?? o) === id)) continue;
+    const picks = {};
+    for (const slot of SLOTS) {
+      const a = e?.attachments?.[slot];
+      if (typeof a === 'string' && ATTACHMENTS[a]?.slot === slot && fits(id, a)) picks[slot] = a;
+    }
+    out.push(Object.keys(picks).length ? { id, attachments: picks } : id);
+  }
+  return out.length ? out : [...LOADOUT];
+}
+
+/** The attachments a loadout fits to gun `id` ({} if none, or it isn't carried). */
+export function attachmentsIn(loadout, id) {
+  const e = loadout?.find?.((x) => (x?.id ?? x) === id);
+  return e?.attachments ?? {};
 }
 
 /**

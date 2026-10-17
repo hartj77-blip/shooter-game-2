@@ -13,6 +13,8 @@
 //
 // No DOM, no three.js: this runs in Node (the storage is handed in).
 
+import { ATTACHMENTS, fits } from '../weapons/attachments.js';
+
 export const PROFILE_VERSION = 1;
 const STORAGE_KEY = 'fireteam.profile';
 
@@ -94,7 +96,9 @@ export function cleanProfile(data) {
     const clean = {};
     for (const slot of ATTACHMENT_SLOTS) {
       const a = picks[slot];
-      if (typeof a === 'string' && a in GUN_LEVEL_UNLOCKS && gunLevel(p, gun) >= GUN_LEVEL_UNLOCKS[a]) clean[slot] = a;
+      // It must be unlocked, belong in this slot, and fit this gun (weapons/attachments.js).
+      if (typeof a === 'string' && a in GUN_LEVEL_UNLOCKS && gunLevel(p, gun) >= GUN_LEVEL_UNLOCKS[a]
+        && ATTACHMENTS[a]?.slot === slot && fits(gun, a)) clean[slot] = a;
     }
     if (Object.keys(clean).length) p.loadout.attachments[gun] = clean;
   }
@@ -277,9 +281,12 @@ export function createProfile({ storage = safeStorage() } = {}) {
 
 /** A loadout as cleanProfile would store it (empty attachment picks dropped), for comparing. */
 function cleanLoadout(L) {
+  // In the same order cleanProfile writes them (guns, then slots), or the same
+  // picks written in another order would look like a different loadout.
   const attachments = {};
-  for (const [gun, picks] of Object.entries(L.attachments ?? {})) {
-    const kept = Object.fromEntries(Object.entries(picks ?? {}).filter(([slot, a]) => ATTACHMENT_SLOTS.includes(slot) && a));
+  for (const gun of GUN_IDS) {
+    const picks = L.attachments?.[gun] ?? {};
+    const kept = Object.fromEntries(ATTACHMENT_SLOTS.filter((slot) => picks[slot]).map((slot) => [slot, picks[slot]]));
     if (Object.keys(kept).length) attachments[gun] = kept;
   }
   return { primary: L.primary, callin: L.callin, attachments };

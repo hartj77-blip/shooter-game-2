@@ -41,6 +41,12 @@ test('co-op in two tabs: host, join, play the Compound together', async ({ conte
   await expect(friend.locator('#join')).toBeVisible();
   await expect(friend.locator('#joinCode')).toHaveValue(code);
   await friend.locator('#callsign').evaluate((el) => { el.value = 'Bravo'; el.dispatchEvent(new Event('change')); });
+  // The friend has earned an SMG and fitted a suppressor (game/profile.js).
+  await friend.evaluate(() => {
+    const p = window.fireteam.profile;
+    p.award(1e5, 'smg');
+    p.setLoadout({ primary: 'smg', attachments: { smg: { muzzle: 'suppressor' } } });
+  });
   await friend.click('#btnJoinGo');
   await expect(friend.locator('#lobby')).toBeVisible();
   await expect(host.locator('#roster li:not(.empty)')).toHaveCount(2);
@@ -55,6 +61,12 @@ test('co-op in two tabs: host, join, play the Compound together', async ({ conte
   await friend.waitForFunction(() => window.fireteam.session?.role === 'client' && window.fireteam.session.stats.snapshots > 10, null, { timeout: 60_000 });
   await expect(friend.locator('#hud')).toBeVisible();
   expect(await friend.evaluate(() => window.fireteam.map)).toBe('compound');
+  // Their loadout came with them: the host built the same guns their browser predicts with.
+  const kit = (page, get) => page.evaluate(get);
+  const onHost = await kit(host, () => window.fireteam.session.sim.player(1).soldier.arsenal.guns.map((g) => `${g.def.id}${g.def.suppressed ? '+suppressor' : ''}`));
+  const onFriend = await kit(friend, () => window.fireteam.soldier.arsenal.guns.map((g) => `${g.def.id}${g.def.suppressed ? '+suppressor' : ''}`));
+  expect(onHost).toEqual(['smg+suppressor', 'pistol']);
+  expect(onFriend).toEqual(onHost);
 
   // ---- the friend walks forward; the host sees them move
   const before = await host.evaluate(() => ({ ...window.fireteam.session.sim.player(1).soldier.state.pos }));
@@ -68,6 +80,8 @@ test('co-op in two tabs: host, join, play the Compound together', async ({ conte
   await friend.keyboard.up('KeyW');
   // ...and the host's screen shows a teammate.
   expect(await host.evaluate(() => window.fireteam.mission.teammatesView.views.size)).toBe(1);
+  // ...carrying their suppressed SMG.
+  expect(await host.evaluate(() => { const v = [...window.fireteam.mission.teammatesView.views.values()][0]; return `${v.weapon}:${v.fitted}`; })).toBe('smg:suppressor');
 
   // ---- the friend shoots the (frozen) gate guard; it goes down on both screens
   await host.evaluate(() => {

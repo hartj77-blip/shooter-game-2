@@ -78,11 +78,15 @@ export function viewForEvent(views, ev) {
  *   (null: never; they just lie down, and vanish while `dead`. The hostage can come back at a checkpoint.)
  * @param {string} [opts.name]   the group's name in the scene
  * @param {object} [opts.assets]  render/assets.js: the animated soldier, if it loaded (else block soldiers)
+ * @param {(s) => object} [opts.attachments] what's fitted to a soldier's gun (teammates: from the room's roster)
  */
 export function createSoldiersView({
   scene, source, effects, ragdolls = null, world, registry, camera, events,
   colors = SOLDIER_COLORS.enemy, icons: showIcons = true, downEvent = 'enemy:down', name = null, assets = null,
+  attachments: attachmentsOf = () => ({}),
 }) {
+  // Which attachments a soldier's gun has, as one string (a change means a new model).
+  const fittedKey = (s) => Object.values(attachmentsOf(s) ?? {}).sort().join(',');
   const group = new THREE.Group();
   group.name = name ?? (showIcons ? 'enemies' : 'teammates');
   scene.add(group);
@@ -104,7 +108,7 @@ export function createSoldiersView({
     const first = s.view;
     const gltf = assets?.model('soldier');
     const model = gltf
-      ? createCharacter({ gltf, guns: assets.model('guns'), weapon: first.weapon ?? null, colors })
+      ? createCharacter({ gltf, guns: assets.model('guns'), weapon: first.weapon ?? null, attachments: attachmentsOf(s), colors })
       : buildSoldier({ weapon: first.weapon, colors });
     group.add(model.root);
     const icon = new THREE.Sprite(icons.suspicious);
@@ -126,7 +130,7 @@ export function createSoldiersView({
       group.add(laser, dot);
     }
     const v = {
-      s, id: s.id, owner: s.owner, weapon: first.weapon, model, icon, flash, laser, dot,
+      s, id: s.id, owner: s.owner, weapon: first.weapon, fitted: fittedKey(s), model, icon, flash, laser, dot,
       yaw: first.yaw,
       stride: 0, swing: 0, crouch: 0, ready: 0, sprint: 0, reload: 0, lying: 0,
       kick: 0, kickVel: 0,
@@ -154,7 +158,7 @@ export function createSoldiersView({
       const v = views.get(s.id);
       if (v && v.s !== s) { remove(v); viewFor(s); } // a new soldier with an old name (after a restart)
       else if (!v) viewFor(s);
-      else if (v.weapon !== s.view.weapon) { remove(v); viewFor(s); } // switched guns (teammates)
+      else if (v.weapon !== s.view.weapon || v.fitted !== fittedKey(s)) { remove(v); viewFor(s); } // switched guns (teammates)
     }
     for (const v of [...views.values()]) if (!ids.has(v.id)) remove(v);
   }

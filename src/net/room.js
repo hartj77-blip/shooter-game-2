@@ -12,9 +12,13 @@
 // works the same way: welcome, start, load, loaded.
 //
 // Lobby messages (the in-game ones are in net/protocol.js):
-//   client → host   hello { callsign, version, peer }   loaded {}   rpong { at }   radio { on }
+//   client → host   hello { callsign, version, peer }   loaded { loadout }   rpong { at }   radio { on }
 //   host → client   welcome { slot, code, roster, lobby }   roster { roster }   lobby { lobby }
 //                   start { lobby }   bye { reason }   rping { at }   radio { slot, on }
+//
+// "loaded" carries the guns that player chose (their loadout: game/profile.js),
+// so the host builds their soldier with the same guns their own browser
+// predicts with, and the roster shares it so everyone draws their attachments.
 //
 // "radio" says someone pressed or let go of V, so every browser plays their
 // voice through the radio filter (net/voice.js) and clicks like a handset.
@@ -25,6 +29,7 @@ import { createEvents } from '../core/events.js';
 import { cleanText } from '../core/settings.js';
 import { PROTOCOL_VERSION } from './protocol.js';
 import { NetError } from './transport.js';
+import { cleanArsenal } from '../weapons/attachments.js';
 
 export const ROOM_SIZE = 4;
 // No I, L or O: they're too easy to mistake for 1, 1 and 0 when read out loud.
@@ -81,17 +86,17 @@ const every = (fn, ms) => {
  * @param {string} [opts.code]
  * @param {object} [opts.lobby]     { map, difficulty }
  */
-export async function hostRoom({ net, callsign, code = makeCode(), lobby: start = {}, clock = () => performance.now() }) {
+export async function hostRoom({ net, callsign, code = makeCode(), lobby: start = {}, loadout = null, clock = () => performance.now() }) {
   const listener = await net.listen(code);
   const events = createEvents();
   const members = new Map();
-  members.set(0, { slot: 0, callsign: cleanCallsign(callsign, 'Player 1'), ping: 0, link: null, peer: listener.id, loaded: true });
+  members.set(0, { slot: 0, callsign: cleanCallsign(callsign, 'Player 1'), ping: 0, link: null, peer: listener.id, loaded: true, loadout: loadout && cleanArsenal(loadout) });
   const lobby = { map: 'compound', difficulty: 'regular', started: false, ...start };
   let open = true;
 
   const roster = () => [...members.values()]
     .sort((a, b) => a.slot - b.slot)
-    .map(({ slot, callsign: name, ping, peer, loaded }) => ({ slot, callsign: name, ping, peer, loaded }));
+    .map(({ slot, callsign: name, ping, peer, loaded, loadout: guns }) => ({ slot, callsign: name, ping, peer, loaded, loadout: guns ?? null }));
   const broadcast = (msg) => { for (const m of members.values()) m.link?.send(msg); };
   const tell = () => {
     broadcast({ t: 'roster', roster: roster() });
@@ -124,6 +129,7 @@ export async function hostRoom({ net, callsign, code = makeCode(), lobby: start 
       }
       if (msg.t === 'loaded') {
         member.loaded = true;
+        member.loadout = cleanArsenal(msg.loadout); // checked: it came from another computer
         events.emit('loaded', member);
         tell();
       } else if (msg.t === 'rpong') {
@@ -165,6 +171,11 @@ export async function hostRoom({ net, callsign, code = makeCode(), lobby: start 
     /** You pressed or let go of V. */
     setRadio(on) {
       broadcast({ t: 'radio', slot: 0, on: !!on });
+    },
+    /** Your own guns (the host's), for everyone's roster. */
+    setLoadout(guns) {
+      members.get(0).loadout = cleanArsenal(guns);
+      tell();
     },
     /** Everyone load the map and play. */
     start() {
@@ -219,8 +230,8 @@ export async function joinRoom({ net, code, callsign, peer = null }) {
       roster: [],
       link,
       on: events.on,
-      /** Tell the host this browser has built the map and is ready to play. */
-      loaded() { link.send({ t: 'loaded' }); },
+      /** Tell the host this browser has built the map and is ready to play, with these guns. */
+      loaded(loadout) { link.send({ t: 'loaded', loadout }); },
       /** You pressed or let go of V. */
       setRadio(on) { link.send({ t: 'radio', on: !!on }); },
       /** Leave (back to the title screen). */

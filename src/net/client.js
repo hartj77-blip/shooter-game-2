@@ -57,10 +57,11 @@ const round = (p) => (p ? { x: r2(p.x), y: r2(p.y), z: r2(p.z) } : null);
  * @param {number} opts.me      your player slot (1 to 3)
  * @param {object} opts.link    your link to the host (net/transport.js)
  * @param {Array}  [opts.roster] [{ slot, callsign }] who's in the game
+ * @param {Array}  [opts.loadout] your guns (weapons/attachments.js); send the same in `loaded`
  * @param {object} [opts.events]
  * @param {() => number} [opts.clock] milliseconds, for measuring ping
  */
-export function createClient({ def, me, link, roster = [], events = createEvents(), clock = () => performance.now(), seed = 1 }) {
+export function createClient({ def, me, link, roster = [], loadout, events = createEvents(), clock = () => performance.now(), seed = 1 }) {
   const world = createPhysicsWorld();
   const registry = createSurfaceRegistry();
   const level = buildLevel(def, world, registry);
@@ -87,6 +88,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   const soldier = createSoldier({
     world, registry, targets, damage: claim, events: quietEvents, owner: me, seed: seed * 101 + me * 7 + 1,
     flatZones: true, passThrough: (info) => info.target?.kind === 'player', spawn,
+    loadout, // the same guns the host builds for you (net/room.js `loaded`), or prediction would disagree
     options: { infiniteAmmo: !def.mission }, // the same rule as the host's (game/sim.js)
   });
 

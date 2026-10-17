@@ -329,3 +329,23 @@ test('a 4-player Compound snapshot fits the size budget', async () => {
   assert.ok(biggest <= SNAPSHOT_BUDGET, `${biggest} bytes (budget ${SNAPSHOT_BUDGET})`);
   g.dispose();
 });
+
+test('loadouts: a friend with a bigger magazine is built with it on the host, and nobody gets a correction', async () => {
+  const kit = [{ id: 'carbine', attachments: { mag: 'extended', under: 'foregrip' } }, 'pistol'];
+  const g = await makeCoop({ def: provingGround, clients: 2, loadouts: { 1: kit } });
+  const onHost = g.sim.player(1).soldier.arsenal;
+  const mine = g.client(1).local.soldier.arsenal;
+  assert.deepEqual(onHost.guns.map((x) => x.def.id), ['carbine', 'pistol'], 'the host builds their guns, not the default four');
+  assert.equal(onHost.current.def.mag, 45);
+  assert.equal(mine.current.def.mag, 45);
+  assert.equal(g.sim.player(2).soldier.arsenal.guns.length, 4, 'friend 2 sent nothing: the default');
+  g.run(1);
+  const before = g.clients.map((c) => c.stats.corrections);
+  // Friend 1 holds the trigger past where a normal magazine would run dry, while walking.
+  g.run(3.2, (slot, i) => (slot === 1 ? { ...wander(provingGround.spawn.yaw - Math.PI / 2)(slot, i), fire: true, firePressed: i === 0 } : null));
+  g.run(0.5);
+  assert.ok(mine.current.mag < 15 && mine.current.status !== 'reloading', `fired past 30 without reloading (mag ${mine.current.mag})`);
+  assert.equal(onHost.current.mag, mine.current.mag, 'the host counted the same rounds');
+  assert.deepEqual(g.clients.map((c) => c.stats.corrections), before, 'no corrections');
+  g.dispose();
+});

@@ -25,6 +25,7 @@ import { idleCommand } from './core/input.js';
 import { createDebugPanel } from './core/debug.js';
 import { createSim } from './game/sim.js';
 import { loadoutFor } from './game/profile.js';
+import { attachmentsIn } from './weapons/attachments.js';
 import { createRecords } from './game/course.js';
 import { createHost } from './net/host.js';
 import { createClient } from './net/client.js';
@@ -52,7 +53,7 @@ import { createNightView } from './render/night-view.js';
 import { GAMEPAD } from './core/gamepad.js';
 import { RAPIER } from './world/physics.js';
 import { SIGHT } from './world/groups.js';
-import { WEAPONS, ARMORY } from './weapons/weapons-data.js';
+import { WEAPONS, ARMORY, LOADOUT } from './weapons/weapons-data.js';
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
@@ -78,7 +79,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const myLoadout = def.armory ? ARMORY : app.profile ? loadoutFor(app.profile.data) : undefined;
   let session;
   if (joining) {
-    session = createClient({ def, me: room.me, link: room.link, roster: room.roster, events });
+    session = createClient({ def, me: room.me, link: room.link, roster: room.roster, loadout: myLoadout, events });
   } else {
     const sim = createSim({
       def, id: mapId, events, coop: !!room,
@@ -91,9 +92,10 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     session = createHost({ sim, me: 0, coop: !!room });
     if (room) {
       // A friend's browser has built the map: add their soldier. A friend left: remove it.
-      offs.push(room.on('loaded', (m) => session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign })));
+      room.setLoadout(myLoadout ?? LOADOUT);
+      offs.push(room.on('loaded', (m) => session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign, loadout: m.loadout })));
       offs.push(room.on('leave', (m) => session.removeClient(m.slot)));
-      for (const m of room.members.values()) if (m.link && m.loaded) session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign });
+      for (const m of room.members.values()) if (m.link && m.loaded) session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign, loadout: m.loadout });
     }
   }
   const sim = session.sim ?? null; // only the host has the real simulation
@@ -129,6 +131,8 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const teammatesView = createSoldiersView({
     scene: root, source: session.teammates, effects, ragdolls, world, registry, camera, events, assets: app.assets,
     colors: SOLDIER_COLORS.friend, icons: false, downEvent: 'player:dead',
+    // Their attachments: from the guns they told the room they carry (net/room.js `loaded`).
+    attachments: (s) => attachmentsIn(room?.roster.find((m) => m.slot === s.owner)?.loadout, s.view.weapon),
   });
   // The hostage: an orange, unarmed soldier. (They can come back at a checkpoint, so no ragdoll.)
   const hostages = { get list() { return session.hostage ? [session.hostage] : []; } };
@@ -390,7 +394,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     disposeTree(viewmodel.scene);
   }
 
-  if (joining) room.loaded(); // tell the host we're ready for our soldier
+  if (joining) room.loaded(myLoadout ?? LOADOUT); // tell the host we're ready for our soldier, and with which guns
 
   /** Where teammate `owner`'s head is (for nearby voice), or null if they're not here. */
   function positionOf(owner) {

@@ -338,6 +338,33 @@ test('progress: a backup code made in one browser restores your rank in another'
   await context.close();
 });
 
+test('the Loadout screen: locked choices wait, unlocked ones change the gun you play with', async ({ page }) => {
+  test.setTimeout(120_000);
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  await page.goto('/');
+  await page.waitForFunction(() => window.fireteam?.ready, null, { timeout: 60_000 });
+  await page.click('#btnLoadoutT');
+  await expect(page.locator('#loadout')).toBeVisible();
+  await expect(page.locator('[data-key="gun:smg"]')).toBeDisabled();
+  await expect(page.locator('[data-key="gun:smg"]')).toContainText('Rank 2');
+  // Earn enough to unlock the SMG and its extended magazine; the screen updates by itself.
+  await page.evaluate(() => { window.fireteam.profile.award(2500, 'smg'); window.fireteam.profile.awardGun('smg', 2000); });
+  await page.click('[data-key="gun:smg"]');
+  await page.click('[data-key="mag:extended"]');
+  await expect(page.locator('[data-key="mag:extended"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#loadout')).toContainText('rounds +50%');
+  await page.screenshot({ path: 'test-results/loadout.png', fullPage: true });
+  await page.click('#btnLoadoutDone');
+  await expect(page.locator('#loadout')).toBeHidden();
+  // Play the Compound with it.
+  await page.click('#mapCompound');
+  await page.waitForFunction(() => window.fireteam.mission?.mapId === 'compound' && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
+  const guns = await page.evaluate(() => window.fireteam.soldier.arsenal.guns.map((g) => `${g.def.id}:${g.def.mag}`));
+  expect(guns).toEqual(['smg:48', 'pistol:15']);
+  expect(problems).toEqual([]);
+});
+
 test('attachments: a saved loadout fits them, and a scope gives the scope view', async ({ page }) => {
   test.setTimeout(120_000);
   const problems = [];
