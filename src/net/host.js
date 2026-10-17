@@ -123,7 +123,8 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
   /** A client fired: check what they say happened, then make it happen here. */
   function applyFire(slot, msg) {
     const p = sim.player(slot);
-    const def = WEAPONS[msg.w];
+    // That player's own gun, attachments and all (weapons/attachments.js), not the table's.
+    const def = p?.soldier.arsenal.guns.find((g) => g.def.id === msg.w)?.def ?? WEAPONS[msg.w];
     if (!p || !def) return;
     const h = p.health.state;
     if (h.down || h.bleeding || h.dead) return;
@@ -136,8 +137,8 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
 
     // Everyone hears it: enemies through the noise board, players through the event.
     sim.noise?.post({ pos: o, radius: def.noise ?? NOISE.gunshot, kind: 'gunshot', owner: slot });
-    sim.enemies?.playerShots(shots.map((shot) => ({ origin: o, end: shot.end })), slot);
-    sim.events.emit('weapon:fire', { owner: slot, weapon: def.id, origin: o, pulls, shots });
+    sim.enemies?.playerShots(shots.map((shot) => ({ origin: o, end: shot.end, weapon: def })), slot);
+    sim.events.emit('weapon:fire', { owner: slot, weapon: def.id, suppressed: !!def.suppressed, origin: o, pulls, shots });
     for (const i of (msg.impacts ?? []).slice(0, 8)) sim.events.emit('bullet:impact', { owner: slot, weapon: def.id, ...i });
 
     // The hits: never more than the gun could do, only on things that can be hurt.

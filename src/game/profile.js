@@ -193,6 +193,16 @@ export function readBackupCode(code) {
   return cleanProfile(data);
 }
 
+/**
+ * The guns your loadout gives you, as the arsenal wants them (weapons/arsenal.js):
+ * your primary and the pistol, each with its attachments.
+ */
+export function loadoutFor(p) {
+  const L = p.loadout;
+  const entry = (id) => (L.attachments[id] ? { id, attachments: { ...L.attachments[id] } } : id);
+  return [entry(L.primary), entry('pistol')];
+}
+
 // ---------------------------------------------------------------- the profile store
 
 /**

@@ -24,6 +24,7 @@ import { createEvents } from './core/events.js';
 import { idleCommand } from './core/input.js';
 import { createDebugPanel } from './core/debug.js';
 import { createSim } from './game/sim.js';
+import { loadoutFor } from './game/profile.js';
 import { createRecords } from './game/course.js';
 import { createHost } from './net/host.js';
 import { createClient } from './net/client.js';
@@ -51,7 +52,7 @@ import { createNightView } from './render/night-view.js';
 import { GAMEPAD } from './core/gamepad.js';
 import { RAPIER } from './world/physics.js';
 import { SIGHT } from './world/groups.js';
-import { WEAPONS } from './weapons/weapons-data.js';
+import { WEAPONS, ARMORY } from './weapons/weapons-data.js';
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
@@ -74,6 +75,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   // ---------------------------------------------------------------- the session
   const events = createEvents();
   const offs = []; // room listeners, removed when the mission ends
+  const myLoadout = def.armory ? ARMORY : app.profile ? loadoutFor(app.profile.data) : undefined;
   let session;
   if (joining) {
     session = createClient({ def, me: room.me, link: room.link, roster: room.roster, events });
@@ -83,7 +85,8 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
       seed: (Math.random() * 2 ** 31) | 0,
       difficulty: room?.lobby.difficulty ?? settings.values.difficulty,
       records: createRecords(), // best times, saved in this browser
-      players: [{ owner: 0, callsign: cleanCallsign(settings.values.callsign, 'Player 1') }],
+      // Your guns: the loadout from your profile (game/profile.js), or every gun on a practice map.
+      players: [{ owner: 0, callsign: cleanCallsign(settings.values.callsign, 'Player 1'), loadout: myLoadout }],
     });
     session = createHost({ sim, me: 0, coop: !!room });
     if (room) {
@@ -149,7 +152,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   events.on('weapon:fire', (e) => {
     if (e.owner !== me) return;
     const muzzle = viewmodel.muzzleWorld();
-    effects.muzzleLight(muzzle);
+    if (!e.suppressed) effects.muzzleLight(muzzle);
     for (const s of e.shots) {
       if (s.tracer) effects.tracer(muzzle, s.end);
       if (effects.options.showPaths) effects.path(e.origin, s.end);
@@ -348,7 +351,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     }
     aiDebug?.update();
     sounds.frame(dt);
-    hud.update(dt, { playing });
+    hud.update(dt, { playing, scoped: viewmodel.scoped });
     markers.begin();
     ring.begin();
     squadHud?.update(dt, { watching: spectating ? watching : null });

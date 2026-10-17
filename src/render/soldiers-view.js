@@ -168,9 +168,9 @@ export function createSoldiersView({
     const v = byOwner(ev.owner);
     if (!v || v.dead) return;
     v.kickVel -= 1.6;
-    v.flashTime = 0.05;
+    v.flashTime = ev.suppressed ? 0 : 0.05; // a suppressor hides the flash
     const muzzle = v.model.muzzle.getWorldPosition(new THREE.Vector3());
-    effects.muzzleLight(muzzle);
+    if (!ev.suppressed) effects.muzzleLight(muzzle);
     for (const s of ev.shots) if (s.tracer) effects.tracer(muzzle, s.end);
   });
   // Someone else throwing a grenade: their arm swings (render/character.js).

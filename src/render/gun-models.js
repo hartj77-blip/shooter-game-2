@@ -44,14 +44,14 @@ function material(color) {
  *   eject    where spent shells fly out
  *   support  where the left hand holds (null: both hands on the grip)
  *   laser    where a marksman's laser starts (render/soldiers-view.js)
- *   reticle  'dot' adds a red dot sight on top
+ *   reticle  how you aim through it without an optic: 'irons', 'bead', or 'scope' (built in)
  * The DMR is only carried by enemy marksmen, so nobody looks through its scope:
  * give it to the player and the viewmodel would need a scope view.
  */
 export const GUN_MODELS = {
   carbine: {
     grip: [0, 0.2, 0.13], sight: [0, 0.316, 0.1], muzzle: [0, 0.2415, -0.43],
-    eject: [0.024, 0.25, 0.03], support: [0, 0.215, -0.17], reticle: 'dot',
+    eject: [0.024, 0.25, 0.03], support: [0, 0.215, -0.17], reticle: 'irons',
   },
   smg: {
     grip: [0, 0.17, 0.045], sight: [0, 0.285, 0.07], muzzle: [0, 0.219, -0.31],
@@ -139,9 +139,9 @@ function arm(handAt, handSize, sleeveAt, sleeveRot) {
   return g;
 }
 
-/** The glowing reticle you aim with: a red dot, or nothing extra for iron sights. */
+/** The glowing reticle you aim with: a red dot (or a scope's glass), or nothing extra for iron sights. */
 function reticle(kind, sight, glassSize = 0.04) {
-  if (kind !== 'dot') return null;
+  if (kind !== 'dot' && kind !== 'scope') return null;
   const dot = new THREE.Mesh(
     new THREE.CircleGeometry(0.0022, 16),
     new THREE.MeshBasicMaterial({ color: '#ff3b30', toneMapped: false }),
@@ -205,19 +205,11 @@ export function buildGun(def, { hands = true, guns = null } = {}) {
 
   const real = modelGun(def, guns, group, parts);
   if (real) {
-    if (real.reticle === 'dot') {
-      // The model has plain iron sights, so a small red dot sight sits on top:
-      // a hollow box around the sight line, its glass, and the dot.
-      const housing = hollowBox([0.036, 0.032, 0.045], 'dark', 0.006);
-      housing.position.copy(real.sight);
-      group.add(housing, reticle('dot', real.sight.toArray(), 0.026));
-    }
-    if (hands) addHands(group, real.support);
+    const out = { kind: 'model', group, parts, ...real, hip: new THREE.Vector3(...m.hip) };
+    fitAttachments(out, def);
+    if (hands) addHands(group, out.support);
     group.traverse((o) => { o.frustumCulled = false; });
-    return {
-      kind: 'model', group, parts, ...real,
-      hip: new THREE.Vector3(...m.hip),
-    };
+    return out;
   }
 
   for (const p of m.parts) {
@@ -234,15 +226,12 @@ export function buildGun(def, { hands = true, guns = null } = {}) {
     }
   }
 
-  const ret = reticle(m.reticle, m.sight);
+  // (The block carbine and DMR have their own red dot built in; with an optic fitted, that's replaced.)
+  const ret = def.attachments?.optic ? null : reticle(m.reticle, m.sight);
   if (ret) group.add(ret);
 
-  if (hands) addHands(group, m.support && new THREE.Vector3(...m.support));
-
-  group.traverse((o) => { o.frustumCulled = false; });
-
   const laser = m.parts.find((p) => p.name === 'laser');
-  return {
+  const out = {
     kind: 'blocks',
     group,
     parts,
@@ -254,6 +243,70 @@ export function buildGun(def, { hands = true, guns = null } = {}) {
     laser: laser ? new THREE.Vector3(...laser.at) : null,
     reticle: m.reticle,
   };
+  fitAttachments(out, def);
+  if (hands) addHands(group, out.support);
+  group.traverse((o) => { o.frustumCulled = false; });
+  return out;
+}
+
+/**
+ * Draws a gun's attachments (weapons/attachments.js `def.attachments`) at its
+ * points, code-built like the gear on the soldiers, and moves the points they
+ * change (a suppressor moves the muzzle forward; a scope changes how you aim).
+ */
+function fitAttachments(g, def) {
+  const a = def.attachments ?? {};
+  const add = (mesh, at) => { mesh.position.copy(at); g.group.add(mesh); return mesh; };
+  const cylZ = (r, len, color) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 14), material(color));
+    m.rotation.x = Math.PI / 2; // along the barrel
+    return m;
+  };
+  const s = g.sight;
+  // ---- optics
+  if (a.optic === 'reddot') {
+    add(hollowBox([0.036, 0.032, 0.045], 'dark', 0.006), s);
+    g.group.add(reticle('dot', s.toArray(), 0.026));
+  } else if (a.optic === 'holo') {
+    add(hollowBox([0.05, 0.04, 0.035], 'dark', 0.005), s);
+    add(boxMesh([0.05, 0.012, 0.06], 'dark'), s.clone().add(new THREE.Vector3(0, -0.026, 0.01))); // its base
+    g.group.add(reticle('dot', s.toArray(), 0.038));
+  } else if (a.optic === 'scope') {
+    add(cylZ(0.019, 0.17, 'dark'), s.clone().add(new THREE.Vector3(0, 0, -0.03)));
+    add(cylZ(0.026, 0.045, 'dark'), s.clone().add(new THREE.Vector3(0, 0, -0.13)));  // the front lens bell
+    add(cylZ(0.024, 0.03, 'dark'), s.clone().add(new THREE.Vector3(0, 0, 0.06)));    // the eyepiece
+    for (const z of [-0.07, 0.01]) add(boxMesh([0.014, 0.03, 0.012], 'dark'), s.clone().add(new THREE.Vector3(0, -0.028, z)));
+    g.reticle = 'scope'; // aimed all the way, you look through it (the HUD's scope view)
+  }
+  // ---- muzzle
+  if (a.muzzle === 'suppressor') {
+    add(cylZ(0.019, 0.16, 'dark'), g.muzzle.clone().add(new THREE.Vector3(0, 0, -0.08)));
+    g.muzzle = g.muzzle.clone().add(new THREE.Vector3(0, 0, -0.16));
+    g.suppressed = true;
+  } else if (a.muzzle === 'compensator') {
+    add(boxMesh([0.03, 0.03, 0.05], 'metal'), g.muzzle.clone().add(new THREE.Vector3(0, 0, -0.025)));
+    g.muzzle = g.muzzle.clone().add(new THREE.Vector3(0, 0, -0.05));
+  }
+  // ---- magazine: an extended one is longer at the bottom (and drops out with the rest of it)
+  if (a.mag === 'extended' && g.parts.mag) {
+    const box = new THREE.Box3().setFromObject(g.parts.mag);
+    if (!box.isEmpty()) {
+      const size = box.getSize(new THREE.Vector3());
+      const ext = boxMesh([size.x * 0.95, 0.05, size.z * 0.9], 'dark');
+      ext.position.set((box.min.x + box.max.x) / 2, box.min.y - 0.022, (box.min.z + box.max.z) / 2);
+      g.parts.mag.add(ext);
+    }
+  }
+  // ---- underbarrel
+  const sup = g.support ?? new THREE.Vector3(0, -0.02, -0.25);
+  if (a.under === 'foregrip') {
+    add(boxMesh([0.026, 0.075, 0.032], 'dark'), sup.clone().add(new THREE.Vector3(0, -0.045, 0)));
+  } else if (a.under === 'laser') {
+    const at = sup.clone().add(new THREE.Vector3(0.028, 0.012, -0.06));
+    add(boxMesh([0.018, 0.022, 0.06], 'dark'), at);
+    add(boxMesh([0.008, 0.008, 0.004], 'accent'), at.clone().add(new THREE.Vector3(0, 0, -0.031)));
+    g.laser = at.clone().add(new THREE.Vector3(0, 0, -0.03));
+  }
 }
 
 function addHands(group, support) {

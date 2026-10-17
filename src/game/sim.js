@@ -127,7 +127,7 @@ export function createSim({
   // (The hostage too: they're on your side.)
   const throughTeammates = (info) => info.target?.kind === 'player' || info.target?.kind === 'civilian';
 
-  function addPlayer(owner, { callsign = `Player ${owner + 1}` } = {}) {
+  function addPlayer(owner, { callsign = `Player ${owner + 1}`, loadout } = {}) {
     if (team.has(owner)) return team.get(owner);
     const start = spawnFor(level, owner);
     const health = createHealth({ events, owner, revivable: coop }); // co-op: bleed out, teammates revive
@@ -137,6 +137,7 @@ export function createSim({
       flatZones: true, // enemies don't get headshot bonuses on players
       passThrough: throughTeammates,
       spawn: start,
+      loadout, // their guns and attachments (weapons/attachments.js `loadoutDefs`); missing = the default
       options: { infiniteAmmo: unlimited },
     });
     const p = { id: `p${owner}`, owner, soldier, health, callsign, spawn: start, lastCmd: idleCommand(start.yaw) };

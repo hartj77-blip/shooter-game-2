@@ -139,6 +139,7 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
   let lastPitch = input.pitch;
   let time = 0;
   let current = null;
+  let scoped = 0; // 0..1: how far you're looking through a scope (the HUD draws its view)
 
   const mine = (e) => (e.owner ?? 0) === owner;
 
@@ -156,7 +157,7 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
     kick.kick(5, (Math.random() - 0.5) * 0.8 * scale);
     flashTime = 0.045;
     flash.rotation.z = Math.random() * Math.PI;
-    const size = def.id === 'shotgun' ? 0.24 : def.id === 'pistol' ? 0.1 : 0.15;
+    const size = (def.id === 'shotgun' ? 0.24 : def.id === 'pistol' ? 0.1 : 0.15) * (def.suppressed ? 0.35 : 1);
     flash.scale.setScalar(size * (0.85 + Math.random() * 0.3));
     slideTime = 0;
     if (!def.pump) ejectShell(model);
@@ -227,6 +228,11 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
 
     // Pose: hip and aim, blended.
     const ads = smooth(ars.state.ads);
+    // A scope: in the last part of aiming, you're looking THROUGH it, so the
+    // gun disappears and the HUD draws the scope's view instead (ui/hud.js).
+    // Like putting your eye to a telescope: you stop seeing the telescope.
+    scoped = model.reticle === 'scope' ? Math.min(1, Math.max(0, (ars.state.ads - 0.8) / 0.15)) : 0;
+    rig.visible = scoped < 1;
     hip.copy(model.hip);
     aim.copy(model.sight).negate().add(tmp.set(0, 0, -def.ads.distance));
     pos.lerpVectors(hip, aim, ads);
@@ -352,5 +358,9 @@ export function createViewmodel({ soldier, input, settings, cameraRig, worldCame
     }
   }
 
-  return { scene, camera, update, muzzleWorld, models };
+  return {
+    scene, camera, update, muzzleWorld, models,
+    /** 0..1, how far you're looking through a scope (the HUD's scope view). */
+    get scoped() { return scoped; },
+  };
 }

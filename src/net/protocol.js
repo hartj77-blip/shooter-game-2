@@ -30,7 +30,7 @@
 // Runs in Node (the tests check that encode/decode round-trips and that a
 // snapshot stays small).
 
-import { LOADOUT } from '../weapons/weapons-data.js';
+import { ARMORY } from '../weapons/weapons-data.js';
 import { ROLES } from '../ai/enemy-data.js';
 import { USE_KINDS } from '../game/interact.js';
 import { PHASES } from '../game/objectives.js';
@@ -94,7 +94,7 @@ const unpackFlags = (names, bits, into) => { names.forEach((k, i) => { into[k] =
 export function encodePlayer(v) {
   return [
     v.owner, cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(P_FLAGS, v), cm(v.speed),
-    Math.max(0, LOADOUT.indexOf(v.weapon)), Math.round(v.hp), Math.ceil((v.bleedLeft ?? 0) * 10),
+    Math.max(0, ARMORY.indexOf(v.weapon)), Math.round(v.hp), Math.ceil((v.bleedLeft ?? 0) * 10),
     Math.round((v.reviving ?? 0) * 100), v.reviver ?? -1,
     v.using ? USE_KINDS.indexOf(v.using) : -1, Math.round((v.useProgress ?? 0) * 100),
   ];
@@ -103,7 +103,7 @@ export function decodePlayer(a) {
   const [owner, x, y, z, yaw, pitch, flags, speed, gun, hp, bleed = 0, reviving = 0, reviver = -1, use = -1, useProgress = 0] = a;
   return unpackFlags(P_FLAGS, flags, {
     owner, pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: fromMrad(pitch),
-    speed: fromCm(speed), weapon: LOADOUT[gun] ?? LOADOUT[0], hp,
+    speed: fromCm(speed), weapon: ARMORY[gun] ?? ARMORY[0], hp,
     bleedLeft: bleed / 10, reviving: reviving / 100, reviver: reviver < 0 ? null : reviver,
     using: USE_KINDS[use] ?? null, useProgress: useProgress / 100,
   });
