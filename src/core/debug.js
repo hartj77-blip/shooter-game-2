@@ -14,6 +14,7 @@ import { ROLES, AWARENESS } from '../ai/enemy-data.js';
 import { NOISE } from '../ai/noise.js';
 import { GRENADE } from '../weapons/grenades.js';
 import { SUPPLY } from '../game/supply.js';
+import { CALLINS } from '../game/callins.js';
 import { OBJECTIVES } from '../game/objectives.js';
 import { POST } from '../render/post.js';
 import { LIGHTING } from '../world/lighting.js';
@@ -28,6 +29,7 @@ const DEFAULT_AWARENESS = { ...AWARENESS };
 const DEFAULT_NOISE = { ...NOISE };
 const DEFAULT_GRENADE = { ...GRENADE };
 const DEFAULT_SUPPLY = { ...SUPPLY };
+const DEFAULT_CALLINS = structuredClone(CALLINS);
 const DEFAULT_OBJECTIVES = { ...OBJECTIVES };
 
 // Enemy role sliders: [path inside the role row, min, max, step, label]
@@ -91,6 +93,25 @@ const GRENADE_ROWS = [
 ];
 const SUPPLY_ROWS = [
   ['useTime', 0.2, 5, 0.1, 'Crate: hold F (s)'],
+];
+// (The host's: call-ins are decided there.)
+const CALLIN_ROWS = [
+  ['range', 10, 150, 1, 'Call range (m)'],
+  ['windup', 0, 6, 0.1, 'Radio wind-up (s)'],
+  ['charge.kill', 0, 1, 0.01, 'Charge per kill'],
+  ['charge.objective', 0, 1, 0.01, 'Charge per objective'],
+  ['charge.perSecond', 0, 0.05, 0.0005, 'Charge per second'],
+  ['slower', 1, 3, 0.05, 'Each use: next charge slower ×'],
+  ['supply.fall', 1, 15, 0.5, 'Supply: parachute (s)'],
+  ['supply.refills', 1, 6, 1, 'Supply: refills per player'],
+  ['recon.duration', 5, 60, 1, 'Recon: drone stays (s)'],
+  ['recon.radius', 5, 80, 1, 'Recon: marks within (m)'],
+  ['mortar.warn', 0, 8, 0.25, 'Mortar: warning (s)'],
+  ['mortar.shells', 1, 10, 1, 'Mortar: shells'],
+  ['mortar.spread', 0, 15, 0.5, 'Mortar: spread (m)'],
+  ['mortar.damage', 20, 500, 10, 'Mortar: damage'],
+  ['smoke.duration', 5, 60, 1, 'Smoke: lasts (s)'],
+  ['smoke.radius', 1, 6, 0.25, 'Smoke: cloud size (m)'],
 ];
 const OBJECTIVE_ROWS = [
   ['free', 0.2, 8, 0.1, 'Untie the hostage (s)'],
@@ -272,6 +293,7 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
   addSliders(missions.addFolder('Objectives').close(), OBJECTIVES, OBJECTIVE_ROWS);
   addSliders(missions.addFolder('Grenades').close(), GRENADE, GRENADE_ROWS);
   addSliders(missions.addFolder('Ammo crates').close(), SUPPLY, SUPPLY_ROWS);
+  addSliders(missions.addFolder('Call-ins').close(), CALLINS, CALLIN_ROWS);
 
   // Graphics (render/post.js, render/outline.js): the look on medium and high quality.
   const graphics = gui.addFolder('Graphics').close();
@@ -345,6 +367,9 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
       Object.assign(NOISE, DEFAULT_NOISE);
       Object.assign(GRENADE, DEFAULT_GRENADE);
       Object.assign(SUPPLY, DEFAULT_SUPPLY);
+      for (const [k, v] of Object.entries(DEFAULT_CALLINS)) {
+        if (typeof v === 'object') Object.assign(CALLINS[k], v); else CALLINS[k] = v;
+      }
       Object.assign(OBJECTIVES, DEFAULT_OBJECTIVES);
       if (director) Object.assign(director.tuning, structuredClone(directorDefaults));
       loop.timeScale = 1;

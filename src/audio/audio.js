@@ -140,6 +140,19 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     heartbeat: [0.5, (t) => tone(52)(t) * (Math.exp(-t * 28) + (t > 0.17 ? 0.7 * Math.exp(-(t - 0.17) * 30) : 0))],
     radio: [0.1, (t) => (Math.sign(Math.sin(2 * Math.PI * 1150 * t)) * 0.25 + (Math.random() * 2 - 1) * 0.35) * Math.exp(-t * 35)],
     laser: [0.28, (t) => tone(900 + 1600 * t)(t) * Math.min(1, t * 40) * Math.min(1, (0.28 - t) * 30) * 0.5],
+    // A falling shell: a whistle sliding down in pitch, getting louder as it comes.
+    // (The frequency is integrated, phase = 2π∫f dt, so the slide is smooth.)
+    whistle: [1.3, (t) => Math.sin(2 * Math.PI * (1900 * t - 450 * t * t)) * Math.min(1, t * 3) * (0.25 + 0.6 * t) * Math.min(1, (1.3 - t) * 30)],
+    // A smoke canister popping and pouring out: a puff of noise that settles into a hiss.
+    hiss: [1.6, (() => {
+      let hp = 0, prev = 0;
+      return (t) => {
+        const n = Math.random() * 2 - 1;
+        hp = 0.85 * (hp + n - prev); // keep the treble: a hiss, not a rumble
+        prev = n;
+        return hp * (Math.exp(-t * 9) * 0.9 + 0.3 * Math.exp(-t * 1.2)) * Math.min(1, t * 200);
+      };
+    })()],
     // An explosion, if the recordings didn't load: a deep thump under rumbling noise.
     boom: [1.6, (() => {
       let lp = 0;
@@ -181,7 +194,8 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
    * Plays a sound from the bank.
    * @param {string} name   key in SOUNDS
    * @param {object} [opts] { position: {x,y,z} for 3D sounds, volume, rate, delay (seconds),
-   *                          spatial: place it in the world even if the bank entry doesn't (an enemy's gun) }
+   *                          spatial: place it in the world even if the bank entry doesn't (an enemy's gun),
+   *                          muffle: cut the treble above this many Hz (a suppressed shot) }
    */
   function play(name, opts = {}) {
     if (!ctx || ctx.state !== 'running') return;
@@ -204,6 +218,13 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     source.connect(gain);
 
     let out = gain;
+    if (opts.muffle) {
+      const m = ctx.createBiquadFilter();
+      m.type = 'lowpass';
+      m.frequency.value = opts.muffle;
+      out.connect(m);
+      out = m;
+    }
     if ((opts.spatial ?? entry.spatial) && opts.position) {
       // Far-away sounds lose their treble (air soaks up high notes): a distant
       // gunshot is a dull thump, a close one a sharp crack.

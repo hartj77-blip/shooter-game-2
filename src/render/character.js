@@ -34,6 +34,7 @@ import { buildGun } from './gun-models.js';
 import { flatten } from './merge.js';
 import { addOutline } from './outline.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
+import { withAttachments, SLOTS } from '../weapons/attachments.js';
 
 // Fitting the model to the game: our hitboxes put the head at 1.6 m (player/hitboxes.js).
 const SCALE = 1.0;
@@ -78,12 +79,14 @@ function materialsFor(colors) {
   return materials.get(key);
 }
 
-// One flattened gun per weapon (and per kind: model or blocks), shared by every soldier.
+// One flattened gun per weapon, kind (model or blocks) and set of attachments,
+// shared by every soldier carrying that exact gun.
 const gunGeometries = new Map();
-function gunGeometry(weaponId, guns) {
-  const key = `${weaponId}:${guns ? 'model' : 'blocks'}`;
+function gunGeometry(weaponId, guns, attachments = {}) {
+  const fitted = SLOTS.map((s) => attachments[s] ?? '').join(',');
+  const key = `${weaponId}:${guns ? 'model' : 'blocks'}:${fitted}`;
   if (!gunGeometries.has(key)) {
-    const model = buildGun(WEAPONS[weaponId], { hands: false, guns });
+    const model = buildGun(withAttachments(WEAPONS[weaponId], attachments), { hands: false, guns });
     gunGeometries.set(key, {
       geometry: flatten(model.group),
       muzzle: model.muzzle,
@@ -156,9 +159,10 @@ function reach(upper, lower, hand, target, pole) {
  * @param {object} opts.gltf    the loaded soldier model (render/assets.js)
  * @param {object} [opts.guns]  the loaded gun models (else block-built guns)
  * @param {string|null} opts.weapon  the gun they carry (null: unarmed, the hostage)
+ * @param {object} [opts.attachments]  what's fitted to it (weapons/attachments.js), for teammates
  * @param {object} opts.colors  render/soldier-model.js SOLDIER_COLORS entry
  */
-export function createCharacter({ gltf, guns = null, weapon, colors }) {
+export function createCharacter({ gltf, guns = null, weapon, attachments = {}, colors }) {
   const root = new THREE.Group();
   const body = cloneSkinned(gltf.scene);
   body.scale.setScalar(SCALE);
@@ -233,7 +237,7 @@ export function createCharacter({ gltf, guns = null, weapon, colors }) {
   root.add(gunPivot);
   let gunMesh = null, muzzle = new THREE.Object3D(), laser = null, support = new THREE.Vector3();
   if (weapon) {
-    const g = gunGeometry(weapon, guns);
+    const g = gunGeometry(weapon, guns, attachments);
     gunMesh = new THREE.Mesh(g.geometry, gunMaterial());
     gunMesh.castShadow = true;
     gunMesh.position.copy(GRIP).negate(); // so the pivot is the grip

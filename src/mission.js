@@ -24,6 +24,8 @@ import { createEvents } from './core/events.js';
 import { idleCommand } from './core/input.js';
 import { createDebugPanel } from './core/debug.js';
 import { createSim } from './game/sim.js';
+import { loadoutFor } from './game/profile.js';
+import { attachmentsIn } from './weapons/attachments.js';
 import { createRecords } from './game/course.js';
 import { createHost } from './net/host.js';
 import { createClient } from './net/client.js';
@@ -43,6 +45,8 @@ import { disposeTree } from './render/dispose.js';
 import { connectGameSounds } from './audio/game-sounds.js';
 import { createHud } from './ui/hud.js';
 import { createSquadHud } from './ui/squad-hud.js';
+import { createCallinHud } from './ui/callin-hud.js';
+import { createCallinsView } from './render/callins-view.js';
 import { createObjectiveHud } from './ui/objective-hud.js';
 import { createMarkers, createRing } from './ui/markers.js';
 import { createPropsView } from './render/props-view.js';
@@ -51,7 +55,7 @@ import { createNightView } from './render/night-view.js';
 import { GAMEPAD } from './core/gamepad.js';
 import { RAPIER } from './world/physics.js';
 import { SIGHT } from './world/groups.js';
-import { WEAPONS } from './weapons/weapons-data.js';
+import { WEAPONS, ARMORY, LOADOUT } from './weapons/weapons-data.js';
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
@@ -74,23 +78,27 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   // ---------------------------------------------------------------- the session
   const events = createEvents();
   const offs = []; // room listeners, removed when the mission ends
+  const myLoadout = def.armory ? ARMORY : app.profile ? loadoutFor(app.profile.data) : undefined;
+  const myCallin = app.profile?.data.loadout.callin ?? 'supply';
   let session;
   if (joining) {
-    session = createClient({ def, me: room.me, link: room.link, roster: room.roster, events });
+    session = createClient({ def, me: room.me, link: room.link, roster: room.roster, loadout: myLoadout, callin: myCallin, events });
   } else {
     const sim = createSim({
       def, id: mapId, events, coop: !!room,
       seed: (Math.random() * 2 ** 31) | 0,
       difficulty: room?.lobby.difficulty ?? settings.values.difficulty,
       records: createRecords(), // best times, saved in this browser
-      players: [{ owner: 0, callsign: cleanCallsign(settings.values.callsign, 'Player 1') }],
+      // Your guns: the loadout from your profile (game/profile.js), or every gun on a practice map.
+      players: [{ owner: 0, callsign: cleanCallsign(settings.values.callsign, 'Player 1'), loadout: myLoadout, callin: myCallin }],
     });
     session = createHost({ sim, me: 0, coop: !!room });
     if (room) {
       // A friend's browser has built the map: add their soldier. A friend left: remove it.
-      offs.push(room.on('loaded', (m) => session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign })));
+      room.setLoadout(myLoadout ?? LOADOUT);
+      offs.push(room.on('loaded', (m) => session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign, loadout: m.loadout, callin: m.callin })));
       offs.push(room.on('leave', (m) => session.removeClient(m.slot)));
-      for (const m of room.members.values()) if (m.link && m.loaded) session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign });
+      for (const m of room.members.values()) if (m.link && m.loaded) session.addClient({ slot: m.slot, link: m.link, callsign: m.callsign, loadout: m.loadout, callin: m.callin });
     }
   }
   const sim = session.sim ?? null; // only the host has the real simulation
@@ -126,6 +134,8 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const teammatesView = createSoldiersView({
     scene: root, source: session.teammates, effects, ragdolls, world, registry, camera, events, assets: app.assets,
     colors: SOLDIER_COLORS.friend, icons: false, downEvent: 'player:dead',
+    // Their attachments: from the guns they told the room they carry (net/room.js `loaded`).
+    attachments: (s) => attachmentsIn(room?.roster.find((m) => m.slot === s.owner)?.loadout, s.view.weapon),
   });
   // The hostage: an orange, unarmed soldier. (They can come back at a checkpoint, so no ragdoll.)
   const hostages = { get list() { return session.hostage ? [session.hostage] : []; } };
@@ -137,6 +147,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     : null;
   // Mission props (laptop, caches, radios, grenades in flight) and the helicopter.
   const props = createPropsView({ scene: root, session });
+  const callinsView = createCallinsView({ scene: root, session });
   const heli = session.operation ? createHeliView({ scene: root, session }) : null;
   const aiDebug = sim?.enemies ? createAiDebug(root, { enemies: sim.enemies, nav: sim.nav, cover: sim.cover, noise: sim.noise }) : null;
   const sounds = connectGameSounds({
@@ -149,7 +160,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   events.on('weapon:fire', (e) => {
     if (e.owner !== me) return;
     const muzzle = viewmodel.muzzleWorld();
-    effects.muzzleLight(muzzle);
+    if (!e.suppressed) effects.muzzleLight(muzzle);
     for (const s of e.shots) {
       if (s.tracer) effects.tracer(muzzle, s.end);
       if (effects.options.showPaths) effects.path(e.origin, s.end);
@@ -188,6 +199,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const hosting = !joining;
   const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting, markers, ring, voice: () => app.voice, glyph: input.glyph }) : null;
   const objectiveHud = session.operation ? createObjectiveHud({ session, events, hud, markers, ring, hosting, nameOf, audio, glyph: input.glyph }) : null;
+  const callinHud = createCallinHud({ session, events, hud, markers, nameOf, glyph: input.glyph });
 
   // SPECTATING: once you're out (co-op), the camera rides over a teammate's
   // shoulder. Click to switch to someone else.
@@ -337,6 +349,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     teammatesView.update(dt, alpha);
     hostageView?.update(dt, alpha);
     props.update(dt, alpha);
+    callinsView.update(dt);
     heli?.update(dt);
     ragdolls?.update(dt);
     if (night) {
@@ -348,11 +361,12 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     }
     aiDebug?.update();
     sounds.frame(dt);
-    hud.update(dt, { playing });
+    hud.update(dt, { playing, scoped: viewmodel.scoped });
     markers.begin();
     ring.begin();
     squadHud?.update(dt, { watching: spectating ? watching : null });
     objectiveHud?.update(dt);
+    callinHud.update(dt);
     markers.end();
     ring.end();
     debug.update(alpha);
@@ -375,6 +389,8 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     hud.dispose();
     squadHud?.dispose();
     objectiveHud?.dispose();
+    callinHud.dispose();
+    callinsView.dispose();
     markers.dispose();
     ring.dispose();
     sounds.dispose();
@@ -387,7 +403,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     disposeTree(viewmodel.scene);
   }
 
-  if (joining) room.loaded(); // tell the host we're ready for our soldier
+  if (joining) room.loaded(myLoadout ?? LOADOUT, myCallin); // tell the host we're ready for our soldier, with which guns and call-in
 
   /** Where teammate `owner`'s head is (for nearby voice), or null if they're not here. */
   function positionOf(owner) {
@@ -399,7 +415,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   return {
     positionOf, nameOf,
     mapId, def, room, events, session, sim, world, registry,
-    soldier, player, health, rig, viewmodel, effects, hud, debug,
+    soldier, player, health, rig, viewmodel, effects, hud, debug, callinsView, callinHud,
     enemiesView, teammatesView, hostageView, props, heli, ragdolls, aiDebug, sounds, root,
     hasEnemies,
     get enemies() { return sim?.enemies ?? null; },

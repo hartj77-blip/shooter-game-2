@@ -126,6 +126,7 @@ export function createSoldier({
     events.emit('weapon:fire', {
       owner,
       weapon: def.id,
+      suppressed: !!def.suppressed, // a muffled shot (weapons/attachments.js)
       origin: eye,
       pulls: shots.length / def.pellets, // trigger pulls this tick (a shotgun blast is one)
       shots: traced.map((t) => ({ end: t.end, tracer: t.tracer, dir: t.dir })),
@@ -133,6 +134,7 @@ export function createSoldier({
     for (const [target, hit] of hitTargets) {
       events.emit('target:hit', {
         owner,
+        weapon: def.id,
         target,
         id: target.id,
         kind: target.kind,

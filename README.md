@@ -4,12 +4,14 @@ A co-op first-person shooter for the browser, built step by step as a game-devel
 
 **Play:** https://hartj77-blip.github.io/shooter-game-2/
 
-**Now:** Milestone 6, **Art pass**: the grey boxes are gone.
-- **Soldiers and guns:** real animated soldiers (they walk, jog, sprint, crouch, aim, reload, throw and fall as ragdolls) and real gun models.
-- **The world:** textured, with trims, barrels, lamp posts and solid mission props.
-- **Light and look:** each map in its own light (midday, dusty haze, golden hour), with outlines, ambient occlusion and bloom on higher graphics quality.
-- **Night missions:** every mission can now be played **at night**, where darkness hides you, lamps and enemy torches give you away, and **N** flips your night-vision goggles down.
-- **Controllers:** they work too.
+**Now:** Milestone 7, **Progression**: every mission counts.
+- **XP and ranks:** kills, revives, objectives and missions earn XP (more on Veteran and at night). Your **rank** unlocks guns (SMG, shotgun, the DMR) and call-ins; each gun's own **level** unlocks its attachments. The debrief shows what you earned.
+- **Attachments:** red dot, holographic and 2× scope sights (with a proper scope view), suppressor, compensator, extended and fast magazines, foregrip and laser. Each changes the gun's numbers, and you see it on the gun.
+- **Loadout:** pick your gun, its attachments and your call-in on the **Loadout** screen (title screen or lobby). In co-op everyone brings their own, and you see your friends' attachments.
+- **Call-ins:** earn a charge, then press **T** to call in a **supply drop**, a **recon drone** that marks enemies, a **mortar strike** (with a fair warning) or a **smoke screen** where you look.
+- **Saved progress:** kept in your browser, and a **backup code** (bottom of the Loadout screen) takes it to another one.
+
+Milestone 6 brought the art: animated soldiers, real gun models, textures, a mood per map, night missions with night vision, and controller support.
 
 The missions, from milestone 5, are on the Harbour, solo or with up to three friends. Pick one on the title screen (Day or Night):
 
@@ -23,7 +25,7 @@ Every mission ends with **extraction**: call the helicopter, survive while it fl
 Or practise:
 
 - **The Compound:** clear a walled compound held by 16 enemy soldiers. Riflemen take cover and peek, Rushers charge and flank, and Marksmen warn you with a laser before each shot. They see and hear you, call out to each other, and search where they last saw you. Health recovers if you get out of the fire.
-- **The Proving Ground:** the practice area from milestones 1 and 2: the movement course, four guns, the firing range and the timed kill house.
+- **The Proving Ground:** the practice area from milestones 1 and 2: the movement course, every gun (whatever your loadout), the firing range and the timed kill house. Call-ins are always charged here, to try them out.
 
 Then press **Play solo**, **Host co-op** or **Join co-op**.
 
@@ -42,7 +44,7 @@ In the game:
 
 No accounts and no servers to rent: browsers connect directly (WebRTC), introduced by PeerJS's free service. On some strict networks (some schools and offices) players can't connect.
 
-Every number (movement, guns, enemies, the director, grenades) has a slider in the live tuning panel.
+Every number (movement, guns, enemies, the director, grenades, call-ins) has a slider in the live tuning panel.
 
 ## Controls
 
@@ -56,8 +58,9 @@ Every number (movement, guns, enemies, the director, grenades) has a slider in t
 | Left mouse | Fire |
 | Right mouse | Aim down the sights |
 | R | Reload |
-| 1–4, mouse wheel, Q | Switch gun; Q swaps back to the last one |
+| 1–5, mouse wheel, Q | Switch gun; Q swaps back to the last one |
 | G | Throw a grenade (missions) |
+| T | Call in your support where you're looking, once it's charged |
 | N | Night-vision goggles (night missions) |
 | F (hold) | Use: revive a teammate, free the hostage, start the download, plant a charge, take ammo, call the helicopter |
 | R (when you're down) | Try again: from the last checkpoint in a mission, from the start in the Compound (in co-op, the host once everyone's down) |
@@ -66,7 +69,7 @@ Every number (movement, guns, enemies, the director, grenades) has a slider in t
 | `` ` `` (under Esc) | Tuning panel (pauses the game) |
 | Esc | Pause |
 
-A controller works too: sticks to move and look, RT to fire, LT to aim, X to reload (tap) or use (hold), RB for a grenade, D-pad down for night vision. The full table is on the title screen.
+A controller works too: sticks to move and look, RT to fire, LT to aim, X to reload (tap) or use (hold), RB for a grenade, View for your call-in, D-pad down for night vision. The full table is on the title screen.
 
 Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of view, hold-or-toggle for crouch, sprint and aiming, volume, reduced camera motion, graphics quality (low, medium, high), controller look speed, aim assist and vibration, your callsign and voice chat (radio + nearby, push-to-talk only, or off; volume) are in **Settings**.
 
@@ -96,6 +99,9 @@ Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of v
   20. [Light, materials and post-processing](docs/lessons/20-light-materials-and-post-processing.md)
   21. [Seeing in the dark](docs/lessons/21-seeing-in-the-dark.md)
   22. [Controllers](docs/lessons/22-controllers.md)
+  23. [Progression and saving](docs/lessons/23-progression-and-saving.md)
+  24. [Attachments as data](docs/lessons/24-attachments-as-data.md)
+  25. [Call-ins and fair area effects](docs/lessons/25-call-ins-and-fair-area-effects.md)
 - [`docs/GLOSSARY.md`](docs/GLOSSARY.md): every term in plain English
 - [`docs/DESIGN.md`](docs/DESIGN.md): the game design document and roadmap
 
@@ -117,10 +123,11 @@ To try co-op on your own, open two tabs with `?net=local` (for example `http://l
 ```sh
 npm install        # once: installs Playwright, used only by the browser test
 npm test           # unit tests: movement, weapons, enemy AI, pathfinding, the Compound, the Harbour, every mission,
-                   # the director, grenades, ammo crates, checkpoints, and co-op over a pretend network with delay,
-                   # jitter and packet loss (prediction, revives, the lobby, voice mixing)
+                   # the director, grenades, ammo crates, checkpoints, XP and saving, attachments, call-ins, and co-op
+                   # over a pretend network with delay, jitter and packet loss (prediction, revives, loadouts, the lobby)
 npm run smoke      # opens the real game in a headless browser: walks, shoots, fights in the Compound, loads the
-                   # Harbour, switches maps, and plays co-op in two tabs (the Compound, then a rescue)
+                   # Harbour, switches maps, changes the loadout, aims a scope, calls in smoke, restores a backup
+                   # code, and plays co-op in two tabs (the Compound, then a rescue)
 ```
 
 GitHub runs both on every pull request (`.github/workflows/ci.yml`).
@@ -133,17 +140,18 @@ src/main.js       the app shell: boots everything and runs the game flow
 src/mission.js    one map, built and torn down without a page reload
 src/core/         game loop, input, controllers, events, settings, state machine, seeded random, tuning panel
 src/world/        physics (Rapier), collision groups, the level kit, level building, surfaces, targets, lighting
-src/weapons/      the weapon table, guns, the arsenal, hitscan, grenades
+src/weapons/      the weapon table, attachments, guns, the arsenal, hitscan, grenades
 src/player/       movement controller, soldier (movement + guns + hitboxes), health, first-person camera
 src/ai/           enemies: roles, senses, brains, squads, the nav grid, A*, cover, noise; the hostage
 src/game/         the shared simulation (sim.js), the kill house course, the Compound's rules, revives, pings,
-                  missions (operation, objectives, the director, the helicopter), hold-to-interact, ammo crates
+                  missions (operation, objectives, the director, the helicopter), hold-to-interact, ammo crates,
+                  call-ins, your profile (XP, ranks, unlocks, saving) and the XP counter
 src/net/          co-op: transports, the protocol, rooms, the host, clients (prediction), stand-ins, voice
 src/render/       renderer, moods, post-processing, outlines, assets, materials, level meshes, signs,
                   guns, viewmodel, effects, targets, animated characters (and the block fallback),
-                  ragdolls, AI debug views, mission props, the helicopter, the night
+                  ragdolls, AI debug views, mission props, the helicopter, the night, call-ins
 src/audio/        sound engine, sound bank, game sounds
-src/ui/           HUD, squad HUD, objective HUD, markers, debrief, lobby, menus, styles
+src/ui/           HUD, squad HUD, objective HUD, call-in HUD, markers, debrief, lobby, loadout, menus, styles
 levels/           maps and missions, written as data
 vendor/           pinned copies of three.js (and its add-ons), Rapier, lil-gui and PeerJS
 assets/           fonts, sounds, models and textures
@@ -163,8 +171,8 @@ docs/             design document, glossary, lessons
 | ✅ | M4 Co-op | 1–4 players, peer to peer, prediction, revives, pings, voice |
 | ✅ | M5 Missions | the Harbour, four missions, the director, extraction, grenades, checkpoints |
 | ✅ | M6 Art pass | animated soldiers, gun models, textures, moods, post-processing, night missions, controllers |
-| ⏭ | M7 Progression | XP, unlocks, loadouts |
-| | M8 Polish | audio, HUD, settings, touch |
+| ✅ | M7 Progression | XP, ranks, unlocks, attachments, loadouts, call-ins, saved progress |
+| ⏭ | M8 Polish | audio, HUD, settings, touch |
 | | M9 Content | maps, mission types, difficulty |
 
 ## Credits

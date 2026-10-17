@@ -30,13 +30,14 @@
 // Runs in Node (the tests check that encode/decode round-trips and that a
 // snapshot stays small).
 
-import { LOADOUT } from '../weapons/weapons-data.js';
+import { ARMORY } from '../weapons/weapons-data.js';
 import { ROLES } from '../ai/enemy-data.js';
 import { USE_KINDS } from '../game/interact.js';
 import { PHASES } from '../game/objectives.js';
+import { CALLIN_KINDS } from '../game/callins.js';
 export { PRESS_FLAGS } from '../core/input.js';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3; // 3: loadouts (net/room.js `loaded`)
 export const SNAPSHOT_EVERY = 3;   // ticks between snapshots: 60 / 3 = 20 a second
 export const INTERP_DELAY = 6;     // others are drawn this many ticks (0.1 s) in the past
 export const CMD_REDUNDANCY = 3;   // each command packet carries the last 3 commands
@@ -50,7 +51,7 @@ const fromMrad = (v) => v / 1000;
 // ---------------------------------------------------------------- commands
 
 // On/off buttons packed into one number, one bit each (like a row of light switches).
-const CMD_BITS = ['jump', 'jumpHeld', 'crouch', 'crouchPressed', 'sprint', 'fire', 'firePressed', 'ads', 'reload', 'lastWeapon', 'interact', 'ping', 'grenade'];
+const CMD_BITS = ['jump', 'jumpHeld', 'crouch', 'crouchPressed', 'sprint', 'fire', 'firePressed', 'ads', 'reload', 'lastWeapon', 'interact', 'ping', 'grenade', 'callin'];
 
 const ANGLE = 1e4; // command angles: a tenth of a milliradian (aim must stay precise)
 
@@ -78,7 +79,7 @@ export const roundCommand = (cmd) => decodeCommand(encodeCommand(0, cmd))[1];
 // ---------------------------------------------------------------- snapshots
 
 const P_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'down', 'dead', 'bleeding'];
-const E_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'inCombat', 'fresh', 'sees', 'laserOn', 'dead'];
+const E_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'inCombat', 'fresh', 'sees', 'laserOn', 'dead', 'marked'];
 const ALERTS = ['calm', 'suspicious', 'combat'];
 const ROLE_LIST = Object.keys(ROLES);
 const ENC_STATES = ['ready', 'running', 'cleared', 'down'];
@@ -94,19 +95,42 @@ const unpackFlags = (names, bits, into) => { names.forEach((k, i) => { into[k] =
 export function encodePlayer(v) {
   return [
     v.owner, cm(v.pos.x), cm(v.pos.y), cm(v.pos.z), mrad(v.yaw), mrad(v.pitch), packFlags(P_FLAGS, v), cm(v.speed),
-    Math.max(0, LOADOUT.indexOf(v.weapon)), Math.round(v.hp), Math.ceil((v.bleedLeft ?? 0) * 10),
+    Math.max(0, ARMORY.indexOf(v.weapon)), Math.round(v.hp), Math.ceil((v.bleedLeft ?? 0) * 10),
     Math.round((v.reviving ?? 0) * 100), v.reviver ?? -1,
     v.using ? USE_KINDS.indexOf(v.using) : -1, Math.round((v.useProgress ?? 0) * 100),
+    Math.floor((v.callin ?? 0) * 100), // their call-in's charge (rounded down: 100 means ready)
   ];
 }
 export function decodePlayer(a) {
-  const [owner, x, y, z, yaw, pitch, flags, speed, gun, hp, bleed = 0, reviving = 0, reviver = -1, use = -1, useProgress = 0] = a;
+  const [owner, x, y, z, yaw, pitch, flags, speed, gun, hp, bleed = 0, reviving = 0, reviver = -1, use = -1, useProgress = 0, callin = 0] = a;
   return unpackFlags(P_FLAGS, flags, {
     owner, pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) }, yaw: fromMrad(yaw), pitch: fromMrad(pitch),
-    speed: fromCm(speed), weapon: LOADOUT[gun] ?? LOADOUT[0], hp,
+    speed: fromCm(speed), weapon: ARMORY[gun] ?? ARMORY[0], hp,
     bleedLeft: bleed / 10, reviving: reviving / 100, reviver: reviver < 0 ? null : reviver,
-    using: USE_KINDS[use] ?? null, useProgress: useProgress / 100,
+    using: USE_KINDS[use] ?? null, useProgress: useProgress / 100, callin: callin / 100,
   });
+}
+
+/**
+ * The call-ins on their way or at work (game/callins.js view): what, whose,
+ * where, its phase and the seconds left in it, refills left in a supply drop,
+ * shells still to land, and a smoke screen's clouds (so a client can add the
+ * same smoke colliders).
+ */
+const CALLIN_PHASES = ['inbound', 'active', 'landed'];
+export function encodeCallins(list) {
+  return list.map((c) => [
+    Number(c.id.slice(1)), CALLIN_KINDS.indexOf(c.kind), c.owner, cm(c.pos.x), cm(c.pos.y), cm(c.pos.z),
+    CALLIN_PHASES.indexOf(c.phase), Number.isFinite(c.t) ? Math.max(0, Math.round(c.t * 10)) : -1, c.left, c.shells,
+    c.clouds ? c.clouds.map((p) => [cm(p.x), cm(p.y), cm(p.z)]) : 0,
+  ]);
+}
+export function decodeCallins(rows) {
+  return (rows ?? []).map(([id, kind, owner, x, y, z, phase, t, left, shells, clouds]) => ({
+    id: `c${id}`, kind: CALLIN_KINDS[kind], owner, pos: { x: fromCm(x), y: fromCm(y), z: fromCm(z) },
+    phase: CALLIN_PHASES[phase], t: t < 0 ? Infinity : t / 10, left, shells,
+    clouds: clouds ? clouds.map(([cx, cy, cz]) => ({ x: fromCm(cx), y: fromCm(cy), z: fromCm(cz) })) : null,
+  }));
 }
 
 /**
@@ -216,14 +240,15 @@ const SHARED_EVENTS = new Set([
 ]);
 // Whole families of events everyone hears about: the encounter, the kill house,
 // a mission's objectives, the helicopter, the hostage and the reinforcements.
-const FOR_EVERYONE = ['encounter:', 'course:', 'mission:', 'objective:', 'extract:', 'hostage:', 'director:'];
+const FOR_EVERYONE = ['encounter:', 'course:', 'mission:', 'objective:', 'extract:', 'hostage:', 'director:', 'callin:'];
 // Events about your own soldier that your browser already showed when you did it.
 const OWN_ECHO = new Set(['weapon:fire', 'weapon:cue', 'bullet:impact', 'target:hit', 'grenade:throw']);
 // Events only the player they're about needs.
-const PERSONAL = { 'player:hurt': 'owner', 'bullet:nearmiss': 'victim' };
+const PERSONAL = { 'player:hurt': 'owner', 'bullet:nearmiss': 'victim', 'callin:refused': 'owner', 'callin:ready': 'owner' };
 
 /** Should this event go to player `slot`? */
 export function eventFor(name, data, slot) {
+  if (PERSONAL[name]) return data[PERSONAL[name]] === slot;
   if (FOR_EVERYONE.some((prefix) => name.startsWith(prefix))) return true;
   if (!SHARED_EVENTS.has(name)) return false;
   // (Your own grenade's blast is the host's to decide, so its hits come back to you.)

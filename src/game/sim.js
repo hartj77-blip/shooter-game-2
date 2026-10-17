@@ -7,8 +7,8 @@
 // (CLAUDE.md, "One tick, in order"):
 //
 //   players move → enemies move → the hostage moves → targets → world.step() →
-//   players shoot (and ping, and throw) → grenades fly (and explode) → enemies
-//   think → enemies shoot → health → revives → hold-F (crates, objectives) →
+//   players shoot (and ping, throw, call in support) → grenades fly (and explode) →
+//   call-ins (drops, drones, shells, smoke) → enemies think → enemies shoot → health → revives → hold-F (crates, objectives) →
 //   the encounter / kill house / mission → the director (last: who it sends is
 //   filed by the next tick's world.step())
 //
@@ -42,6 +42,7 @@ import { pingFrom } from './pings.js';
 import { createEvents } from '../core/events.js';
 import { idleCommand, heldOnly } from '../core/input.js';
 import { createLighting } from '../world/lighting.js';
+import { createCallins } from './callins.js';
 
 
 export const MAX_PLAYERS = 4;
@@ -77,6 +78,7 @@ export function playerView(p) {
     bleeding: !!h.bleeding, bleedLeft: h.bleedLeft ?? 0,
     reviving: p.reviving ?? 0, reviver: p.reviver ?? null, // a teammate is getting them up
     using: p.using ?? null, useProgress: p.useProgress ?? 0,  // holding F at a crate, a laptop... (game/interact.js)
+    callin: p.callin?.charge ?? 0, // how charged their call-in is, 0..1 (game/callins.js)
   };
 }
 
@@ -117,6 +119,14 @@ export function createSim({
 
   const team = new Map(); // owner -> { owner, soldier, health }
 
+  // Call-ins (game/callins.js): support each player calls on the radio. The host
+  // decides them all. (On a practice map they're always ready, to try them out.)
+  const callins = createCallins({
+    world, events, rng: createRandom(seed * 31 + 7), practice: !!def.armory,
+    explode: (g, tuning) => explode(g, tuning), // the grenade's blast, which never hurts the squad
+    enemies: () => enemies?.alive ?? [],
+  });
+
   // Who gets hurt when a player's bullet hits something. Friendly fire is off:
   // bullets fly straight through teammates (passThrough below).
   const damage = (victim, amount, hit) => {
@@ -127,7 +137,7 @@ export function createSim({
   // (The hostage too: they're on your side.)
   const throughTeammates = (info) => info.target?.kind === 'player' || info.target?.kind === 'civilian';
 
-  function addPlayer(owner, { callsign = `Player ${owner + 1}` } = {}) {
+  function addPlayer(owner, { callsign = `Player ${owner + 1}`, loadout, callin } = {}) {
     if (team.has(owner)) return team.get(owner);
     const start = spawnFor(level, owner);
     const health = createHealth({ events, owner, revivable: coop }); // co-op: bleed out, teammates revive
@@ -137,9 +147,11 @@ export function createSim({
       flatZones: true, // enemies don't get headshot bonuses on players
       passThrough: throughTeammates,
       spawn: start,
+      loadout, // their guns and attachments (weapons/attachments.js `loadoutDefs`); missing = the default
       options: { infiniteAmmo: unlimited },
     });
-    const p = { id: `p${owner}`, owner, soldier, health, callsign, spawn: start, lastCmd: idleCommand(start.yaw) };
+    callins.addPlayer(owner, callin);
+    const p = { id: `p${owner}`, owner, soldier, health, callsign, spawn: start, lastCmd: idleCommand(start.yaw), callin: callins.player(owner) };
     Object.defineProperty(p, 'view', { get: () => playerView(p) });
     team.set(owner, p);
     enemies?.addPlayer(p);
@@ -151,6 +163,7 @@ export function createSim({
     const p = team.get(owner);
     if (!p) return;
     enemies?.removePlayer(owner);
+    callins.removePlayer(owner);
     p.soldier.remove();
     team.delete(owner);
   }
@@ -256,7 +269,7 @@ export function createSim({
   }
 
   /** Everything that can be used with F right now. */
-  const spots = () => (operation ? [...supply.spots(), ...operation.spots()] : supply.spots());
+  const spots = () => [...supply.spots(), ...callins.spots(), ...(operation ? operation.spots() : [])];
   /** Is `p` busy reviving someone? (That comes before any other F.) */
   const reviving = (p) => { for (const r of revives.progress.values()) if (r.by === p.owner) return true; return false; };
   let time = 0;
@@ -310,6 +323,7 @@ export function createSim({
         p.soldier.move(list[i], dt);
         const out = p.soldier.act(list[i], dt, { trace: false });
         if (list[i].ping) ping(p, list[i]);
+        if (list[i].callin) callins.call(p, list[i]);
         if (out.thrown && !remote?.has(p.owner)) throwGrenade(p.owner, out.thrown);
       }
       now.set(p.owner, list[list.length - 1]);
@@ -329,9 +343,11 @@ export function createSim({
       if (out.thrown && local) throwGrenade(p.owner, out.thrown);
       const cmd = now.get(p.owner);
       if (cmd.ping && time - (p.pingedAt ?? -Infinity) > 0.4) ping(p, cmd);
+      if (cmd.callin) callins.call(p, cmd);
     }
     grenades.update(dt);
-    if (enemies) enemies.ai.hazards = grenades.list;
+    callins.update(dt); // (new smoke is found by rays after the next world.step)
+    if (enemies) enemies.ai.hazards = [...grenades.list, ...callins.hazards()];
     enemies?.think(dt);
     enemies?.act(dt);
     for (const p of team.values()) p.health.update(dt);
@@ -363,6 +379,7 @@ export function createSim({
     revives.reset();
     interactions.reset();
     grenades.clear();
+    callins.reset();
     supply.reset();
     enemies?.reset();
     for (const p of team.values()) {
@@ -391,6 +408,7 @@ export function createSim({
     revives.reset();
     interactions.reset();
     grenades.clear();
+    callins.retry();
     enemies?.reset({ retired: cp.retired });
     for (const p of team.values()) {
       const spot = cp.spots[p.owner % cp.spots.length];
@@ -414,7 +432,7 @@ export function createSim({
   return {
     def, level, world, registry, targets, nav, cover, noise, events,
     get enemies() { return enemies; },
-    encounter, course, team, revives, interactions, supply, operation, director,
+    encounter, course, team, revives, interactions, supply, operation, director, callins,
     get hostage() { return hostage; },
     spots,
     grenades,
@@ -430,6 +448,7 @@ export function createSim({
     /** Free the physics engine's memory (it lives outside JavaScript's garbage collector). */
     dispose() {
       director?.dispose();
+      callins.dispose();
       world.free();
     },
   };

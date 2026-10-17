@@ -31,6 +31,7 @@
   <div id="hurt" class="hurt" aria-hidden="true"></div>
   <div id="dirs" class="dirs" aria-hidden="true"></div>
   <div id="crosshair" class="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+  <div id="scope" class="scope" aria-hidden="true"><i></i><i></i><b></b></div>
   <div id="health" class="health" hidden><i id="healthFill"></i></div>
   <div id="readout" class="readout">
     <span id="rSpeed">0.0</span><small>m/s</small>
@@ -45,6 +46,7 @@
     <div class="ammo"><b id="ammoMag">0</b><span id="ammoReserve"></span></div>
     <div id="ammoHint" class="ammo-hint"></div>
     <div id="grenades" class="grenades" title="Grenades (G)"></div>
+    <div id="callin" class="callin" title="Your call-in (T)" hidden><span id="callinName"></span><i><b id="callinFill"></b></i></div>
     <div id="nvgIcon" class="nvg-icon" title="Night-vision goggles" hidden></div>
   </div>
   <div id="course" class="course" hidden>
@@ -98,7 +100,8 @@
 <section id="title" class="screen" hidden>
   <div class="card">
     <div class="brand">FIRETEAM</div>
-    <p class="tag">Milestone 6 &middot; Art pass</p>
+    <p class="tag">Milestone 7 &middot; Progression</p>
+    <p id="rankLine" class="rank-line"></p>
     <p id="notice" class="note notice" role="status" hidden></p>
     <h3 class="maps-head">Missions &middot; The Harbour
       <span class="daynight" role="radiogroup" aria-label="Time of day">
@@ -133,6 +136,7 @@
       <button id="btnDeploy" class="primary" type="button">Play solo</button>
       <button id="btnHost" type="button">Host co-op</button>
       <button id="btnJoin" type="button">Join co-op</button>
+      <button id="btnLoadoutT" type="button">Loadout</button>
       <button id="btnSettingsT" type="button">Settings</button>
     </div>
     <label class="field field-inline callsign">
@@ -151,6 +155,7 @@
       <dt>R</dt><dd>Reload</dd>
       <dt>1&ndash;4 &middot; wheel &middot; Q</dt><dd>Switch gun &middot; last gun</dd>
       <dt>G</dt><dd>Throw a grenade</dd>
+      <dt>T</dt><dd>Call in your support where you look, once it's charged</dd>
       <dt>F (hold)</dt><dd>Use: ammo crates, objectives, revive a teammate</dd>
       <dt>V &middot; Z</dt><dd>Co-op: squad radio &middot; ping</dd>
       <dt>~ `</dt><dd>Tuning panel (the key under Esc)</dd>
@@ -166,6 +171,7 @@
         <dt>X</dt><dd>Tap: reload &middot; hold: use, revive</dd>
         <dt>Y &middot; D-pad &larr; &rarr;</dt><dd>Last gun &middot; switch gun</dd>
         <dt>RB &middot; LB</dt><dd>Grenade &middot; ping</dd>
+        <dt>View</dt><dd>Call-in (once charged)</dd>
         <dt>D-pad &uarr;</dt><dd>Co-op: squad radio (hold)</dd>
         <dt>Start</dt><dd>Play &middot; pause</dd>
       </dl>
@@ -235,6 +241,7 @@
     <p id="lobbyError" class="error" role="alert" hidden></p>
     <div class="actions">
       <button id="btnStart" class="primary" type="button">Start</button>
+      <button id="btnLoadoutL" type="button">Loadout</button>
       <button id="btnLeave" type="button">Leave</button>
     </div>
   </div>
@@ -247,6 +254,7 @@
     <p id="debriefResult" class="debrief-result"></p>
     <dl id="debriefList" class="debrief-list"></dl>
     <table id="debriefPlayers" class="debrief-players" hidden></table>
+    <div id="debriefXp" class="debrief-xp" hidden></div>
     <p id="debriefNote" class="muted small"></p>
     <div class="actions">
       <button id="btnAgain" class="primary" type="button">Play again</button>
@@ -272,6 +280,30 @@
   </div>
 </section>
 
+<section id="loadout" class="screen screen-top" hidden>
+  <div class="card card-wide">
+    <h2>Loadout</h2>
+    <p id="loadoutRank" class="rank-line"></p>
+    <div class="xp-bar"><i id="loadoutRankBar"></i></div>
+    <div id="loadoutBody" class="loadout"></div>
+    <details class="backup">
+      <summary>Backup code: take your progress to another browser</summary>
+      <p class="muted">Your progress is saved in this browser. A backup code carries it anywhere else.</p>
+      <div class="backup-row">
+        <button id="btnBackupCopy" type="button">Copy my code</button>
+        <input id="backupOut" type="text" readonly hidden aria-label="Your backup code">
+      </div>
+      <div class="backup-row">
+        <input id="backupIn" type="text" placeholder="Paste a code (FT1-...)" autocomplete="off" spellcheck="false" aria-label="Backup code to restore">
+        <button id="btnBackupRestore" type="button">Restore</button>
+      </div>
+      <p id="backupNote" class="muted" role="status"></p>
+    </details>
+    <div class="actions">
+      <button id="btnLoadoutDone" class="primary" type="button">Done</button>
+    </div>
+  </div>
+</section>
 <section id="settings" class="screen screen-top" hidden>
   <div class="card">
     <h2>Settings</h2>

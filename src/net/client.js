@@ -38,8 +38,9 @@ import { createProxy, blend } from './proxies.js';
 import { createGrenades } from '../weapons/grenades.js';
 import {
   INTERP_DELAY, CMD_REDUNDANCY, encodeCommand, roundCommand, decodePlayer, decodeEnemy, decodeTarget, decodeEncounter, enemyIdFor,
-  decodeOp, decodeHostage,
+  decodeOp, decodeHostage, decodeCallins,
 } from './protocol.js';
+import { addSmoke, removeSmoke } from '../game/callins.js';
 
 const MATCH = 0.01;    // metres: closer than this to the host's answer counts as a match
 const KEEP = 40;       // snapshots kept for interpolation (2 s)
@@ -57,10 +58,11 @@ const round = (p) => (p ? { x: r2(p.x), y: r2(p.y), z: r2(p.z) } : null);
  * @param {number} opts.me      your player slot (1 to 3)
  * @param {object} opts.link    your link to the host (net/transport.js)
  * @param {Array}  [opts.roster] [{ slot, callsign }] who's in the game
+ * @param {Array}  [opts.loadout] your guns (weapons/attachments.js); send the same in `loaded`
  * @param {object} [opts.events]
  * @param {() => number} [opts.clock] milliseconds, for measuring ping
  */
-export function createClient({ def, me, link, roster = [], events = createEvents(), clock = () => performance.now(), seed = 1 }) {
+export function createClient({ def, me, link, roster = [], loadout, callin = 'supply', events = createEvents(), clock = () => performance.now(), seed = 1 }) {
   const world = createPhysicsWorld();
   const registry = createSurfaceRegistry();
   const level = buildLevel(def, world, registry);
@@ -87,6 +89,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
   const soldier = createSoldier({
     world, registry, targets, damage: claim, events: quietEvents, owner: me, seed: seed * 101 + me * 7 + 1,
     flatZones: true, passThrough: (info) => info.target?.kind === 'player', spawn,
+    loadout, // the same guns the host builds for you (net/room.js `loaded`), or prediction would disagree
     options: { infiniteAmmo: !def.mission }, // the same rule as the host's (game/sim.js)
   });
 
@@ -106,7 +109,10 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     damage: () => ({ killed: false }),
     reset() {},
   };
-  const local = { owner: me, soldier, health, get callsign() { return callsigns.get(me); }, spawn, using: null, useProgress: 0 };
+  const local = {
+    owner: me, soldier, health, get callsign() { return callsigns.get(me); }, spawn, using: null, useProgress: 0,
+    callin: { kind: callin, charge: 0 }, // your call-in: its charge comes from the host (game/callins.js)
+  };
 
   // ---------------------------------------------------------------- everyone else (proxies)
   // Enemies get a stand-in the first time a snapshot mentions them, so ones that
@@ -138,6 +144,20 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     enemyByIndex.clear();
     enemyById.clear();
     enemies.list = [];
+  }
+
+  // Call-ins (game/callins.js), as the host last told us: drawn from `view`, and
+  // the same smoke colliders as the host's, so your aim assist can't see through smoke either.
+  const smokes = new Map(); // call-in id -> its smoke colliders
+  const callins = { view: [] };
+  function syncSmoke() {
+    const live = new Set();
+    for (const c of callins.view) {
+      if (!c.clouds || c.phase !== 'active') continue;
+      live.add(c.id);
+      if (!smokes.has(c.id)) smokes.set(c.id, addSmoke(world, c.clouds));
+    }
+    for (const [id, s] of smokes) if (!live.has(id)) { removeSmoke(world, s); smokes.delete(id); }
   }
 
   // The ammo crates, as the host last told us (how many refills each has left).
@@ -286,6 +306,8 @@ export function createClient({ def, me, link, roster = [], events = createEvents
       targets.sync(t);
     }
     if (msg.cr) msg.cr.forEach((left, i) => { if (supply.list[i]) supply.list[i].left = left; });
+    callins.view = decodeCallins(msg.ci);
+    syncSmoke();
     const enc = decodeEncounter(msg.enc);
     if (enc && encounter) Object.assign(encounter, enc);
     const mine = snap.players.get(me);
@@ -296,6 +318,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
         bleedLeft: mine.bleedLeft, reviving: mine.reviving, reviver: mine.reviver,
       });
       if (msg.you) healthState.taken = msg.you.taken;
+      local.callin.charge = mine.callin;
       local.using = mine.using; // what the host says you're holding F at (for the progress ring)
       local.useProgress = mine.useProgress;
     }
@@ -485,6 +508,7 @@ export function createClient({ def, me, link, roster = [], events = createEvents
     encounter,
     course: null,
     supply,
+    callins,
     grenades,
     operation,
     get hostage() { return hostage; },
