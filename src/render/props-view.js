@@ -1,18 +1,20 @@
 // Mission props: the things a mission puts in the world, drawn from its `view`.
 //
-//   - intel: a table at each possible room, and a laptop on the real one (its
-//     screen goes green while downloading, red when the download stalls), then
-//     the drive, on the table or wherever its carrier dropped it
-//   - sabotage: weapons caches (green boxes under a tarp), a charge with a
-//     blinking light once one is planted, and burnt remains once it's blown
+//   - intel: a laptop on the real room's table (its screen goes green while
+//     downloading, red when the download stalls), then the drive, on the table
+//     or wherever its carrier dropped it
+//   - sabotage: weapons caches (a tarp and green boxes over a stack of crates),
+//     a charge with a blinking light once one is planted, and the stack burnt
+//     once it's blown
 //   - hold the line: the radio, and a ring on the ground showing the area to hold
 //   - extraction: the radio at the landing zone, and a green flare once the
 //     helicopter is called
 //   - ammo crates: a yellow stripe, grey once they're empty
 //   - grenades in flight
 //
-// Only real places get real props, so a table with no laptop is a room you
-// don't need. Everything is read from the mission's `view` (the same on the
+// The tables, crate stacks and radio stands themselves are level geometry (a
+// site's `prop`, world/kit.js): solid, and there in every mission. This only
+// adds what's on them, so a table with no laptop is a room you don't need. Everything is read from the mission's `view` (the same on the
 // host and on co-op clients) and the level; nothing here touches the
 // simulation. Each stage's props stay once it's done (a destroyed cache stays
 // burnt), until a retry winds the mission back.
@@ -26,25 +28,25 @@ const posOf = (s) => ({ x: s.at[0], y: s.at[1] ?? 0, z: s.at[2] });
 // Built once each, then shared by every copy (vertex-coloured, one material).
 function shapes() {
   return {
-    table: mergeGeometries([
-      paintedBox([1.2, 0.05, 0.7], [0, 0.74, 0], '#6b5236'),
-      ...[[-0.55, -0.3], [0.55, -0.3], [-0.55, 0.3], [0.55, 0.3]].map(([x, z]) => paintedBox([0.05, 0.72, 0.05], [x, 0.36, z], '#4a3a28')),
-    ]),
     laptop: mergeGeometries([
       paintedBox([0.36, 0.025, 0.26], [0, 0.78, 0.02], '#2b2d30'),
       paintedBox([0.36, 0.24, 0.02], [0, 0.9, 0.15], '#2b2d30'),
     ]),
     screen: new THREE.PlaneGeometry(0.32, 0.2).rotateY(Math.PI).translate(0, 0.9, 0.138),
     drive: paintedBox([0.09, 0.025, 0.14], [0, 0.0125, 0], '#c9a227'),
+    // Over the site's crate stack (1.3 x 0.9 x 0.7 m): a tarp hanging down its
+    // sides, and green weapon cases on top.
     cache: mergeGeometries([
-      paintedBox([1.3, 0.5, 0.7], [0, 0.25, 0], '#3f4a2e'),
-      paintedBox([1.1, 0.4, 0.6], [0.05, 0.7, 0], '#4a5634'),
-      paintedBox([0.5, 0.35, 0.5], [-0.35, 1.07, 0.02], '#3f4a2e'),
-      paintedBox([1.45, 0.06, 0.82], [0, 0.9, 0], '#2f3a2f', [0, 0, 0.05]), // the tarp
+      paintedBox([1.38, 0.04, 0.78], [0, 0.92, 0], '#2f3a2f'),
+      ...[-1, 1].map((s) => paintedBox([1.38, 0.45, 0.02], [0, 0.69, s * 0.38], '#2f3a2f')),
+      ...[-1, 1].map((s) => paintedBox([0.02, 0.45, 0.78], [s * 0.68, 0.69, 0], '#2f3a2f')),
+      paintedBox([0.6, 0.3, 0.4], [-0.3, 1.09, 0], '#4a5634'),
+      paintedBox([0.45, 0.22, 0.35], [0.35, 1.05, 0.04], '#3f4a2e'),
     ]),
+    // The same stack, charred, with wreckage on top.
     burnt: mergeGeometries([
-      paintedBox([1.4, 0.2, 0.8], [0, 0.1, 0], '#1d1b19'),
-      paintedBox([0.6, 0.3, 0.5], [0.2, 0.3, 0.1], '#2a2622', [0.2, 0.4, 0]),
+      paintedBox([1.34, 0.92, 0.74], [0, 0.46, 0], '#1d1b19'),
+      paintedBox([0.6, 0.25, 0.45], [0.2, 1.0, 0.05], '#2a2622', [0.2, 0.4, 0]),
     ]),
     charge: mergeGeometries([
       paintedBox([0.24, 0.14, 0.1], [0, 0, 0], '#6d6a5e'),
@@ -52,7 +54,6 @@ function shapes() {
     ]),
     blink: new THREE.SphereGeometry(0.025, 8, 6),
     radio: mergeGeometries([
-      paintedBox([0.7, 0.5, 0.5], [0, 0.25, 0], '#4a4f40'), // a box to stand it on
       paintedBox([0.4, 0.28, 0.2], [0, 0.64, 0], '#2f342c'),
       paintedBox([0.3, 0.06, 0.02], [0, 0.66, -0.105], '#141614'),
       paintedBox([0.015, 0.7, 0.015], [0.15, 1.12, 0.05], '#1a1a1a'), // aerial
@@ -112,11 +113,9 @@ export function createPropsView({ scene, session }) {
   function build(index, kind, real) {
     const parts = [];
     const add = (o) => { parts.push(o); return o; };
-    const candidates = (mission.stages[index].sites ?? []).map((id) => sites.findIndex((s) => s.id === id)).filter((i) => i >= 0);
     const at = (i) => posOf(sites[i]);
     const yaw = (i) => sites[i].yaw ?? 0;
     if (kind === 'intel') {
-      for (const i of candidates) add(mesh(g.table, mat, at(i), yaw(i)));
       const i = real[0];
       const laptop = add(mesh(g.laptop, mat, at(i), yaw(i)));
       const screen = add(mesh(g.screen, mats.screenIdle, at(i), yaw(i)));
@@ -145,7 +144,7 @@ export function createPropsView({ scene, session }) {
       for (const c of caches) {
         // The charge is stuck to the front of the cache (its -Z side, the way the site faces).
         const y = c.charge.rotation.y;
-        for (const o of [c.charge, c.light]) { o.position.x -= 0.4 * Math.sin(y); o.position.z -= 0.4 * Math.cos(y); }
+        for (const o of [c.charge, c.light]) { o.position.x -= 0.45 * Math.sin(y); o.position.z -= 0.45 * Math.cos(y); }
       }
       return {
         parts,

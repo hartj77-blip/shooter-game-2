@@ -32,6 +32,7 @@ import { createCameraRig } from './player/camera.js';
 import { createMaterials } from './render/materials.js';
 import { buildLevelView } from './render/level-view.js';
 import { createViewmodel } from './render/viewmodel.js';
+import { moodFor } from './render/moods.js';
 import { createEffects } from './render/effects.js';
 import { createTargetsView } from './render/targets-view.js';
 import { createSoldiersView } from './render/soldiers-view.js';
@@ -46,6 +47,11 @@ import { createObjectiveHud } from './ui/objective-hud.js';
 import { createMarkers, createRing } from './ui/markers.js';
 import { createPropsView } from './render/props-view.js';
 import { createHeliView } from './render/heli-view.js';
+import { createNightView } from './render/night-view.js';
+import { GAMEPAD } from './core/gamepad.js';
+import { RAPIER } from './world/physics.js';
+import { SIGHT } from './world/groups.js';
+import { WEAPONS } from './weapons/weapons-data.js';
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
@@ -99,32 +105,33 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const root = new THREE.Group();
   root.name = `mission:${mapId}`;
   view.scene.add(root);
-  view.setSun(def.sun);
-  root.add(buildLevelView(session.level.expanded, createMaterials(view.renderer)));
+  view.setMood(moodFor(def), def.sun);
+  root.add(buildLevelView(session.level.expanded, createMaterials(view.renderer, app.assets)));
 
   input.setLook(player.state.yaw);
   const aim = () => ({ amount: soldier.arsenal.state.ads, zoom: soldier.arsenal.current.def.ads.zoom });
   const rig = createCameraRig({ camera: view.camera, player, input, settings: settings.values, aim, events, owner: me });
   const viewmodel = createViewmodel({
-    soldier, input, settings: settings.values, cameraRig: rig, worldCamera: view.camera, sunDir: view.sunDir, events, owner: me,
+    soldier, input, settings: settings.values, cameraRig: rig, worldCamera: view.camera, sunDir: view.sunDir, mood: () => view.mood,
+    guns: app.assets?.model('guns') ?? null, events, owner: me,
   });
   const effects = createEffects(root);
-  const targetsView = createTargetsView(root, session.targets, session.level.expanded.racks);
+  const targetsView = createTargetsView(root, session.targets, session.level.expanded.racks, app.assets?.model('guns') ?? null);
   const ragdolls = hasEnemies ? createRagdolls(root, def) : null;
   const camera = view.camera;
   const enemiesView = hasEnemies
-    ? createSoldiersView({ scene: root, source: session.enemies, effects, ragdolls, world, registry, camera, events })
+    ? createSoldiersView({ scene: root, source: session.enemies, effects, ragdolls, world, registry, camera, events, assets: app.assets })
     : null;
   // Teammates: the same block soldiers in friendly colours, with no "?" or "!".
   const teammatesView = createSoldiersView({
-    scene: root, source: session.teammates, effects, ragdolls, world, registry, camera, events,
+    scene: root, source: session.teammates, effects, ragdolls, world, registry, camera, events, assets: app.assets,
     colors: SOLDIER_COLORS.friend, icons: false, downEvent: 'player:dead',
   });
   // The hostage: an orange, unarmed soldier. (They can come back at a checkpoint, so no ragdoll.)
   const hostages = { get list() { return session.hostage ? [session.hostage] : []; } };
   const hostageView = def.mission
     ? createSoldiersView({
-      scene: root, source: hostages, effects, world, registry, camera, events,
+      scene: root, source: hostages, effects, world, registry, camera, events, assets: app.assets,
       colors: SOLDIER_COLORS.hostage, icons: false, downEvent: null, name: 'hostage',
     })
     : null;
@@ -151,6 +158,24 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   events.on('bullet:impact', (hit) => effects.impact(hit));
   events.on('explosion', (e) => effects.explosion(e.pos, e));
 
+  // A controller shakes with your shots, when you're hit, and when something blows up near you.
+  events.on('weapon:fire', (e) => {
+    if (e.owner !== me) return;
+    const big = WEAPONS[e.weapon]?.pump || e.weapon === 'dmr';
+    input.rumble(big ? 0.6 : 0.12, big ? 0.8 : 0.35, big ? 130 : 60);
+  });
+  events.on('player:hurt', (e) => {
+    if (e.owner !== me || e.amount <= 0) return;
+    const k = Math.min(1, e.amount / 30);
+    input.rumble(0.2 + 0.5 * k, 0.3 * k, 150);
+  });
+  events.on('player:down', (e) => { if (e.owner === me) input.rumble(0.8, 0.8, 400); });
+  events.on('explosion', (e) => {
+    const p = player.state.pos;
+    const k = Math.max(0, 1 - Math.hypot(e.pos.x - p.x, e.pos.y - p.y, e.pos.z - p.z) / 30);
+    if (k > 0) input.rumble(k, k * 0.6, 350);
+  });
+
   const nameOf = (owner) => (owner === me ? session.local.callsign : session.teammates.list.find((m) => m.owner === owner)?.view.callsign) ?? `Player ${owner + 1}`;
   const hud = createHud({
     soldier, settings: settings.values, loop, input, camera, events, owner: me, health,
@@ -161,8 +186,8 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
   const markers = createMarkers(document.getElementById('marks'), camera);
   const ring = createRing({ ring: document.getElementById('ring'), fill: document.getElementById('ringFill'), label: document.getElementById('ringText') });
   const hosting = !joining;
-  const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting, markers, ring, voice: () => app.voice }) : null;
-  const objectiveHud = session.operation ? createObjectiveHud({ session, events, hud, markers, ring, hosting, nameOf, audio }) : null;
+  const squadHud = room ? createSquadHud({ session, camera, events, hud, hosting, markers, ring, voice: () => app.voice, glyph: input.glyph }) : null;
+  const objectiveHud = session.operation ? createObjectiveHud({ session, events, hud, markers, ring, hosting, nameOf, audio, glyph: input.glyph }) : null;
 
   // SPECTATING: once you're out (co-op), the camera rides over a teammate's
   // shoulder. Click to switch to someone else.
@@ -251,6 +276,43 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     if (joining) loop.timeScale = session.rate;
   }
 
+  // CONTROLLER AIM ASSIST: while your sights are over an enemy you can see,
+  // the right stick turns you more slowly, so it's easier to stay on target.
+  // It never moves your aim by itself. Off for the mouse.
+  const assistRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+  const sights = new THREE.Vector3();
+  function aimAssist() {
+    if (input.device !== 'pad' || !settings.values.aimAssist || !hasEnemies) return 1;
+    camera.getWorldDirection(sights);
+    const eye = camera.position;
+    let best = null, bestK = 1;
+    for (const e of session.enemies.list) {
+      const v = e.view;
+      if (v.dead || v.down) continue;
+      const tx = v.pos.x - eye.x, ty = v.pos.y + (v.crouched ? 0.9 : 1.25) - eye.y, tz = v.pos.z - eye.z;
+      const d = Math.hypot(tx, ty, tz);
+      if (d > 70 || d < 0.5) continue;
+      const angle = Math.acos(Math.min(1, (tx * sights.x + ty * sights.y + tz * sights.z) / d));
+      const reach = Math.max(Math.atan(0.55 / d), (1.2 * Math.PI) / 180); // about a body's width
+      if (angle / reach < bestK) { bestK = angle / reach; best = { tx: tx / d, ty: ty / d, tz: tz / d, d }; }
+    }
+    if (!best) return 1;
+    assistRay.origin = { x: eye.x, y: eye.y, z: eye.z };
+    assistRay.dir = { x: best.tx, y: best.ty, z: best.tz };
+    return world.castRay(assistRay, best.d - 0.3, true, undefined, SIGHT) ? 1 : GAMEPAD.assistSlow;
+  }
+
+  // ---- the night (a night mission: def.night): lamps and torches drawn, and your goggles.
+  // Night vision only changes your own screen (render/post.js), so co-op is unaffected.
+  const night = def.night ? createNightView({ scene: root, lamps: session.level.expanded.lamps, soldiers: enemiesView, camera }) : null;
+  const nvgIcon = document.getElementById('nvgIcon');
+  let goggles = false; // down or up
+  let nvg = 0;         // 0..1: they flip down over a quarter of a second
+  if (night) {
+    input.onNightVision = () => { goggles = !goggles; };
+    nvgIcon.hidden = false;
+  }
+
   /** Draw a frame. `alpha` is how far we are between the last two ticks. */
   function render(alpha, dt, playing) {
     // While aiming, slow the mouse down to match the zoom.
@@ -264,6 +326,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
       c.x *= k; c.y *= k; c.z *= k;
       rig.offset = c;
     }
+    input.assist = playing ? aimAssist() : 1;
     const spectating = health.state.dead && spectate(alpha, dt);
     if (!spectating) rig.update(alpha, dt);
     view.followWithShadows(view.camera.position);
@@ -276,6 +339,13 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     props.update(dt, alpha);
     heli?.update(dt);
     ragdolls?.update(dt);
+    if (night) {
+      night.update();
+      nvg = Math.max(0, Math.min(1, nvg + (goggles ? dt : -dt) / 0.25));
+      view.nvg = nvg * nvg; // eases in: dark at first, then the green blooms up
+      nvgIcon.classList.toggle('on', goggles);
+      nvgIcon.textContent = `NIGHT VISION ${goggles ? 'ON' : 'OFF'} · ${input.glyph?.('nightvision') ?? 'N'}`;
+    }
     aiDebug?.update();
     sounds.frame(dt);
     hud.update(dt, { playing });
@@ -287,7 +357,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     ring.end();
     debug.update(alpha);
     // No gun in your face in the debug third-person view, or once you're down.
-    view.render(rig.tuning.thirdPerson || health.state.down ? null : viewmodel);
+    view.render(rig.tuning.thirdPerson || health.state.down ? null : viewmodel, dt);
   }
 
   let disposed = false;
@@ -297,6 +367,11 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     app.debugOpen = debug.visible; // the next mission's panel opens the same way
     for (const off of offs) off();
     if (joining) loop.timeScale = 1;
+    if (night) {
+      input.onNightVision = null;
+      view.nvg = 0;
+      nvgIcon.hidden = true;
+    }
     hud.dispose();
     squadHud?.dispose();
     objectiveHud?.dispose();

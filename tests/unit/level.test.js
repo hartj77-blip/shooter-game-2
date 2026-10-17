@@ -70,3 +70,73 @@ test('walls with a door leave a gap you can walk through', async () => {
   assert.ok(ray(0, 2.4), 'the wall above the door');
   assert.ok(ray(2, 1), 'the wall beside the door');
 });
+
+// ---- the art pass (M6): trims, round things, and solid mission props
+
+/** A tiny level of just these pieces, built; and a ray helper. */
+async function tinyLevel(pieces) {
+  await initPhysics();
+  const world = createPhysicsWorld();
+  const level = buildLevel({ name: 'test', spawn: { pos: [0, 0, 20], yaw: 0 }, pieces }, world);
+  const ray = (from, dir, len = 20) => world.castRay(new RAPIER.Ray({ x: from[0], y: from[1], z: from[2] }, { x: dir[0], y: dir[1], z: dir[2] }), len, true);
+  return { world, level, ray };
+}
+
+test('wall trims are only drawn: no colliders, and doorways stay as wide as they look', async () => {
+  const door = { at: 3, width: 1.2, bottom: 0, top: 2.2 };
+  const window_ = { at: 7, width: 1.2, bottom: 1, top: 2 };
+  const { world, level, ray } = await tinyLevel([{ type: 'wall', from: [0, 0], to: [10, 0], height: 3, openings: [door, window_] }]);
+  const e = level.expanded;
+  assert.ok(e.decor.length >= 8, `a cap, two door jambs and a lintel, two window jambs, a lintel and a sill (${e.decor.length})`);
+  assert.equal(world.colliders.len(), e.solids.length, 'one collider per solid, none for the trims');
+  // Through the doorway, a hand's width from either jamb: nothing in the way.
+  for (const x of [2.45, 3.55]) assert.equal(ray([x, 1, 2], [0, 0, -1]), null, `clear through the door at x = ${x}`);
+  // The sill and lintel sit outside the window's opening too.
+  for (const y of [1.02, 1.98]) assert.equal(ray([7, y, 2], [0, 0, -1]), null, `clear through the window at y = ${y}`);
+  // Sandbags and the map's invisible edge get no trims.
+  assert.equal(expandPiece({ type: 'sandbags', from: [0, 0], to: [4, 0] }).decor.length, 0);
+  assert.equal(expandPiece({ type: 'boundary', from: [0, 0], to: [4, 0] }).decor.length, 0);
+});
+
+test('barrels and fuel tanks are round to bullets too', async () => {
+  const { ray, level } = await tinyLevel([
+    { type: 'barrel', at: [0, 0, 0] },
+    { type: 'tank', at: [10, 0, 0], rotY: -Math.PI / 2 }, // turned to lie north-south
+  ]);
+  // The barrel: 0.3 m round, 0.9 m tall, wherever you come at it from.
+  for (const [dx, dz] of [[1, 0], [0, 1], [Math.SQRT1_2, Math.SQRT1_2]]) {
+    const hit = ray([-dx * 5, 0.5, -dz * 5], [dx, 0, dz]);
+    assert.ok(Math.abs(hit.timeOfImpact - 4.7) < 0.01, `barrel side at 0.3 m (${hit.timeOfImpact})`);
+  }
+  assert.equal(ray([0, 0.95, -5], [0, 0, 1]), null, 'nothing above the barrel');
+  // The tank lies north-south: 4 m long, 2 m across, its middle 1.4 m up.
+  assert.ok(Math.abs(ray([10, 1.4, -10], [0, 0, 1]).timeOfImpact - 8) < 0.01, 'its end, 2 m from the middle');
+  assert.ok(Math.abs(ray([5, 1.4, 0], [1, 0, 0]).timeOfImpact - 4) < 0.01, 'its side, 1 m from the middle');
+  assert.ok(Math.abs(ray([10, 5, 0], [0, -1, 0]).timeOfImpact - 2.6) < 0.01, 'its top, 2.4 m up');
+  assert.equal(level.expanded.decor.length, 2, 'the barrel\'s hoops');
+});
+
+test('lamps are solid only at the pole, and say where their light is', async () => {
+  const { level, ray } = await tinyLevel([{ type: 'lamp', at: [0, 0, 0], rotY: Math.PI }]);
+  const [lamp] = level.expanded.lamps;
+  assert.ok(Math.abs(lamp.at[2] - 0.85) < 1e-9 && lamp.at[1] > 3.5, 'the head hangs over the ground in front (south)');
+  assert.ok(ray([0, 1, -3], [0, 0, 1]), 'the pole stops bullets');
+  assert.equal(ray([0, 5, 0.85], [0, -1, 0], 4.9), null, 'the arm and head are only drawn');
+});
+
+test('every mission site with a prop has it as solid level geometry, the same on every computer', async () => {
+  const harbour = (await import('../../levels/harbour.js')).default;
+  const { ray, level } = await tinyLevel(harbour.pieces);
+  const top = { table: 0.765, stack: 0.9, radio: 0.5 };
+  const sites = level.expanded.sites.filter((s) => s.prop);
+  assert.ok(sites.length >= 9, `${sites.length} sites with props`);
+  for (const s of sites) {
+    const y = s.at[1] ?? 0;
+    const hit = ray([s.at[0], y + 1.5, s.at[2]], [0, -1, 0], 1.5); // (from under any roof)
+    assert.ok(hit && Math.abs(1.5 - hit.timeOfImpact - top[s.prop]) < 0.01, `${s.id}: a ${s.prop}, ${top[s.prop]} m tall`);
+  }
+  for (const lz of level.expanded.lzs) {
+    const hit = ray([lz.radio[0], 3, lz.radio[1]], [0, -1, 0], 3);
+    assert.ok(hit && Math.abs(3 - hit.timeOfImpact - 0.5) < 0.01, `${lz.id}: the radio's stand`);
+  }
+});

@@ -35,6 +35,7 @@ import { createStateMachine } from './core/fsm.js';
 import { events as appEvents } from './core/events.js';
 import { createRenderer } from './render/renderer.js';
 import { createAudio } from './audio/audio.js';
+import { createAssets } from './render/assets.js';
 import { createMenus } from './ui/menus.js';
 import { loadMission } from './mission.js';
 import { hostRoom, joinRoom, cleanCode } from './net/room.js';
@@ -46,7 +47,7 @@ import { createVoice } from './net/voice.js';
 import provingGround from '../levels/proving-ground.js';
 import compound from '../levels/compound.js';
 import harbour from '../levels/harbour.js';
-import { missionLevels } from '../levels/missions.js';
+import { missionLevels, nightOf, dayOf } from '../levels/missions.js';
 
 // Every map you can pick: the practice maps, and each mission (a map with a job attached).
 const LEVELS = { 'proving-ground': provingGround, compound, ...missionLevels({ harbour }) };
@@ -88,19 +89,30 @@ async function boot() {
   const audio = createAudio({ settings: settings.values });
   menus.setLoading(0.1, 'Loading the physics engine…');
   await initPhysics();
-  menus.setLoading(0.4, 'Loading sounds…');
-  await Promise.all([loadFonts(), audio.preload((k) => menus.setLoading(0.4 + k * 0.3, 'Loading sounds…'))]);
+  // Sounds, models and textures download together; the bar shows the slower of the two.
+  menus.setLoading(0.4, 'Loading sounds and models…');
+  const assets = createAssets();
+  const loaded = { sound: 0, art: 0 };
+  const progress = () => menus.setLoading(0.4 + Math.min(loaded.sound, loaded.art) * 0.3, 'Loading sounds and models…');
+  await Promise.all([
+    loadFonts(),
+    audio.preload((k) => { loaded.sound = k; progress(); }),
+    assets.preload((k) => { loaded.art = k; progress(); }),
+  ]);
 
   const view = createRenderer(canvas, settings.values);
   const input = createInput({ target: window, doc: document, settings: settings.values });
   input.requireLock = !params.has('autostart') && !params.has('nolock');
 
   let mission = null; // the map being played (src/mission.js)
+  let atNight = false; // the title screen's Day/Night switch, for missions
   const loop = createLoop({
     update(dt) {
       mission?.update(dt, flow.is('playing'));
     },
     render(alpha, dt) {
+      input.pollPad(dt); // a controller is read once a frame (core/gamepad.js)
+      document.body.classList.toggle('pad', input.device === 'pad'); // menus show the focus clearly
       if (mission) {
         mission.render(alpha, dt, flow.is('playing'));
         audio.update(view.camera);
@@ -113,7 +125,7 @@ async function boot() {
       }
     },
   });
-  const app = { view, audio, input, settings, loop, debugOpen: params.has('debug') };
+  const app = { view, audio, assets, input, settings, loop, debugOpen: params.has('debug') };
 
   // ---------------------------------------------------------------- game flow
   /** A menu screen over the 3D view (the game stops listening to the keyboard). */
@@ -177,7 +189,10 @@ async function boot() {
         params.set('map', id);
         history.replaceState(null, '', `?${params}`); // a reload stays on this map
       }
-      for (const b of document.querySelectorAll('.map')) b.setAttribute('aria-checked', String(b.dataset.map === id));
+      // (A night mission lights up its card too, and the Night switch.)
+      for (const b of document.querySelectorAll('.map')) b.setAttribute('aria-checked', String(b.dataset.map === dayOf(id)));
+      if (LEVELS[id].mission) atNight = !!LEVELS[id].night;
+      for (const b of document.querySelectorAll('.daynight button')) b.setAttribute('aria-checked', String((b.dataset.time === 'night') === atNight));
       document.getElementById('btnRespawn').textContent = mission.def.mission ? 'Restart the mission' : mission.hasEnemies ? 'Restart the fight' : 'Back to spawn';
       menus.setLoading(1, 'Ready');
       menus.hide('loading');
@@ -397,9 +412,74 @@ async function boot() {
     }
   });
 
-  // The map picker on the title screen.
+  // ---------------------------------------------------------------- controllers in menus
+  // The D-pad (or left stick) moves between the buttons on screen, A presses,
+  // B goes back, Start pauses and resumes. Focus moves to the nearest control
+  // in that direction, judged by where they are on screen.
+  const focusables = () => [...document.querySelectorAll('.screen:not([hidden]) :is(button, select, input)')]
+    .filter((e) => !e.disabled && !e.hidden && e.offsetParent !== null);
+  function moveFocus(dir) {
+    const list = focusables();
+    if (!list.length) return;
+    const cur = document.activeElement;
+    if (!list.includes(cur)) { list[0].focus(); return; }
+    // Sliders and choices: left and right change the value.
+    if ((dir === 'left' || dir === 'right') && (cur.type === 'range' || cur.tagName === 'SELECT')) {
+      if (cur.type === 'range') { if (dir === 'right') cur.stepUp(); else cur.stepDown(); } else {
+        cur.selectedIndex = Math.max(0, Math.min(cur.options.length - 1, cur.selectedIndex + (dir === 'right' ? 1 : -1)));
+      }
+      cur.dispatchEvent(new Event('input', { bubbles: true }));
+      cur.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+    const centre = (e) => { const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const from = centre(cur);
+    const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+    let best = null, bestScore = Infinity;
+    for (const e of list) {
+      if (e === cur) continue;
+      const c = centre(e);
+      const along = (c.x - from.x) * dx + (c.y - from.y) * dy;
+      if (along <= 4) continue; // not in that direction
+      const across = Math.abs((c.x - from.x) * dy) + Math.abs((c.y - from.y) * dx);
+      const score = along + across * 2;
+      if (score < bestScore) { bestScore = score; best = e; }
+    }
+    (best ?? cur).focus();
+    (best ?? cur).scrollIntoView?.({ block: 'nearest' });
+  }
+  input.onPadMenu = (action) => {
+    if (action === 'start') {
+      if (flow.is('playing')) flow.go('paused');
+      else if (flow.is('paused')) play();
+      else if (flow.is('title')) el('btnDeploy').click();
+      return;
+    }
+    if (flow.is('playing')) return;
+    if (action === 'accept') {
+      const cur = document.activeElement;
+      if (focusables().includes(cur)) {
+        if (cur.type === 'checkbox') { cur.checked = !cur.checked; cur.dispatchEvent(new Event('change', { bubbles: true })); } else cur.click();
+      } else moveFocus('down');
+    } else if (action === 'back') {
+      if (menus.isOpen('settings')) menus.closeSettings();
+      else if (flow.is('paused')) play();
+      else if (flow.is('join')) flow.go('title');
+    } else moveFocus(action);
+  };
+
+  // The map picker on the title screen. Missions come by day or at night (the switch).
+  const missionId = (id) => (LEVELS[id]?.mission && atNight ? nightOf(id) : id);
   for (const button of document.querySelectorAll('.map')) {
-    button.addEventListener('click', () => openMap(button.dataset.map));
+    button.addEventListener('click', () => openMap(missionId(button.dataset.map)));
+  }
+  for (const button of document.querySelectorAll('.daynight button')) {
+    button.addEventListener('click', () => {
+      atNight = button.dataset.time === 'night';
+      for (const b of document.querySelectorAll('.daynight button')) b.setAttribute('aria-checked', String(b === button));
+      // Playing a mission? Switch it to the same mission at the other time of day.
+      if (mission?.def.mission && !mission.room) openMap(missionId(dayOf(mission.mapId)));
+    });
   }
 
   const restartOrRespawn = () => (mission.hasEnemies ? mission.restart() : mission.respawn());
@@ -469,7 +549,7 @@ async function boot() {
   //   fireteam.enemies.options.freeze = true
   // Everything after `mission` belongs to the map being played, so it changes when the map does.
   window.fireteam = {
-    input, loop, view, flow, settings, audio, app, openMap, hostCoop, joinCoop, ready: true,
+    input, loop, view, flow, settings, audio, assets, app, openMap, hostCoop, joinCoop, ready: true,
     get mission() { return mission; },
     get room() { return room; },
     get voice() { return voice; },

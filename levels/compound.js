@@ -81,6 +81,9 @@ add(
   { type: 'box', size: [2, 1.2, 1.6], at: [-24, 0, 30], rotY: deg(25), mat: 'concrete' },
   { type: 'box', size: [1.6, 1.0, 1.6], at: [16, 0, 29], rotY: deg(-10), mat: 'concrete' },
   { type: 'box', size: [2.4, 1.6, 2], at: [26, 0, 34], rotY: deg(30), mat: 'concrete' },
+  { type: 'barrel', at: [18.2, 0, 27.2] },
+  { type: 'barrel', at: [18.9, 0, 26.7], mat: 'barrel_red' },
+  { type: 'pallet', at: [-14, 0, 29], rotY: deg(-10), load: 0.8 },
   { type: 'sandbags', from: [-6.5, 27.5], to: [-3.2, 27.5] },
   { type: 'sandbags', from: [3.2, 27.5], to: [6.5, 27.5] },
   // The road.
@@ -273,6 +276,7 @@ add(
 export default {
   name: 'The Compound',
   spawn: { pos: [-14, 0, 45], yaw: NORTH },
+  mood: 'haze', // render/moods.js
   sun: { azimuth: deg(35), elevation: deg(48) },
   nav: { min: [-46, -42], max: [46, 52] },
   pieces,

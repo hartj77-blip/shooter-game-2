@@ -30,7 +30,7 @@ import { ROLES } from '../ai/enemy-data.js';
  * @param {object} opts.ring      ui/markers.js createRing (shared too)
  * @param {() => object|null} [opts.voice] net/voice.js, for "who's talking" and your radio light
  */
-export function createSquadHud({ session, camera, events, hud, hosting, markers, ring, voice = () => null }) {
+export function createSquadHud({ session, camera, events, hud, hosting, markers, ring, voice = () => null, glyph = (a) => ({ interact: 'F', reload: 'R' })[a] }) {
   const el = (id) => document.getElementById(id);
   const squad = el('squad');
   const radioLight = el('radioLight');
@@ -128,7 +128,7 @@ export function createSquadHud({ session, camera, events, hud, hosting, markers,
       const head = { x: v.pos.x, y: v.pos.y + (v.down ? 0.9 : v.crouched ? 1.5 : 2.1), z: v.pos.z };
       if (v.bleeding) {
         const near = standing && Math.hypot(v.pos.x - me3.x, v.pos.z - me3.z) <= REVIVE.range;
-        mark('revive', head, near ? 'Hold F to revive' : `Revive ${v.callsign ?? ''}`, near ? `${Math.ceil(v.bleedLeft)} s` : `${metres(head)} · ${Math.ceil(v.bleedLeft)} s`);
+        mark('revive', head, near ? `Hold ${glyph('interact')} to revive` : `Revive ${v.callsign ?? ''}`, near ? `${Math.ceil(v.bleedLeft)} s` : `${metres(head)} · ${Math.ceil(v.bleedLeft)} s`);
       } else {
         mark('tag', head, v.callsign ?? nameOf(owner), '', SLOT_COLORS[owner], false);
       }
@@ -165,7 +165,7 @@ export function createSquadHud({ session, camera, events, hud, hosting, markers,
     if (enc?.state === 'down') {
       title = 'Mission failed';
       info = `${enc.total - enc.remaining} of ${enc.total} hostiles down`;
-      hint = hosting ? 'Press R to restart for everyone' : 'Waiting for the host to restart';
+      hint = hosting ? `Press ${glyph('reload')} to restart for everyone` : 'Waiting for the host to restart';
     } else if (session.operation?.view?.state === 'failed') {
       title = ''; // a mission: the objective HUD says "Mission failed"
     } else if (mine.dead) {
