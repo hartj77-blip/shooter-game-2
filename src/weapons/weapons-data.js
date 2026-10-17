@@ -259,13 +259,13 @@ export const WEAPONS = {
     },
   },
 
-  // The enemy Marksman's rifle (not in your loadout yet: unlocks arrive in milestone 7).
-  // Slow, heavy and very accurate. A laser on top warns you before every shot.
+  // The Marksman's rifle: the enemy Marksman's gun, and yours from rank 6
+  // (game/profile.js). Slow, heavy and very accurate, with a scope built in.
+  // On an enemy, a laser on top warns you before every shot.
   dmr: {
     id: 'dmr',
     name: 'R7 Marksman Rifle',
     slot: 5,
-    enemyOnly: true,
     fireMode: 'semi',
     rpm: 110,
     pellets: 1,
@@ -304,7 +304,7 @@ export const WEAPONS = {
       muzzle: [0, 0.045, -0.92],
       eject: [0.04, 0.065, -0.1],
       support: [0, 0.0, -0.42],
-      reticle: 'dot',
+      reticle: 'scope',
       parts: [
         { box: [0.07, 0.09, 0.36], at: [0, 0.035, -0.12], color: 'dark' },
         { box: [0.075, 0.07, 0.34], at: [0, 0.035, -0.46], color: 'tan' },
@@ -320,7 +320,13 @@ export const WEAPONS = {
   },
 };
 
+// What a soldier carries if nobody says otherwise. Missions give you your
+// profile's loadout instead (game/profile.js `loadoutFor`).
 export const LOADOUT = ['carbine', 'smg', 'shotgun', 'pistol'];
+
+// Every gun, in key order: what you carry on the Proving Ground. Snapshots name
+// a gun by its place in this list (net/protocol.js), so new guns go on the end.
+export const ARMORY = [...LOADOUT, 'dmr'];
 
 /** Damage of one bullet (or pellet) at a distance, before hit-zone multipliers. */
 export function damageAt(def, distance) {

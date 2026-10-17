@@ -67,9 +67,31 @@ button.primary:hover { filter: brightness(1.08); }
   backdrop-filter: blur(6px);
 }
 .card-slim { width: min(380px, 100%); }
+.card-wide { width: min(760px, 100%); }
+/* ------------------------------------------------------------------ loadout */
+.loadout-row { margin-top: 14px; }
+.loadout-row h3 { margin: 0 0 6px; font: 600 13px var(--head); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 14px; padding: 6px 12px; min-height: 40px; display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; }
+.chip small { font: 500 11px var(--body); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.chip[aria-pressed="true"] { border-color: var(--accent); background: rgba(232, 177, 74, 0.16); color: var(--accent); }
+.chip:disabled { opacity: 0.45; cursor: not-allowed; }
+.loadout-info { margin: 6px 0 0; font-size: 13px; }
+.loadout-level { margin: 6px 0 0; font-size: 14px; }
+.backup { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 10px; }
+.backup summary { cursor: pointer; color: var(--muted); }
+.backup-row { display: flex; gap: 8px; margin-top: 8px; }
+.backup-row input { flex: 1; min-width: 0; font: 14px var(--body); color: var(--text); background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px; }
 .brand { font: 700 clamp(44px, 10vw, 68px)/0.9 var(--head); letter-spacing: 0.12em; color: var(--text); }
 .brand::after { content: ""; display: block; width: 64px; height: 4px; margin-top: 12px; background: var(--accent); }
 .tag { margin: 14px 0 0; font: 600 15px var(--head); letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+.rank-line { margin: 4px 0 0; font: 600 13px var(--head); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+/* The debrief's XP: what you earned, and the bar towards your next rank. */
+.debrief-xp { margin: 14px 0 0; }
+.debrief-xp h3 { margin: 0 0 6px; font: 600 14px var(--head); letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+.xp-bar { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); overflow: hidden; margin: 6px 0 2px; }
+.xp-bar i { display: block; height: 100%; background: var(--accent); }
+.debrief-xp .new { color: var(--accent); }
 .lede { margin: 10px 0 0; color: var(--muted); }
 h2 { margin: 0 0 18px; font: 700 34px/1 var(--head); letter-spacing: 0.08em; text-transform: uppercase; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
@@ -120,6 +142,13 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 .crosshair i:nth-child(3) { right: var(--spread); }
 .crosshair i:nth-child(4) { left: var(--spread); }
 .crosshair b { position: absolute; left: -1px; top: -1px; width: 2px; height: 2px; background: var(--accent); }
+/* Looking through a scope: a round window in black, with thin crosshairs and a red centre. */
+.scope { position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, transparent 0 min(38vh, 38vw), rgba(0,0,0,0.6) calc(min(38vh, 38vw) + 1px), #000 calc(min(38vh, 38vw) + 6px)); }
+.scope i { position: absolute; background: #111; }
+.scope i:nth-child(1) { left: 0; right: 0; top: 50%; height: 1px; }
+.scope i:nth-child(2) { top: 0; bottom: 0; left: 50%; width: 1px; }
+.scope b { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #e33; box-shadow: 0 0 3px #f55; }
 
 .readout {
   position: absolute; left: calc(20px + env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
@@ -420,6 +449,15 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 .radio-line.on { opacity: 1; }
 .radio-line b { font: 600 14px var(--head); letter-spacing: 0.14em; text-transform: uppercase; color: var(--good); margin-right: 10px; }
 .grenades { font: 600 15px var(--head); letter-spacing: 0.12em; color: var(--muted); min-height: 18px; }
+/* Your call-in: its name and a bar that fills as it charges (game/callins.js). */
+.callin { margin-top: 4px; font: 600 12px var(--head); letter-spacing: 0.12em; color: var(--muted); text-align: right; }
+.callin i { display: block; height: 4px; margin-top: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.callin b { display: block; height: 100%; width: 0; background: var(--muted); }
+.callin.ready { color: var(--accent); }
+.callin.ready b { background: var(--accent); animation: pulse 0.8s ease-in-out infinite alternate; }
+/* An enemy a recon drone has marked: a red diamond over their head, seen through walls. */
+.mark.marked { --c: #ff4a3a; }
+.mark.marked::before { content: ""; width: 10px; height: 10px; border: 2px solid var(--c); transform: rotate(45deg); background: rgba(255, 74, 58, 0.25); }
 .nvg-icon { font: 600 13px var(--head); letter-spacing: 0.14em; color: var(--muted); }
 .nvg-icon.on { color: #7dff8a; text-shadow: 0 0 6px rgba(125, 255, 138, 0.6); }
 

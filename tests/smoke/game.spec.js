@@ -156,9 +156,10 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
     const v = [...window.fireteam.mission.enemiesView.views.values()][0];
     return v.model.bone('spine_02').quaternion.toArray().some((x, i) => x !== q[i]);
   }, before.q, { timeout: 15_000 });
-  // The guns in your hands are the real models too (render/gun-models.js).
-  expect(await page.evaluate(() => Object.values(window.fireteam.mission.viewmodel.models).map((m) => m.kind)))
-    .toEqual(['model', 'model', 'model', 'model']);
+  // The guns in your hands are the real models too (render/gun-models.js): your
+  // loadout's, which for a new profile is the carbine and the pistol (game/profile.js).
+  expect(await page.evaluate(() => Object.entries(window.fireteam.mission.viewmodel.models).map(([id, m]) => `${id}:${m.kind}`)))
+    .toEqual(['carbine:model', 'pistol:model']);
 
   // Hold everyone still, step in 3.5 m in front of the gate guard, and aim at their chest.
   await page.evaluate(() => {
@@ -180,6 +181,15 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
   expect(await page.evaluate(() => window.fireteam.ragdolls.count)).toBeGreaterThan(0);
   await expect(page.locator('#feed')).toContainText('down');
   await page.screenshot({ path: 'test-results/compound-kill.png' });
+  // That kill earned XP (game/xp.js), for you and the carbine, saved in this browser.
+  const xp = await page.evaluate(() => ({
+    xp: window.fireteam.profile.data.xp, gun: window.fireteam.profile.data.guns.carbine.xp,
+    saved: JSON.parse(localStorage.getItem('fireteam.profile')).xp,
+  }));
+  expect(xp.xp).toBeGreaterThanOrEqual(100);
+  expect(xp.gun).toBeGreaterThanOrEqual(100);
+  expect(xp.saved).toBe(xp.xp);
+  await expect(page.locator('#rankLine')).toContainText('Rank 1');
 
   // Now let them fight: someone should shoot at us.
   await page.evaluate(() => { window.fireteam.enemies.options.freeze = false; });
@@ -307,6 +317,101 @@ test('night: the Day/Night switch picks the night mission, its lamps are lit, an
   await page.keyboard.press('KeyN');
   await page.waitForFunction(() => window.fireteam.view.nvg === 0, null, { timeout: 10_000 });
   await page.screenshot({ path: 'test-results/night.png' });
+  expect(problems).toEqual([]);
+});
+
+test('progress: a backup code made in one browser restores your rank in another', async ({ browser }) => {
+  const first = await browser.newPage();
+  await first.goto('/');
+  await first.waitForFunction(() => window.fireteam?.ready, null, { timeout: 60_000 });
+  const code = await first.evaluate(() => { window.fireteam.profile.award(20000, 'smg'); return window.fireteam.profile.backupCode(); });
+  await expect(first.locator('#rankLine')).toContainText('Rank 7');
+  await first.close();
+  // A fresh browser profile (nothing saved), as on another computer.
+  const context = await browser.newContext();
+  const second = await context.newPage();
+  await second.goto('/');
+  await second.waitForFunction(() => window.fireteam?.ready, null, { timeout: 60_000 });
+  await expect(second.locator('#rankLine')).toContainText('Rank 1');
+  await second.evaluate((c) => window.fireteam.profile.restore(c), code);
+  await expect(second.locator('#rankLine')).toContainText('Rank 7');
+  await context.close();
+});
+
+test('the Loadout screen: locked choices wait, unlocked ones change the gun you play with', async ({ page }) => {
+  test.setTimeout(120_000);
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  await page.goto('/');
+  await page.waitForFunction(() => window.fireteam?.ready, null, { timeout: 60_000 });
+  await page.click('#btnLoadoutT');
+  await expect(page.locator('#loadout')).toBeVisible();
+  await expect(page.locator('[data-key="gun:smg"]')).toBeDisabled();
+  await expect(page.locator('[data-key="gun:smg"]')).toContainText('Rank 2');
+  // Earn enough to unlock the SMG and its extended magazine; the screen updates by itself.
+  await page.evaluate(() => { window.fireteam.profile.award(2500, 'smg'); window.fireteam.profile.awardGun('smg', 2000); });
+  await page.click('[data-key="gun:smg"]');
+  await page.click('[data-key="mag:extended"]');
+  await expect(page.locator('[data-key="mag:extended"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#loadout')).toContainText('rounds +50%');
+  await page.screenshot({ path: 'test-results/loadout.png', fullPage: true });
+  await page.click('#btnLoadoutDone');
+  await expect(page.locator('#loadout')).toBeHidden();
+  // Play the Compound with it.
+  await page.click('#mapCompound');
+  await page.waitForFunction(() => window.fireteam.mission?.mapId === 'compound' && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
+  const guns = await page.evaluate(() => window.fireteam.soldier.arsenal.guns.map((g) => `${g.def.id}:${g.def.mag}`));
+  expect(guns).toEqual(['smg:48', 'pistol:15']);
+  expect(problems).toEqual([]);
+});
+
+test('attachments: a saved loadout fits them, and a scope gives the scope view', async ({ page }) => {
+  test.setTimeout(120_000);
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  // A veteran's profile: the carbine at its top level, with a scope, a suppressor and a big magazine.
+  await page.addInitScript(() => {
+    localStorage.setItem('fireteam.profile', JSON.stringify({
+      version: 1, xp: 1e6, guns: { carbine: { xp: 1e7 } },
+      loadout: { primary: 'carbine', callin: 'supply', attachments: { carbine: { optic: 'scope', muzzle: 'suppressor', mag: 'extended', under: 'laser' } } },
+    }));
+  });
+  await page.goto('/?map=compound&autostart');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
+  const gun = await page.evaluate(() => {
+    const { def, mag } = window.fireteam.soldier.arsenal.current;
+    return { id: def.id, mag, max: def.mag, suppressed: !!def.suppressed, reticle: window.fireteam.mission.viewmodel.models.carbine.reticle };
+  });
+  expect(gun).toEqual({ id: 'carbine', mag: 45, max: 45, suppressed: true, reticle: 'scope' });
+  // Aim all the way: the gun disappears and the scope's view takes over the screen.
+  await page.waitForFunction(() => window.fireteam.soldier.arsenal.current.status === 'ready', null, { timeout: 30_000 });
+  await page.mouse.down({ button: 'right' });
+  await page.waitForFunction(() => window.fireteam.mission.viewmodel.scoped === 1, null, { timeout: 30_000 });
+  await expect(page.locator('#scope')).toHaveCSS('opacity', '1');
+  await page.screenshot({ path: 'test-results/scope.png' });
+  await page.mouse.up({ button: 'right' });
+  await page.waitForFunction(() => window.fireteam.mission.viewmodel.scoped === 0, null, { timeout: 30_000 });
+  expect(problems).toEqual([]);
+});
+
+test('call-ins: T calls one where you look; the meter, the radio and the smoke all show up', async ({ page }) => {
+  test.setTimeout(150_000);
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  page.on('console', (msg) => { if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`); });
+  await page.goto('/?autostart');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
+  // The Proving Ground: always charged, for trying them out (game/callins.js).
+  await expect(page.locator('#callin')).toContainText('SUPPLY DROP · T');
+  await page.evaluate(() => {
+    window.fireteam.session.sim.callins.player(0).kind = 'smoke';
+    window.fireteam.input.setLook(0, -Math.atan2(1.6, 12));
+  });
+  await page.keyboard.press('KeyT');
+  await page.waitForFunction(() => window.fireteam.session.callins.view[0]?.phase === 'active', null, { timeout: 120_000 });
+  await page.waitForFunction(() => window.fireteam.mission.callinsView.count === 1, null, { timeout: 10_000 });
+  await expect(page.locator('#feed')).toContainText('smoke screen');
+  await page.screenshot({ path: 'test-results/callin-smoke.png' });
   expect(problems).toEqual([]);
 });
 

@@ -47,6 +47,8 @@ export const SOUNDS = {
   heartbeat:      { synth: 'heartbeat', volume: 0.5, pitch: 0.02 },
   radio:          { synth: 'radio', volume: 0.3, pitch: 0.05, spatial: true },
   laser:          { synth: 'laser', volume: 0.4, pitch: 0.02, spatial: true },
+  whistle:        { synth: 'whistle', volume: 0.55, pitch: 0.06, spatial: true, refDistance: 25 }, // a mortar shell coming down
+  hiss:           { synth: 'hiss', volume: 0.5, pitch: 0.1, spatial: true },                     // a smoke canister
   // Milestone 5: missions.
   explosion:      { files: files('explosion', 3), volume: 1.0, pitch: 0.08, spatial: true, reverb: 0.6 },
   bounce:         { files: files('hit_metal', 3), volume: 0.35, pitch: 0.2, spatial: true },

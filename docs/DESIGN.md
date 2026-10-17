@@ -39,7 +39,7 @@ Each milestone ends with something playable on GitHub Pages, a lesson in `docs/l
 | M4 | Co-op | 1–4 players: lobby, room codes, invite links, host-run game, snapshots, interpolation, prediction and reconciliation, favour-the-shooter hits, bleed out and revive, spectating, pings, squad HUD, voice (radio + nearby), a mission loader | **Done** |
 | M5 | Missions | The Harbour map, four missions (rescue, intel, sabotage, hold the line) with extraction by helicopter, the director and reinforcements, checkpoints and retry, limited ammo and crates, grenades, the hostage, explosions, the debrief | **Done** |
 | M6 | Art pass | Animated soldiers on real skeletons, real gun models, textured world with trims and props, a mood per map, post-processing and quality presets, night missions where darkness hides you, night vision; controller support (pulled forward from M8) | **Done** |
-| M7 | Progression | XP, unlocks, attachments, loadouts, support call-ins, saved progress | Next |
+| M7 | Progression | XP, ranks and gun levels, unlocks, nine attachments, the Loadout screen, four call-ins (supply drop, recon drone, mortar, smoke), saved progress with backup codes | **Done** |
 | M8 | Polish | Audio mix, HUD, full settings, touch, loading, performance (controllers arrived early, in M6) | |
 | M9 | Content | Three or more maps, five mission types, modifiers, difficulty, release | |
 
@@ -172,6 +172,46 @@ Lessons 18–22 explain how. Everything here is presentation, except the night's
 
 Measured: the Harbour draws in 204 / 292 / 591 draw calls per frame on low / medium / high (the extra on high is ambient occlusion drawing the scene a second time). New downloads: 1.1 MB soldier, 451 KB guns, 1.4 MB textures. Culling and the far body took the friend's screen in the two-tab co-op test from 257,000 triangles a frame to a fraction of that.
 
+## Progression (M7)
+
+Lessons 23–25 explain how. XP and the profile live in each browser; attachments and call-ins are simulation, decided by the host.
+
+| Thing | What | Where |
+|---|---|---|
+| XP | Kill 100, headshot +50, revive 150, stage 400, mission 1,000, the Compound 800; ×0.75 / 1 / 1.5 by difficulty, ×1.25 at night. Guns also earn 1 XP per 10 damage. The Proving Ground earns nothing | `XP` in `game/xp.js` |
+| Ranks | 1–20; rank 2 at 1,500 XP, each rank 500 XP further than the last | `PROGRESSION` in `game/profile.js` |
+| Rank unlocks | Start: carbine, pistol, supply drop. SMG 2, recon drone 3, shotgun 4, smoke 5, DMR 6, mortar 8 | `RANK_UNLOCKS` |
+| Gun levels | 1–10 per gun; level 2 at 600 gun XP, each 200 further. Red dot 2, extended mag 3, foregrip 4, suppressor 5, holo 6, fast mag 7, compensator 8, laser 9, 2× scope 10 | `GUN_LEVEL_UNLOCKS` |
+| Saving | localStorage (`fireteam.profile`), checked on load, versioned; backup code `FT1-…-XXXX` with an FNV-1a checksum | `game/profile.js` |
+| Loadout | Primary (carbine, SMG, shotgun, DMR) + pistol, attachments per gun, one call-in; the Proving Ground hands out every gun | `ui/loadout.js`, `loadoutFor` |
+
+### Attachments
+
+| Slot | Attachment | Changes |
+|---|---|---|
+| Optic | Red dot | zoom 1.45×, aimed spread −10% |
+| | Holographic | zoom 1.6×, aimed spread −15%, aiming +8% slower |
+| | 2× scope | zoom 2.2×, aimed spread −40%, aiming +35% slower, slower while aimed; scope view |
+| Muzzle | Suppressor | heard 0.45× as far, no flash (no light at night), damage range −10% |
+| | Compensator | kick −25%, louder (+15%) |
+| Magazine | Extended | +50% rounds, reloads +15% slower |
+| | Fast mag | reloads 25% quicker |
+| Underbarrel | Foregrip | recoil pattern and shake −40%, aimed spread −15% |
+| | Laser | hip spread −30%, moving spread −15%; lights you at night (0.5) |
+
+The DMR is now yours from rank 6 (zoom 2.5×, its scope built in, so no optic slot).
+
+### Call-ins
+
+| Call-in | What | Numbers |
+|---|---|---|
+| Charge | From kills (12%, +4% headshot), objectives (35%), and 1/300 a second; each use: next charge 1.3× slower; always full on the Proving Ground | `CALLINS.charge`, `slower` |
+| Calling | T / View; aimed where you look, within 60 m; 1.5 s of radio first; supply and mortar need open sky | `range`, `windup` |
+| Supply drop | Parachute 6 s; then an ammo crate with 2 refills per player | `supply` |
+| Recon drone | 25 s; marks enemies within 35 m for the squad | `recon` |
+| Mortar | Red smoke and a marker; 3 s later 4 shells over 3 s within 6 m (220 damage, 7 m blast, never the squad); enemies may run | `mortar` |
+| Smoke screen | 4 clouds of 3 m in a line across your view, 25 s; blocks eyes (`SMOKE` group), not bullets | `smoke` |
+
 ## Controls
 
 | Action | Mouse and keyboard |
@@ -184,10 +224,11 @@ Measured: the Harbour draws in 204 / 292 / 591 draw calls per frame on low / med
 | Fire | Left mouse |
 | Aim down sights | Right mouse (hold or toggle) |
 | Reload | R |
-| Switch gun | 1–4, mouse wheel, Q for the last gun |
+| Switch gun | 1–5, mouse wheel, Q for the last gun |
 | Squad radio (co-op) | V (hold) |
 | Ping (co-op) | Z or middle mouse |
 | Throw a grenade | G |
+| Call-in (once charged) | T |
 | Night-vision goggles (night missions) | N |
 | Use (revive, free, plant, download, ammo, radio) | F (hold) |
 | Spectating: next teammate | Left mouse |
@@ -238,4 +279,8 @@ Already in: pings and markers so a squad can play without voice, push-to-talk or
 - ~~Mission props (the caches, the laptop's table, the radios) are drawn but have no colliders.~~ Decided in M6: every site has a solid table, crate stack or radio stand as level geometry, the same in every mission and on every computer; the mission only adds what sits on top.
 - Enemy night vision, searchlights on the cranes, lit windows? The night has lamps and torches only. Decide when night missions get tuned with real squads.
 - Real frame rates on medium and high need measuring on real machines (the test machines draw in software).
+- The host builds each friend's guns from the loadout they send, checking its shape but not whether they've unlocked it (progress lives in each browser). Fine among friends; public games would need progress kept by a server.
+- Enemy call-ins (their own mortar team, a spotter drone)? They'd need the same fairness: a warning, a marker, time to move. Later.
+- How fast should call-ins charge? The first charge takes up to 5 minutes, sooner with kills; tune with real squads.
+- Should the Proving Ground let you try every attachment (a gunsmith bench by the rack)? Today it hands out every gun, with no attachments.
 - More missions on the Compound (a raid), and more mission types (escort a convoy, defend a position that moves)? M9.

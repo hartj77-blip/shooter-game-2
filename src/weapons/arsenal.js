@@ -14,7 +14,8 @@
 // It returns the shots (where they start and which way they go) and how far the
 // recoil should move your view. soldier.js traces the shots through the world.
 
-import { WEAPONS, LOADOUT } from './weapons-data.js';
+import { LOADOUT } from './weapons-data.js';
+import { loadoutDefs } from './attachments.js';
 import { createGun } from './gun.js';
 import { GRENADE } from './grenades.js';
 
@@ -44,8 +45,12 @@ export function spreadDirection(yaw, pitch, spreadDeg, rng) {
   return { x: d.x / len, y: d.y / len, z: d.z / len };
 }
 
+/**
+ * @param {object} opts
+ * @param {Array} [opts.loadout] gun ids, or { id, attachments } (weapons/attachments.js)
+ */
 export function createArsenal({ loadout = LOADOUT, rng, emit = () => {}, owner = 0, options = {} }) {
-  const guns = loadout.map((id) => createGun(WEAPONS[id], { emit, rng, owner }));
+  const guns = loadoutDefs(loadout).map((def) => createGun(def, { emit, rng, owner }));
   const state = {
     current: 0,
     previous: guns.length > 1 ? 1 : 0,

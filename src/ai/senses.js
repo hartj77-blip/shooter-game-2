@@ -28,7 +28,7 @@
 // the cost of all these rays by six.
 
 import { RAPIER } from '../world/physics.js';
-import { SIGHT, BULLET } from '../world/groups.js';
+import { SIGHT, BULLET, LEVEL } from '../world/groups.js';
 import { AWARENESS } from './enemy-data.js';
 import { flashlightOn, sightScale, noticeScale } from '../world/lighting.js';
 
@@ -175,7 +175,7 @@ export function sense(e, ai, dt) {
     if (d > radius) continue;
     const loud = n.kind === 'gunshot' || n.kind === 'explosion';
     const source = { x: n.pos.x, y: n.pos.y + (loud ? 0.3 : 0.6), z: n.pos.z };
-    if (d > radius / 2 && !clear(ai.world, ear, source, SIGHT)) continue; // a wall muffles it: half the range
+    if (d > radius / 2 && !clear(ai.world, ear, source, LEVEL)) continue; // a wall muffles it: half the range (smoke doesn't)
     const rank = loud ? 2 : 1;
     const prev = S.heard && ai.time - S.heard.time < 1 ? (S.heard.kind === 'gunshot' || S.heard.kind === 'explosion' ? 2 : 1) : 0;
     if (rank < prev) continue;

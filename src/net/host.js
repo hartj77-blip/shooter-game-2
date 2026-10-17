@@ -27,7 +27,7 @@
 
 import { createJitterBuffer } from './jitter.js';
 import {
-  SNAPSHOT_EVERY, DEAD_KEPT, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, encodeOp, encodeHostage,
+  SNAPSHOT_EVERY, DEAD_KEPT, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, encodeOp, encodeHostage, encodeCallins,
   eventFor, wireEvent,
 } from './protocol.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
@@ -77,9 +77,9 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
   // ---------------------------------------------------------------- friends coming and going
 
   /** A friend joins (net/room.js calls this once their browser has loaded the map). */
-  function addClient({ slot, link, callsign }) {
+  function addClient({ slot, link, callsign, loadout, callin }) {
     if (clients.has(slot)) removeClient(slot);
-    sim.addPlayer(slot, { callsign });
+    sim.addPlayer(slot, { callsign, loadout, callin }); // their guns: the same ones their browser predicts with
     const c = { slot, link, jitter: createJitterBuffer(), heard: clock(), off: [] };
     c.off.push(link.onMessage((msg) => inbox.push([slot, msg])));
     c.off.push(link.onClose(() => removeClient(slot)));
@@ -123,7 +123,8 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
   /** A client fired: check what they say happened, then make it happen here. */
   function applyFire(slot, msg) {
     const p = sim.player(slot);
-    const def = WEAPONS[msg.w];
+    // That player's own gun, attachments and all (weapons/attachments.js), not the table's.
+    const def = p?.soldier.arsenal.guns.find((g) => g.def.id === msg.w)?.def ?? WEAPONS[msg.w];
     if (!p || !def) return;
     const h = p.health.state;
     if (h.down || h.bleeding || h.dead) return;
@@ -136,8 +137,8 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
 
     // Everyone hears it: enemies through the noise board, players through the event.
     sim.noise?.post({ pos: o, radius: def.noise ?? NOISE.gunshot, kind: 'gunshot', owner: slot });
-    sim.enemies?.playerShots(shots.map((shot) => ({ origin: o, end: shot.end })), slot);
-    sim.events.emit('weapon:fire', { owner: slot, weapon: def.id, origin: o, pulls, shots });
+    sim.enemies?.playerShots(shots.map((shot) => ({ origin: o, end: shot.end, weapon: def })), slot);
+    sim.events.emit('weapon:fire', { owner: slot, weapon: def.id, suppressed: !!def.suppressed, origin: o, pulls, shots });
     for (const i of (msg.impacts ?? []).slice(0, 8)) sim.events.emit('bullet:impact', { owner: slot, weapon: def.id, ...i });
 
     // The hits: never more than the gun could do, only on things that can be hurt.
@@ -157,7 +158,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     }
     for (const [target, sum] of byTarget) {
       sim.events.emit('target:hit', {
-        owner: slot, target, id: target.id, kind: target.kind, hostage: target.hostage, ...sum,
+        owner: slot, weapon: def.id, target, id: target.id, kind: target.kind, hostage: target.hostage, ...sum,
       });
     }
   }
@@ -216,6 +217,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
       ...(sim.supply.list.length ? { cr: sim.supply.save() } : {}), // refills left in each ammo crate
       ...(sim.operation ? { op: encodeOp(sim.operation.view) } : {}),  // the mission: objectives, helicopter
       ...(sim.hostage ? { h: encodeHostage(sim.hostage.view) } : {}),
+      ...(sim.callins.active.length ? { ci: encodeCallins(sim.callins.view) } : {}), // drops, drones, shells, smoke
     };
   }
 
@@ -253,6 +255,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     encounter: sim.encounter,
     course: sim.course,
     supply: sim.supply,
+    callins: sim.callins,
     grenades: sim.grenades,
     operation: sim.operation,
     get hostage() { return sim.hostage; },

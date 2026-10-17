@@ -45,6 +45,7 @@ export const PAD_BUTTONS = {
   5: 'grenade',   // RB
   6: 'ads',       // LT
   7: 'fire',      // RT
+  8: 'callin',    // View / Back / Share: call in your support
   9: 'menu',      // Start / Options: pause
   10: 'sprint',   // L3 (click the left stick)
   12: 'radio',    // D-pad up: squad radio (hold)
@@ -55,8 +56,8 @@ export const PAD_BUTTONS = {
 
 // What to call each action on screen, by device ("Hold F" or "Hold X").
 export const GLYPHS = {
-  keyboard: { interact: 'F', reload: 'R', grenade: 'G', ping: 'Z', radio: 'V', nightvision: 'N', fire: 'Click' },
-  pad: { interact: 'X', reload: 'X', grenade: 'RB', ping: 'LB', radio: 'D-pad up', nightvision: 'D-pad down', fire: 'RT' },
+  keyboard: { interact: 'F', reload: 'R', grenade: 'G', ping: 'Z', radio: 'V', nightvision: 'N', fire: 'Click', callin: 'T' },
+  pad: { interact: 'X', reload: 'X', grenade: 'RB', ping: 'LB', radio: 'D-pad up', nightvision: 'D-pad down', fire: 'RT', callin: 'View' },
 };
 
 /** A stick's tilt with the dead zone, outer zone and response curve applied. Keeps the direction. */

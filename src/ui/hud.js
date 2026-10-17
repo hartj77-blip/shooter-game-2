@@ -42,6 +42,7 @@ export function createHud({
   const mode = el('rMode');
   const readout = el('readout');
   const crosshair = el('crosshair');
+  const scope = el('scope');
   const hitmarker = el('hitmarker');
   const hint = el('hint');
   const fps = el('fps');
@@ -88,7 +89,7 @@ export function createHud({
   // Slot numbers along the top of the weapon panel.
   for (const g of arsenal.guns) {
     const s = document.createElement('span');
-    s.textContent = g.def.slot;
+    s.textContent = slots.children.length + 1; // the number key that picks it
     s.title = g.def.name;
     slots.append(s);
   }
@@ -247,6 +248,17 @@ export function createHud({
     }));
     results.hidden = false;
     resultsTimer = 14;
+    // Your XP (main.js sets hud.xpSource). The clear bonus is added by another
+    // listener of this same event, so wait until they've all run.
+    queueMicrotask(() => {
+      const xp = hud.xpSource?.();
+      if (!xp) return;
+      const dt = document.createElement('dt');
+      dt.textContent = 'XP earned';
+      const dd = document.createElement('dd');
+      dd.textContent = `+${Math.round(xp.total).toLocaleString('en-GB')}`;
+      resultsList.append(dt, dd);
+    });
   });
 
   function updateThreats(dt) {
@@ -354,9 +366,13 @@ export function createHud({
     }
   }
 
-  return {
+  const hud = {
+    /** () => game/xp.js summary, or null (main.js sets it): the results panel shows your XP. */
+    xpSource: null,
     options,
     show(on) { root.hidden = !on; },
+    /** A short message in the middle of the screen (rank ups, unlocks). */
+    toast: showToast,
     /** A line in the kill feed (top right). `html` must already be escaped. */
     feedLine(html, cls = '') { line(feed, html, cls); },
     esc,
@@ -370,12 +386,14 @@ export function createHud({
       toast.classList.remove('on');
       hitmarker.classList.remove('on', 'head', 'kill', 'hostage');
       hurt.style.opacity = '0';
+      scope.style.opacity = '0';
+      last.sc = 0;
       view.style.filter = '';
       setHint('');
       root.hidden = true;
     },
 
-    update(dt, { playing }) {
+    update(dt, { playing, scoped = 0 }) {
       const s = player.state;
       readout.hidden = !settings.showReadout;
       speed.textContent = s.speed.toFixed(1);
@@ -392,6 +410,7 @@ export function createHud({
       const gun = arsenal.current;
       const hide = arsenal.state.ads > 0.6 || s.sprinting || gun.status === 'raising' || gun.status === 'lowering' || !!health?.state.down;
       crosshair.classList.toggle('hide', hide);
+      if (last.sc !== scoped) { last.sc = scoped; scope.style.opacity = String(scoped); }
 
       // Weapon panel.
       set(wName, 'wn', gun.def.name.toUpperCase());
@@ -434,4 +453,5 @@ export function createHud({
       }
     },
   };
+  return hud;
 }

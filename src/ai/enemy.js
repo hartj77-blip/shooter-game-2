@@ -132,6 +132,7 @@ export function viewOf(e, ai) {
     laserOn: m.laserOn,
     laserCharge: e.def.telegraph ? Math.min(1, m.laser / e.def.telegraph) : 0,
     dead: e.dead,
+    marked: !!e.marked, // a recon drone has them marked for the squad (game/callins.js)
   };
 }
 

@@ -217,6 +217,7 @@ add(
 
 export default {
   name: 'Proving Ground',
+  armory: true, // practice: you carry every gun, whatever your loadout (src/mission.js)
   spawn: { pos: [0, 0, 0], yaw: 0 },
   mood: 'midday', // render/moods.js
   sun: { azimuth: deg(25), elevation: deg(50) }, // from the south-south-east, behind you at spawn

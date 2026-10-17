@@ -174,7 +174,7 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     return {
       owner: soldier.owner, soldier, health,
       pos: { x: 0, y: 0, z: 0 }, eye: null, chest: null, head: null,
-      crouched: false, speed: 0, sprinting: false, down: false, firedAt: -Infinity, light: 1,
+      crouched: false, speed: 0, sprinting: false, down: false, firedAt: -Infinity, flashAt: -Infinity, light: 1,
     };
   }
 
@@ -191,8 +191,9 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
       P.speed = s.speed;
       P.sprinting = s.sprinting;
       P.down = P.health.state.down || !!P.health.state.bleeding || !!P.health.state.dead;
-      // How lit they are (moon, lamps, their own muzzle flash): ai/senses.js.
-      P.light = ai.lighting ? lightAt(P.pos, ai.lighting, ai.time - P.firedAt) : 1;
+      // How lit they are (moon, lamps, their own muzzle flash, a laser on their gun): ai/senses.js.
+      P.light = ai.lighting ? lightAt(P.pos, ai.lighting, ai.time - P.flashAt) : 1;
+      if (ai.lighting?.night && P.soldier.arsenal?.current.def.laser) P.light = Math.max(P.light, ai.lighting.tuning.laser);
     }
     ai.targets = ai.players.filter((P) => !P.down);
     // Anyone whose target went down (or left) looks for someone else.
@@ -235,6 +236,8 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     if (!shots?.length) return;
     const shooter = recordOf(owner);
     if (shooter) shooter.firedAt = ai.time;
+    // (A suppressor hides the muzzle flash: no light at night. weapons/attachments.js)
+    if (shooter && !shots[0]?.weapon?.suppressed) shooter.flashAt = ai.time;
     const from = shooter?.eye ?? shots[0].origin;
     for (const e of ai.alive) {
       const c = { x: e.pos.x, y: e.pos.y + 1.1, z: e.pos.z };
