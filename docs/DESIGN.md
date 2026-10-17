@@ -38,8 +38,8 @@ Each milestone ends with something playable on GitHub Pages, a lesson in `docs/l
 | M3 | Enemies | Enemy soldiers (Rifleman, Rusher, Marksman) with sight, hearing and awareness, state-machine brains, squads, a nav grid with A*, cover and flanking, fairness rules, ragdolls, health that recovers, the Compound map, difficulty | **Done** |
 | M4 | Co-op | 1–4 players: lobby, room codes, invite links, host-run game, snapshots, interpolation, prediction and reconciliation, favour-the-shooter hits, bleed out and revive, spectating, pings, squad HUD, voice (radio + nearby), a mission loader | **Done** |
 | M5 | Missions | The Harbour map, four missions (rescue, intel, sabotage, hold the line) with extraction by helicopter, the director and reinforcements, checkpoints and retry, limited ammo and crates, grenades, the hostage, explosions, the debrief | **Done** |
-| M6 | Art pass | Stylized kit, animated characters, lighting, post-processing, quality presets | Next |
-| M7 | Progression | XP, unlocks, attachments, loadouts, support call-ins, saved progress | |
+| M6 | Art pass | Animated soldiers on real skeletons, real gun models, textured world with trims and props, a mood per map, post-processing and quality presets, night missions where darkness hides you, night vision; controller support (pulled forward from M8) | **Done** |
+| M7 | Progression | XP, unlocks, attachments, loadouts, support call-ins, saved progress | Next |
 | M8 | Polish | Audio mix, HUD, full settings, touch, loading, performance (controllers arrived early, in M6) | |
 | M9 | Content | Three or more maps, five mission types, modifiers, difficulty, release | |
 
@@ -155,6 +155,23 @@ Every mission ends with **extraction**: call the helicopter at the LZ's radio, s
 
 Measured: the Harbour builds and maps (130,000 walkable cells) in 0.9 s in Node, and loads in the browser in about 3 s. The host's tick with 4 players, 24 enemies and the hostage takes 1.75 ms on average (99% under 8.4 ms). A 4-player snapshot at the cap is about 1.8 KB (budget 2.5 KB). Batching the level per material in 32 m tiles takes a Harbour frame from 365 draw calls to 200 on low quality.
 
+## Art pass (M6)
+
+Lessons 18–22 explain how. Everything here is presentation, except the night's light levels (`src/world/lighting.js`), which the enemies use.
+
+| Thing | What | Where |
+|---|---|---|
+| Soldiers | Quaternius' mannequin (CC0), 10 clips blended by speed; legs from clips, spine and arms from code with two-bone IK; gear built in code on the bones; ragdolls on the skeleton; outlines; a quarter-detail body past 20 m | `render/character.js`, `tools/build-models.mjs` |
+| Guns | Five CC0 models, repainted as vertex colours (one draw call each); magazine, pump and slide still move; points measured in `GUN_MODELS`; a code-built red dot on the carbine | `render/gun-models.js` |
+| World | Nine Poly Haven (CC0) surfaces as grey detail plus normal maps, painted in the palette's colours, a faint line every metre; trims (decor) on walls, doors and windows; barrels, pallets, lamp posts and a fuel tank; solid mission props at every site | `render/materials.js`, `tools/build-textures.py`, `world/kit.js` |
+| Moods | Midday (Proving Ground), haze (Compound), golden hour (Harbour), night | `render/moods.js` |
+| Quality | Low: straight to the screen. Medium: colour grade, outlines, 4× MSAA, shadows 1024. High: + ambient occlusion, bloom, shadows 2048, pixel ratio 2 | `QUALITY` in `render/renderer.js`, `render/post.js` |
+| Night | Every Harbour mission also at night. Moonlight 0.15, lamps, your muzzle flash, enemy torches (22 m, 14° either side); in full dark enemies see 35% as far and notice 30% as fast | `LIGHTING` |
+| Night vision | N or D-pad down; your screen only, even on low | `render/post.js` |
+| Controllers | Standard layout; dead zone 0.15, squared response, turn boost; aim assist slows turning to 45% over a visible enemy; rumble; menus by D-pad | `core/gamepad.js` |
+
+Measured: the Harbour draws in 204 / 292 / 591 draw calls per frame on low / medium / high (the extra on high is ambient occlusion drawing the scene a second time). New downloads: 1.1 MB soldier, 451 KB guns, 1.4 MB textures. Culling and the far body took the friend's screen in the two-tab co-op test from 257,000 triangles a frame to a fraction of that.
+
 ## Controls
 
 | Action | Mouse and keyboard |
@@ -171,6 +188,7 @@ Measured: the Harbour builds and maps (130,000 walkable cells) in 0.9 s in Node,
 | Squad radio (co-op) | V (hold) |
 | Ping (co-op) | Z or middle mouse |
 | Throw a grenade | G |
+| Night-vision goggles (night missions) | N |
 | Use (revive, free, plant, download, ammo, radio) | F (hold) |
 | Spectating: next teammate | Left mouse |
 | Tuning panel | `` ` `` |
@@ -183,7 +201,9 @@ When you're down in a solo fight, R starts it again. In co-op the host presses R
 - **Stylized military.** Chunky, simplified shapes; slightly exaggerated proportions; flat-ish colours with soft lighting. Think "toy soldier diorama", not "documentary".
 - **Colour carries meaning.** Amber marks interactive things and the HUD's important bits. Red means danger. Teammates wear cool blue accents, enemies warm red; each player slot has its own colour (amber, blue, green, pink) in the roster and on name tags.
 - **Readability first.** Enemies must stand out from backgrounds at a distance. Shadows are soft, so they never hide a threat completely.
-- **Grey-box until M6.** Gameplay is proven with the grid-textured kit before any real art goes in.
+- **Clean toon.** Real but simplified models, textures that bring detail but keep the palette's colours (and their meanings), soft ambient occlusion, dark outlines on people, a little bloom on bright things, and a colour grade per map.
+- **A mood per map.** Midday, dusty haze, golden hour; and night, dark but never black.
+- **The grid stays.** A faint line every metre in every texture, so distances still read at a glance.
 
 ## Audio direction
 
@@ -199,6 +219,7 @@ Already in: pings and markers so a squad can play without voice, push-to-talk or
 - three.js for drawing, Rapier for physics, lil-gui for the tuning panel, all vendored in `vendor/` at pinned versions.
 - PeerJS 1.5.5 (WebRTC) for peer-to-peer co-op: one player's browser hosts the game; voice is a mesh. Its free broker introduces players; its free TURN servers relay when a network blocks direct links.
 - Simulation runs at a fixed 60 Hz; drawing interpolates between ticks.
+- Art comes from CC0 packs, trimmed by tools in `tools/` (glTF Transform and meshoptimizer for models, Pillow for textures) whose output is committed; `render/assets.js` loads it once, and every piece has a code-built fallback.
 - Simulation code never touches the screen, so it's unit tested in Node.
 
 ## Open questions
@@ -214,5 +235,7 @@ Already in: pings and markers so a squad can play without voice, push-to-talk or
 - ~~Grenades (yours and theirs) to flush enemies out of cover?~~ Decided in M5: yours, 2 per mission. Enemy grenades later (they'd need their own fairness rules: a warning, a marker, time to run).
 - ~~When you go down in a solo mission: restart the whole fight, or a checkpoint?~~ Decided in M5: retry from the last checkpoint. The practice Compound still restarts the whole fight.
 - Mission length: the target is 8–12 minutes on Regular. A scripted run with frozen enemies takes 2–4 minutes of walking and waiting, so the rest is fighting; tune the director with real squads.
-- Mission props (the caches, the laptop's table, the radios) are drawn but have no colliders, so you can walk through them. Give them colliders in the art pass (M6), on host and clients alike.
+- ~~Mission props (the caches, the laptop's table, the radios) are drawn but have no colliders.~~ Decided in M6: every site has a solid table, crate stack or radio stand as level geometry, the same in every mission and on every computer; the mission only adds what sits on top.
+- Enemy night vision, searchlights on the cranes, lit windows? The night has lamps and torches only. Decide when night missions get tuned with real squads.
+- Real frame rates on medium and high need measuring on real machines (the test machines draw in software).
 - More missions on the Compound (a raid), and more mission types (escort a convoy, defend a position that moves)? M9.
