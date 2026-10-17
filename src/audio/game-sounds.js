@@ -24,15 +24,19 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
   };
   const head = (v) => ({ x: v.pos.x, y: v.pos.y + (v.crouched ? 1 : EYE), z: v.pos.z });
 
+  // A suppressor (weapons/attachments.js) doesn't silence a shot: it makes it a
+  // quieter, duller "thup" (the treble cut, a little higher, much softer).
+  const SUPPRESSED = { volume: 0.35, rate: 1.12, muffle: 1600 };
   events.on('weapon:fire', (e) => {
     const def = WEAPONS[e.weapon];
+    const quiet = e.suppressed ? SUPPRESSED : {};
     if (mine(e)) {
-      for (let i = 0; i < e.pulls; i++) audio.play(def.sounds.fire);
+      for (let i = 0; i < e.pulls; i++) audio.play(def.sounds.fire, quiet);
       if (!def.pump) audio.play('casing', { delay: 0.45 });
       return;
     }
     // Someone else's gun: placed where they are, duller the further away.
-    for (let i = 0; i < e.pulls; i++) audio.play(def.sounds.fire, { position: e.origin, spatial: true, volume: 1.1 });
+    for (let i = 0; i < e.pulls; i++) audio.play(def.sounds.fire, { position: e.origin, spatial: true, volume: 1.1 * (quiet.volume ?? 1), rate: quiet.rate, muffle: quiet.muffle });
   });
   events.on('weapon:cue', (e) => {
     if (mine(e)) {

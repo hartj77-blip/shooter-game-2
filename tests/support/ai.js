@@ -22,7 +22,7 @@ import { FLOOR } from './sim.js';
  * @param {number} [o.players] how many players (they start round the spawn)
  * @param {boolean} [o.night]  a night level (world/lighting.js): darkness hides you
  */
-export async function makeFight({ pieces = [], spawn = [0, 0, 0], yaw = 0, seed = 11, difficulty = 'regular', bounds = { min: [-40, -40], max: [40, 40] }, god = false, level: def = null, players = 1, night = false } = {}) {
+export async function makeFight({ pieces = [], spawn = [0, 0, 0], yaw = 0, seed = 11, difficulty = 'regular', bounds = { min: [-40, -40], max: [40, 40] }, god = false, level: def = null, players = 1, night = false, loadout } = {}) {
   await initPhysics();
   const events = createEvents();
   const log = [];
@@ -30,7 +30,7 @@ export async function makeFight({ pieces = [], spawn = [0, 0, 0], yaw = 0, seed 
     events.on(name, (data) => log.push({ name, time: fight.time, ...data }));
   }
   const levelDef = def ?? { name: 'test', spawn: { pos: spawn, yaw }, nav: bounds, night, pieces: [FLOOR, ...pieces] };
-  const sim = createSim({ def: levelDef, id: 'test', seed, difficulty, events, players: Array.from({ length: players }, (_, owner) => ({ owner })) });
+  const sim = createSim({ def: levelDef, id: 'test', seed, difficulty, events, players: Array.from({ length: players }, (_, owner) => ({ owner, loadout })) });
   for (const p of sim.team.values()) p.health.godMode = god;
   const looks = new Map([...sim.team.values()].map((p) => [p.owner, { yaw: p.spawn.yaw, pitch: 0 }]));
   const me = sim.player(0);

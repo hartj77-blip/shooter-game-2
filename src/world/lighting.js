@@ -13,7 +13,8 @@
 //
 //   moonlight  the level's ambient light: 1 by day, LIGHTING.night at night
 //   lamps      bright under a lamp, fading out to its `radius` (world/kit.js `lamp`)
-//   firing     a muzzle flash lights you up for a moment
+//   firing     a muzzle flash lights you up for a moment (unless suppressed)
+//   laser      a laser attachment's dot gives you away
 //   flashlight an enemy's torch: a cone ahead of them (only that enemy's eyes benefit)
 //
 // No DOM, no three.js: this runs in Node.
@@ -23,7 +24,8 @@ export const LIGHTING = {
   lampFull: 0.4,         // the middle part of a lamp's radius (this fraction of it) is fully lit...
   lampBright: 0.9,       // ...this bright
   firing: 0.85,          // a muzzle flash lights you up this much...
-  firingTime: 0.4,       // ...for this many seconds
+  firingTime: 0.4,       // ...for this many seconds (not with a suppressor: weapons/attachments.js)
+  laser: 0.5,            // a laser on your gun (an attachment) lights you this much at night
   flashlightRange: 22,   // metres an enemy's torch reaches
   flashlightCone: 14,    // degrees either side of where they're looking
   flashlightBright: 0.8, // how bright you are in the middle of the beam, close up

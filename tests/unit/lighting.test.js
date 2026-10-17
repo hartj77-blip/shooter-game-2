@@ -67,3 +67,22 @@ test('at night, far enough off you aren\'t seen at all; by day you are', async (
     assert.equal(f.e().senses.visible, seen, night ? 'night' : 'day');
   }
 });
+
+test('a suppressor: your shot is heard less far, and at night it doesn\'t light you up', async () => {
+  const fire = async (attachments) => {
+    const loadout = [attachments ? { id: 'carbine', attachments } : 'carbine', 'pistol'];
+    const f = await makeFight({ night: true, pieces: [enemy('rifleman', [0, 0, -30], { yaw: SOUTH })], spawn: [8, 0, 0], loadout });
+    f.run(0.6); // gun up
+    f.run(1 / 60, { fire: true, firePressed: true });
+    const P = f.enemies.players.find((p) => p.owner === 0);
+    const shot = f.noise.list.find((n) => n.kind === 'gunshot');
+    return { light: P.light, flashAt: P.flashAt, radius: shot?.radius, fired: f.count('weapon:fire') };
+  };
+  const loud = await fire(null);
+  const quiet = await fire({ muzzle: 'suppressor' });
+  assert.equal(loud.fired, 1);
+  assert.equal(quiet.fired, 1);
+  assert.ok(Number.isFinite(loud.flashAt), 'an open muzzle flashes');
+  assert.equal(quiet.flashAt, -Infinity, 'a suppressed one doesn\'t');
+  assert.ok(Math.abs(quiet.radius - loud.radius * 0.45) < 1e-9, `heard ${quiet.radius} m away, not ${loud.radius} m`);
+});

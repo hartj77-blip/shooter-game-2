@@ -181,7 +181,8 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
    * Plays a sound from the bank.
    * @param {string} name   key in SOUNDS
    * @param {object} [opts] { position: {x,y,z} for 3D sounds, volume, rate, delay (seconds),
-   *                          spatial: place it in the world even if the bank entry doesn't (an enemy's gun) }
+   *                          spatial: place it in the world even if the bank entry doesn't (an enemy's gun),
+   *                          muffle: cut the treble above this many Hz (a suppressed shot) }
    */
   function play(name, opts = {}) {
     if (!ctx || ctx.state !== 'running') return;
@@ -204,6 +205,13 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     source.connect(gain);
 
     let out = gain;
+    if (opts.muffle) {
+      const m = ctx.createBiquadFilter();
+      m.type = 'lowpass';
+      m.frequency.value = opts.muffle;
+      out.connect(m);
+      out = m;
+    }
     if ((opts.spatial ?? entry.spatial) && opts.position) {
       // Far-away sounds lose their treble (air soaks up high notes): a distant
       // gunshot is a dull thump, a close one a sharp crack.

@@ -127,6 +127,13 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 .crosshair i:nth-child(3) { right: var(--spread); }
 .crosshair i:nth-child(4) { left: var(--spread); }
 .crosshair b { position: absolute; left: -1px; top: -1px; width: 2px; height: 2px; background: var(--accent); }
+/* Looking through a scope: a round window in black, with thin crosshairs and a red centre. */
+.scope { position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, transparent 0 min(38vh, 38vw), rgba(0,0,0,0.6) calc(min(38vh, 38vw) + 1px), #000 calc(min(38vh, 38vw) + 6px)); }
+.scope i { position: absolute; background: #111; }
+.scope i:nth-child(1) { left: 0; right: 0; top: 50%; height: 1px; }
+.scope i:nth-child(2) { top: 0; bottom: 0; left: 50%; width: 1px; }
+.scope b { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #e33; box-shadow: 0 0 3px #f55; }
 
 .readout {
   position: absolute; left: calc(20px + env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));

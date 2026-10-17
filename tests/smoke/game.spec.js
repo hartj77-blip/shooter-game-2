@@ -156,9 +156,10 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
     const v = [...window.fireteam.mission.enemiesView.views.values()][0];
     return v.model.bone('spine_02').quaternion.toArray().some((x, i) => x !== q[i]);
   }, before.q, { timeout: 15_000 });
-  // The guns in your hands are the real models too (render/gun-models.js).
-  expect(await page.evaluate(() => Object.values(window.fireteam.mission.viewmodel.models).map((m) => m.kind)))
-    .toEqual(['model', 'model', 'model', 'model']);
+  // The guns in your hands are the real models too (render/gun-models.js): your
+  // loadout's, which for a new profile is the carbine and the pistol (game/profile.js).
+  expect(await page.evaluate(() => Object.entries(window.fireteam.mission.viewmodel.models).map(([id, m]) => `${id}:${m.kind}`)))
+    .toEqual(['carbine:model', 'pistol:model']);
 
   // Hold everyone still, step in 3.5 m in front of the gate guard, and aim at their chest.
   await page.evaluate(() => {
@@ -335,6 +336,35 @@ test('progress: a backup code made in one browser restores your rank in another'
   await second.evaluate((c) => window.fireteam.profile.restore(c), code);
   await expect(second.locator('#rankLine')).toContainText('Rank 7');
   await context.close();
+});
+
+test('attachments: a saved loadout fits them, and a scope gives the scope view', async ({ page }) => {
+  test.setTimeout(120_000);
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  // A veteran's profile: the carbine at its top level, with a scope, a suppressor and a big magazine.
+  await page.addInitScript(() => {
+    localStorage.setItem('fireteam.profile', JSON.stringify({
+      version: 1, xp: 1e6, guns: { carbine: { xp: 1e7 } },
+      loadout: { primary: 'carbine', callin: 'supply', attachments: { carbine: { optic: 'scope', muzzle: 'suppressor', mag: 'extended', under: 'laser' } } },
+    }));
+  });
+  await page.goto('/?map=compound&autostart');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
+  const gun = await page.evaluate(() => {
+    const { def, mag } = window.fireteam.soldier.arsenal.current;
+    return { id: def.id, mag, max: def.mag, suppressed: !!def.suppressed, reticle: window.fireteam.mission.viewmodel.models.carbine.reticle };
+  });
+  expect(gun).toEqual({ id: 'carbine', mag: 45, max: 45, suppressed: true, reticle: 'scope' });
+  // Aim all the way: the gun disappears and the scope's view takes over the screen.
+  await page.waitForFunction(() => window.fireteam.soldier.arsenal.current.status === 'ready', null, { timeout: 30_000 });
+  await page.mouse.down({ button: 'right' });
+  await page.waitForFunction(() => window.fireteam.mission.viewmodel.scoped === 1, null, { timeout: 30_000 });
+  await expect(page.locator('#scope')).toHaveCSS('opacity', '1');
+  await page.screenshot({ path: 'test-results/scope.png' });
+  await page.mouse.up({ button: 'right' });
+  await page.waitForFunction(() => window.fireteam.mission.viewmodel.scoped === 0, null, { timeout: 30_000 });
+  expect(problems).toEqual([]);
 });
 
 test('changing map needs no page reload, and leaves nothing behind', async ({ page }) => {
