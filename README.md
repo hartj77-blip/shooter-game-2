@@ -4,7 +4,14 @@ A co-op first-person shooter for the browser, built step by step as a game-devel
 
 **Play:** https://hartj77-blip.github.io/shooter-game-2/
 
-**Now:** Milestone 5, **Missions**: four missions on a new, bigger map, the Harbour, solo or with up to three friends. Pick one on the title screen:
+**Now:** Milestone 6, **Art pass**: the grey boxes are gone.
+- **Soldiers and guns:** real animated soldiers (they walk, jog, sprint, crouch, aim, reload, throw and fall as ragdolls) and real gun models.
+- **The world:** textured, with trims, barrels, lamp posts and solid mission props.
+- **Light and look:** each map in its own light (midday, dusty haze, golden hour), with outlines, ambient occlusion and bloom on higher graphics quality.
+- **Night missions:** every mission can now be played **at night**, where darkness hides you, lamps and enemy torches give you away, and **N** flips your night-vision goggles down.
+- **Controllers:** they work too.
+
+The missions, from milestone 5, are on the Harbour, solo or with up to three friends. Pick one on the title screen (Day or Night):
 
 - **Lifeline** (rescue): find the hostage somewhere in the fishing village, free them, and get them to the helicopter alive.
 - **Dead Drop** (intel): find the laptop, defend it while it downloads, and carry the drive out.
@@ -51,6 +58,7 @@ Every number (movement, guns, enemies, the director, grenades) has a slider in t
 | R | Reload |
 | 1–4, mouse wheel, Q | Switch gun; Q swaps back to the last one |
 | G | Throw a grenade (missions) |
+| N | Night-vision goggles (night missions) |
 | F (hold) | Use: revive a teammate, free the hostage, start the download, plant a charge, take ammo, call the helicopter |
 | R (when you're down) | Try again: from the last checkpoint in a mission, from the start in the Compound (in co-op, the host once everyone's down) |
 | V (hold) | Squad radio (co-op) |
@@ -58,7 +66,9 @@ Every number (movement, guns, enemies, the director, grenades) has a slider in t
 | `` ` `` (under Esc) | Tuning panel (pauses the game) |
 | Esc | Pause |
 
-Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of view, hold-or-toggle for crouch, sprint and aiming, volume, reduced camera motion, graphics quality, your callsign and voice chat (radio + nearby, push-to-talk only, or off; volume) are in **Settings**.
+A controller works too: sticks to move and look, RT to fire, LT to aim, X to reload (tap) or use (hold), RB for a grenade, D-pad down for night vision. The full table is on the title screen.
+
+Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of view, hold-or-toggle for crouch, sprint and aiming, volume, reduced camera motion, graphics quality (low, medium, high), controller look speed, aim assist and vibration, your callsign and voice chat (radio + nearby, push-to-talk only, or off; volume) are in **Settings**.
 
 ## Learn how it works
 
@@ -81,6 +91,11 @@ Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of v
   15. [The director](docs/lessons/15-the-director.md)
   16. [Building a big map](docs/lessons/16-building-a-big-map.md)
   17. [Supplies, grenades and escorts](docs/lessons/17-supplies-grenades-and-escorts.md)
+  18. [3D models and assets](docs/lessons/18-models-and-assets.md)
+  19. [Skeletal animation](docs/lessons/19-skeletal-animation.md)
+  20. [Light, materials and post-processing](docs/lessons/20-light-materials-and-post-processing.md)
+  21. [Seeing in the dark](docs/lessons/21-seeing-in-the-dark.md)
+  22. [Controllers](docs/lessons/22-controllers.md)
 - [`docs/GLOSSARY.md`](docs/GLOSSARY.md): every term in plain English
 - [`docs/DESIGN.md`](docs/DESIGN.md): the game design document and roadmap
 
@@ -116,22 +131,23 @@ GitHub runs both on every pull request (`.github/workflows/ci.yml`).
 index.html        the page, the import map, menus and HUD
 src/main.js       the app shell: boots everything and runs the game flow
 src/mission.js    one map, built and torn down without a page reload
-src/core/         game loop, input, events, settings, state machine, seeded random, tuning panel
-src/world/        physics (Rapier), collision groups, the level kit, level building, surfaces, targets
+src/core/         game loop, input, controllers, events, settings, state machine, seeded random, tuning panel
+src/world/        physics (Rapier), collision groups, the level kit, level building, surfaces, targets, lighting
 src/weapons/      the weapon table, guns, the arsenal, hitscan, grenades
 src/player/       movement controller, soldier (movement + guns + hitboxes), health, first-person camera
 src/ai/           enemies: roles, senses, brains, squads, the nav grid, A*, cover, noise; the hostage
 src/game/         the shared simulation (sim.js), the kill house course, the Compound's rules, revives, pings,
                   missions (operation, objectives, the director, the helicopter), hold-to-interact, ammo crates
 src/net/          co-op: transports, the protocol, rooms, the host, clients (prediction), stand-ins, voice
-src/render/       renderer, materials, level meshes, signs, guns, viewmodel, effects, targets,
-                  block soldiers, ragdolls, AI debug views, mission props, the helicopter
+src/render/       renderer, moods, post-processing, outlines, assets, materials, level meshes, signs,
+                  guns, viewmodel, effects, targets, animated characters (and the block fallback),
+                  ragdolls, AI debug views, mission props, the helicopter, the night
 src/audio/        sound engine, sound bank, game sounds
 src/ui/           HUD, squad HUD, objective HUD, markers, debrief, lobby, menus, styles
 levels/           maps and missions, written as data
-vendor/           pinned copies of three.js, Rapier, lil-gui and PeerJS
-assets/           fonts and sounds
-tools/            build-sounds.py (cuts the CC0 recordings into game sounds)
+vendor/           pinned copies of three.js (and its add-ons), Rapier, lil-gui and PeerJS
+assets/           fonts, sounds, models and textures
+tools/            build-sounds.py, build-models.mjs and build-textures.py (turn CC0 packs into game files)
 tests/            unit tests (Node) and the smoke tests (Playwright)
 docs/             design document, glossary, lessons
 ```
@@ -146,11 +162,11 @@ docs/             design document, glossary, lessons
 | ✅ | M3 Enemies | AI soldiers, senses, squads, pathfinding, cover, ragdolls, the Compound |
 | ✅ | M4 Co-op | 1–4 players, peer to peer, prediction, revives, pings, voice |
 | ✅ | M5 Missions | the Harbour, four missions, the director, extraction, grenades, checkpoints |
-| ⏭ | M6 Art pass | stylized models, animation, lighting |
-| | M7 Progression | XP, unlocks, loadouts |
-| | M8 Polish | audio, HUD, settings, gamepad, touch |
+| ✅ | M6 Art pass | animated soldiers, gun models, textures, moods, post-processing, night missions, controllers |
+| ⏭ | M7 Progression | XP, unlocks, loadouts |
+| | M8 Polish | audio, HUD, settings, touch |
 | | M9 Content | maps, mission types, difficulty |
 
 ## Credits
 
-Third-party libraries, fonts and sounds are listed with their licences in [CREDITS.md](CREDITS.md).
+Third-party libraries, fonts, sounds, models and textures are listed with their licences in [CREDITS.md](CREDITS.md).

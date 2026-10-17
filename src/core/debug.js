@@ -17,6 +17,8 @@ import { SUPPLY } from '../game/supply.js';
 import { OBJECTIVES } from '../game/objectives.js';
 import { POST } from '../render/post.js';
 import { LIGHTING } from '../world/lighting.js';
+import { GAMEPAD } from './gamepad.js';
+import { NIGHT_VIEW } from '../render/night-view.js';
 import { OUTLINE, setOutlineWidth } from '../render/outline.js';
 
 // Copies of the tables as they were at the start, for "Reset everything".
@@ -282,6 +284,22 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
     ['nvgGrain', 0, 0.5, 0.01, 'Night vision grain'],
   ]);
   graphics.add(OUTLINE, 'width', 0, 0.04, 0.001).name('Outline width (m)').onChange(setOutlineWidth);
+  addSliders(graphics.addFolder('Night lights').close(), NIGHT_VIEW, [
+    ['lampIntensity', 0, 200, 1, 'Lamp brightness'],
+    ['torchIntensity', 0, 400, 1, 'Torch brightness'],
+  ]);
+
+  // Controllers (core/gamepad.js): how the sticks feel.
+  addSliders(gui.addFolder('Controller').close(), GAMEPAD, [
+    ['deadzone', 0, 0.4, 0.01, 'Dead zone'],
+    ['curve', 1, 3, 0.05, 'Response curve (power)'],
+    ['yawSpeed', 60, 500, 5, 'Turn speed (deg/s)'],
+    ['pitchSpeed', 60, 400, 5, 'Look up/down speed (deg/s)'],
+    ['boost', 0, 2, 0.05, 'Turn boost (extra)'],
+    ['boostAfter', 0, 1, 0.05, 'Boost after (s)'],
+    ['holdUse', 0.1, 0.6, 0.01, 'Hold X to use after (s)'],
+    ['assistSlow', 0.1, 1, 0.01, 'Aim assist: turning over a target'],
+  ]);
 
   // What the physics engine sees: every collider drawn as lines.
   const lines = new THREE.LineSegments(
