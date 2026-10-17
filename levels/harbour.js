@@ -124,8 +124,8 @@ for (const [z, row] of Object.entries(rows)) {
   });
 }
 add(
-  { type: 'site', id: 'cache-yard-1', at: [-10, 0, -14], label: 'the middle of the container yard', safe: [-4, -10, WEST] },
-  { type: 'site', id: 'cache-yard-2', at: [10, 0, 2], label: 'the south of the container yard', safe: [10, 8, NORTH] },
+  { type: 'site', id: 'cache-yard-1', prop: 'stack', at: [-10, 0, -14], label: 'the middle of the container yard', safe: [-4, -10, WEST] },
+  { type: 'site', id: 'cache-yard-2', prop: 'stack', at: [10, 0, 2], label: 'the south of the container yard', safe: [10, 8, NORTH] },
   { type: 'crate', at: [-4, 0, -26] },
 );
 
@@ -144,8 +144,8 @@ crane(-4, -43);
 crane(16, -43);
 house(24, -42, 30, -37, { s: [door(27)], mat: 'plank', roofMat: 'roof' });
 add(
-  { type: 'site', id: 'dock-hut', at: [27, 0, -39.5], label: 'the dock hut', safe: [27, -32, NORTH] },
-  { type: 'site', id: 'cache-quay', at: [6, 0, -44], label: 'the quay, between the cranes', safe: [6, -36, NORTH] },
+  { type: 'site', id: 'dock-hut', prop: 'table', at: [27, 0, -39.5], label: 'the dock hut', safe: [27, -32, NORTH] },
+  { type: 'site', id: 'cache-quay', prop: 'stack', at: [6, 0, -45.5], label: 'the quay, between the cranes', safe: [6, -36, NORTH] },
   { type: 'crate', at: [10, 0, -37] },
   // Pallets and crates: cover along the quay.
   { type: 'box', size: [2, 1.2, 2], at: [-20, 0, -45], mat: 'crate' },
@@ -166,7 +166,7 @@ add(
   { type: 'sandbags', from: [70.5, -47], to: [76, -47] },
   { type: 'sandbags', from: [59, -60], to: [59, -51] },
   { type: 'box', size: [1.4, 1.1, 1.4], at: [71, 0, -52], mat: 'crate' },
-  { type: 'site', id: 'lighthouse', at: [68, 0, -53], radius: 8, label: 'the lighthouse', safe: [68, -51, NORTH] },
+  { type: 'site', id: 'lighthouse', prop: 'radio', at: [68, 0, -53], radius: 8, label: 'the lighthouse', safe: [68, -51, NORTH] },
   { type: 'lz', id: 'lz-headland', at: [70, 0, -41], size: 10, radio: [63, -41], approach: NORTH, safe: [70, -44, NORTH] },
   { type: 'crate', at: [62, 0, -50], refills: 4 },
 );
@@ -181,7 +181,7 @@ add(
   { type: 'box', size: [0.3, 3.0, 0.3], at: [44, 0, -29.2], mat: 'steel' },
   { type: 'wall', from: [34, -29.1], to: [51, -29.1], base: 3.3, height: 1, thick: 0.1, mat: 'post' },
   { type: 'stairs', at: [52, 0, -24.8], width: 1.6, rise: 0.275, steps: 12, run: 0.35 },
-  { type: 'site', id: 'mezzanine', at: [40, 3.3, -31.5], label: 'the mezzanine in warehouse A', safe: [44, -18, NORTH] },
+  { type: 'site', id: 'mezzanine', prop: 'table', at: [40, 3.3, -33], label: 'the mezzanine in warehouse A', safe: [44, -18, NORTH] },
   // Stock on the floor.
   { type: 'box', size: [3, 2, 2], at: [38, 0, -19], mat: 'crate' },
   { type: 'box', size: [2, 1.2, 2], at: [48, 0, -16], mat: 'crate' },
@@ -193,7 +193,7 @@ add(
 room(60, -34, 82, -14, { height: 7, thick: 0.4, mat: 'wall', w: [roller(-24)], s: [door(70)], n: [roller(74)] });
 roof(60, -34, 82, -14, 7, 'roof', 0.3);
 add(
-  { type: 'site', id: 'cache-warehouse', at: [71, 0, -26], label: 'warehouse B', safe: [70, -9, NORTH] },
+  { type: 'site', id: 'cache-warehouse', prop: 'stack', at: [71, 0, -26], label: 'warehouse B', safe: [70, -9, NORTH] },
   { type: 'box', size: [3, 2.4, 2], at: [66, 0, -30], mat: 'crate' },
   { type: 'box', size: [2, 1.2, 4], at: [77, 0, -20], mat: 'crate' },
   { type: 'container', at: [76, 0, -28], rotY: WEST, mat: 'container' },
@@ -218,7 +218,7 @@ add(
   // An office upstairs (the laptop's here, perhaps), with a doorway.
   { type: 'wall', from: [42, 0.15], to: [42, 9.85], base: 3.3, height: 2.8, thick: 0.2, mat: 'whitewash', openings: [{ at: 7.5, width: 1.4, bottom: 0, top: 2.3 }] },
   { type: 'box', size: [1.8, 0.8, 0.9], at: [38.5, 3.3, 1.5], mat: 'plank' }, // a desk
-  { type: 'site', id: 'office', at: [39, 3.3, 3], label: 'upstairs in the harbour office', safe: [42, 14, NORTH] },
+  { type: 'site', id: 'office', prop: 'table', at: [39, 3.3, 3], label: 'upstairs in the harbour office', safe: [42, 14, NORTH] },
   { type: 'box', size: [2, 0.9, 1], at: [39, 0, 7], mat: 'plank' },
 );
 
@@ -252,8 +252,27 @@ add(
   { type: 'site', id: 'net-shed', at: [-78, 0, -44.5], label: 'the net shed', safe: [-78, -36, NORTH] },
   { type: 'site', id: 'smokehouse', at: [-78, 0, -10], label: 'the smokehouse', safe: [-68, -10, WEST] },
   { type: 'site', id: 'chapel', at: [-50, 0, -9], label: 'the chapel', safe: [-50, 8, NORTH] },
-  { type: 'site', id: 'cache-village', at: [-56, 0, -18], label: 'the village square', safe: [-56, -10, NORTH] },
+  { type: 'site', id: 'cache-village', prop: 'stack', at: [-56, 0, -18], label: 'the village square', safe: [-56, -10, NORTH] },
   { type: 'crate', at: [-63, 0, -15] },
+);
+
+// ---------------------------------------------------------------- street furniture (milestone 6)
+// Lamps light the quay, the road and the square at night (world/lighting.js);
+// barrels, pallets and a fuel tank are a little more cover.
+add(
+  ...[-60, -36, -12, 10, 30, 52].map((x) => ({ type: 'lamp', at: [x, 0, -47.6], rotY: SOUTH })), // arms over the quay
+  ...[-40, -10, 22, 52].map((x) => ({ type: 'lamp', at: [x, 0, 36.6] })),                       // ...and over the road
+  { type: 'lamp', at: [-53, 0, -23.5] },              // the village square
+  { type: 'lamp', at: [73.5, 0, -11.5], rotY: NORTH }, // outside warehouse B
+  { type: 'barrel', at: [31.2, 0, -38.2] },
+  { type: 'barrel', at: [31.4, 0, -39], mat: 'barrel_red' },
+  { type: 'barrel', at: [-11.6, 0, 30.5], mat: 'barrel_red' },
+  { type: 'barrel', at: [-11.4, 0, 29.7] },
+  { type: 'barrel', at: [62.8, 0, -31.6] },
+  { type: 'barrel', at: [62.9, 0, -30.8] },
+  { type: 'pallet', at: [9.5, 0, 26.5], load: 0.9 },
+  { type: 'pallet', at: [-45.6, 0, -16.6], rotY: 0.3, load: 0.7, cargo: 'crate' },
+  { type: 'tank', at: [58, 0, 6] },
 );
 
 // ---------------------------------------------------------------- where reinforcements arrive
@@ -294,6 +313,7 @@ add(
 export default {
   name: 'The Harbour',
   spawn: { pos: [-62, 0, 56], yaw: NORTH },
+  mood: 'golden', // render/moods.js
   sun: { azimuth: deg(-40), elevation: deg(38) },
   nav: { min: [-84, -66], max: [84, 63], top: 20 },
   pieces,

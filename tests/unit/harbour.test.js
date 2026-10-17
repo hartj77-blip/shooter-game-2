@@ -103,7 +103,7 @@ test('fair start: nobody can see where you arrive, even after a while', async ()
 test('every mission plays on the Harbour: its sites exist, and its first objective starts', async () => {
   await initPhysics();
   const levels = missionLevels({ harbour });
-  assert.deepEqual(Object.keys(levels), MISSIONS.map((m) => m.id));
+  assert.deepEqual(Object.keys(levels), [...MISSIONS.map((m) => m.id), ...MISSIONS.map((m) => `${m.id}-night`)]);
   for (const [id, def] of Object.entries(levels)) {
     const sim = createSim({ def, id, seed: 9 });
     assert.equal(sim.operation.state, 'active', id);

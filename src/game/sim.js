@@ -41,6 +41,8 @@ import { PERSON_ZONES, targetPoint } from '../world/targets.js';
 import { pingFrom } from './pings.js';
 import { createEvents } from '../core/events.js';
 import { idleCommand, heldOnly } from '../core/input.js';
+import { createLighting } from '../world/lighting.js';
+
 
 export const MAX_PLAYERS = 4;
 
@@ -158,6 +160,7 @@ export function createSim({
   if (hasEnemies) {
     enemies = createEnemies({
       world, registry, nav, cover, noise, events, seed, difficulty,
+      lighting: createLighting(def, level.expanded),
       specs: level.expanded.enemies,
       players: [...team.values()],
     });

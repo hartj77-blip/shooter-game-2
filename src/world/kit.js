@@ -3,6 +3,9 @@
 // A level file (see levels/) is just a list of pieces with sizes and positions.
 // expandPiece() turns each piece into plain shape descriptions:
 //   solids    things you can stand on and bump into (they get a mesh AND a collider)
+//   decor     trims that only make things look built: wall caps, door and window
+//             frames, sills, table legs (mesh only: they're too thin to matter,
+//             so bullets, eyes and route-finding ignore them)
 //   paint     flat decoration on the floor (mesh only, you walk straight over it)
 //   signs     text panels (mesh only)
 //   targets   things to shoot (src/world/targets.js brings them to life)
@@ -12,6 +15,7 @@
 //   crates    ammo crates (src/game/supply.js)
 //   sites, entries, lzs  where a mission's objectives can be, where reinforcements
 //             arrive, and where the helicopter lands (src/game/operation.js)
+//   lamps     where the lights are, for the night (world/lighting.js)
 // The physics side (world/level.js) and the drawing side (render/level-view.js)
 // both read these same descriptions, so what you see always matches what you hit.
 //
@@ -31,6 +35,11 @@ export function placePoint([x, y, z], at, a = 0) {
 /** A box solid. `center` is its middle; `size` is its full width/height/depth. */
 function box(size, center, rotY, mat) {
   return { kind: 'box', size, center, rotY, mat };
+}
+
+/** A cylinder solid, standing up, or lying (`lie`) along its own x axis (east-west before rotY). */
+function cylinder(radius, height, center, rotY, mat, lie = false) {
+  return { kind: 'cylinder', radius, height, center, rotY, mat, lie };
 }
 
 /**
@@ -121,6 +130,18 @@ const expanders = {
       const c = placePoint([(s0 + s1) / 2 - length / 2, (y0 + y1) / 2, 0], mid, rotY);
       solids.push(box([s1 - s0, y1 - y0, thick], c, rotY, mat));
     };
+    // Trims (decor): a cap along the top, a frame round each opening, a sill
+    // under each window. They stand a few centimetres proud of the wall, and
+    // never into an opening (a gap you can walk or shoot through stays as wide
+    // as it looks). Full-height walls only: not sandbags or the map's edge.
+    const decor = [];
+    const trim = p.trim ?? height >= 1.8;
+    const T = 0.08; // how wide a trim is
+    const deco = (s0, s1, y0, y1, proud) => {
+      const c = placePoint([(s0 + s1) / 2 - length / 2, (y0 + y1) / 2, 0], mid, rotY);
+      decor.push(box([s1 - s0, y1 - y0, thick + 2 * proud], c, rotY, 'trim'));
+    };
+    if (trim) deco(-0.03, length + 0.03, height - 0.05, height + 0.03, 0.03);
     let cursor = 0;
     for (const o of [...(p.openings ?? [])].sort((a, b) => a.at - b.at)) {
       const s0 = o.at - o.width / 2;
@@ -129,9 +150,17 @@ const expanders = {
       part(s0, s1, 0, o.bottom ?? 0);
       part(s0, s1, o.top ?? height, height);
       cursor = s1;
+      if (!trim) continue;
+      const top = Math.min(o.top ?? height, height);
+      const bottom = o.bottom ?? 0;
+      // (A hair into the opening, so the frame's face isn't drawn on top of the wall's own.)
+      deco(s0 - T, s0 + 0.005, bottom, top, 0.03);
+      deco(s1 - 0.005, s1 + T, bottom, top, 0.03);
+      if (top < height - 0.01) deco(s0 - T, s1 + T, top - 0.005, Math.min(height - 0.05, top + T), 0.03);
+      if (bottom > 0) deco(s0 - T, s1 + T, bottom - 0.06, bottom + 0.005, 0.06);
     }
     part(cursor, length, 0, height);
-    return { solids };
+    return { solids, decor };
   },
 
   // Something to shoot. kind: 'paper' | 'popup' | 'hostage' | 'steel' | 'mover'.
@@ -183,7 +212,58 @@ const expanders = {
 
   // A low wall of sandbags from `from` to `to` ([x, z]): waist-high cover you can shoot over.
   sandbags(p) {
-    return expanders.wall({ ...p, height: p.height ?? 1.0, thick: p.thick ?? 0.6, mat: 'sandbag' });
+    return expanders.wall({ ...p, height: p.height ?? 1.0, thick: p.thick ?? 0.6, mat: 'sandbag', trim: false });
+  },
+
+  // An oil drum, 0.6 m across and 0.9 m tall: cover for your legs. mat: 'barrel' (blue) or 'barrel_red'.
+  barrel(p) {
+    const [x, y, z] = p.at;
+    const mat = p.mat ?? 'barrel';
+    return {
+      solids: [cylinder(0.3, 0.9, [x, y + 0.45, z], 0, mat)],
+      decor: [0.3, 0.6].map((h) => cylinder(0.312, 0.035, [x, y + h, z], 0, mat)), // the rolling hoops
+    };
+  },
+
+  // A wooden pallet (1.2 x 1 m), with a load on it if `load` (its height, in
+  // metres) is given: sacks (`cargo: 'sandbag'`, the default) or boxes ('crate').
+  pallet(p) {
+    const rotY = p.rotY ?? 0;
+    const solids = [box([1.2, 0.15, 1.0], placePoint([0, 0.075, 0], p.at, rotY), rotY, 'plank')];
+    if (p.load) solids.push(box([1.1, p.load, 0.9], placePoint([0, 0.15 + p.load / 2, 0], p.at, rotY), rotY, p.cargo ?? 'sandbag'));
+    return { solids };
+  },
+
+  // A lamp post: a 4 m pole with a lamp on an arm reaching forward (-Z before
+  // rotY). Only the pole is solid. At night the lamp lights the ground around it
+  // (`radius` metres) and anyone standing there (world/lighting.js).
+  lamp(p) {
+    const rotY = p.rotY ?? 0;
+    const H = 4;
+    const head = placePoint([0, H - 0.15, -0.85], p.at, rotY);
+    return {
+      solids: [cylinder(0.07, H, placePoint([0, H / 2, 0], p.at, rotY), rotY, 'post')],
+      decor: [
+        box([0.06, 0.06, 0.9], placePoint([0, H - 0.03, -0.45], p.at, rotY), rotY, 'post'),
+        box([0.32, 0.1, 0.42], placePoint([0, H - 0.08, -0.85], p.at, rotY), rotY, 'post'),
+      ],
+      lamps: [{ at: head, radius: p.radius ?? 9 }],
+    };
+  },
+
+  // A fuel tank: a steel cylinder (2 m across, `length` long, default 4 m)
+  // lying east-west (before rotY) on two concrete saddles. Solid, chest-high cover.
+  tank(p) {
+    const rotY = p.rotY ?? 0;
+    const L = p.length ?? 4;
+    const R = 1;
+    const saddle = (x) => box([0.4, 0.6, 1.6], placePoint([x, 0.3, 0], p.at, rotY), rotY, 'concrete');
+    return {
+      solids: [
+        cylinder(R, L, placePoint([0, 0.4 + R, 0], p.at, rotY), rotY, p.mat ?? 'tank', true),
+        saddle(-L / 2 + 0.6), saddle(L / 2 - 0.6),
+      ],
+    };
   },
 
   // An ammo crate (missions): hold F beside it to fill up your spare ammo and
@@ -204,12 +284,19 @@ const expanders = {
   // if it isn't on the ground) is where the squad starts again if they retry from
   // the checkpoint this site gives.
   // `radius` (hold the line): how big the area to hold is.
+  //
+  // `prop`: what always stands there, whatever the mission, as level geometry
+  // (solid, the same on every computer): 'table' (where a laptop can be),
+  // 'stack' (crates, where a weapons cache can be hidden under a tarp) or
+  // 'radio' (a stand for a radio). The mission only adds what's on top
+  // (render/props-view.js), so you can't walk through it.
   site(p) {
     return {
       sites: [{
         id: p.id, at: p.at, yaw: p.yaw ?? 0, radius: p.radius ?? null, label: p.label ?? null,
-        safe: p.safe ?? null,
+        safe: p.safe ?? null, prop: p.prop ?? null,
       }],
+      ...(p.prop ? SITE_PROPS[p.prop]([p.at[0], p.at[1] ?? 0, p.at[2]], p.yaw ?? 0) : {}),
     };
   },
 
@@ -223,9 +310,11 @@ const expanders = {
   // [x, z]) to call the helicopter with, and the direction it flies in from
   // (`approach`, radians: 0 = from the north).
   lz(p) {
+    const radio = p.radio ?? [p.at[0] + 4, p.at[2]];
     return {
-      lzs: [{ id: p.id ?? 'lz', at: p.at, size: p.size ?? 10, radio: p.radio ?? [p.at[0] + 4, p.at[2]], approach: p.approach ?? 0, safe: p.safe ?? null }],
+      lzs: [{ id: p.id ?? 'lz', at: p.at, size: p.size ?? 10, radio, approach: p.approach ?? 0, safe: p.safe ?? null }],
       paint: [{ size: [p.size ?? 10, p.size ?? 10], center: [p.at[0], (p.at[1] ?? 0) + 0.006, p.at[2]], rotY: 0, color: '#3a4a36' }],
+      ...SITE_PROPS.radio([radio[0], p.at[1] ?? 0, radio[1]], 0),
     };
   },
 
@@ -262,6 +351,24 @@ const expanders = {
   },
 };
 
+// What stands at a mission site (see `site` above). `at` is the ground point, `yaw` the site's.
+// render/props-view.js puts the mission's things on top of these heights.
+export const SITE_PROPS = {
+  table(at, yaw) {
+    const legs = [[-0.55, -0.3], [0.55, -0.3], [-0.55, 0.3], [0.55, 0.3]];
+    return {
+      solids: [box([1.2, 0.05, 0.7], placePoint([0, 0.74, 0], at, yaw), yaw, 'plank')],
+      decor: legs.map(([x, z]) => box([0.05, 0.715, 0.05], placePoint([x, 0.3575, z], at, yaw), yaw, 'plank')),
+    };
+  },
+  stack(at, yaw) {
+    return { solids: [box([1.3, 0.9, 0.7], placePoint([0, 0.45, 0], at, yaw), yaw, 'crate')] };
+  },
+  radio(at, yaw) {
+    return { solids: [box([0.7, 0.5, 0.5], placePoint([0, 0.25, 0], at, yaw), yaw, 'crate')] };
+  },
+};
+
 /** Turns one level piece into { solids, paint, signs }. */
 export function expandPiece(piece) {
   const fn = expanders[piece.type];
@@ -272,7 +379,7 @@ export function expandPiece(piece) {
   return result;
 }
 
-const KINDS = ['solids', 'paint', 'signs', 'targets', 'triggers', 'racks', 'enemies', 'crates', 'sites', 'entries', 'lzs'];
+const KINDS = ['solids', 'decor', 'paint', 'signs', 'targets', 'triggers', 'racks', 'enemies', 'crates', 'sites', 'entries', 'lzs', 'lamps'];
 
 /** Expands a whole level definition. */
 export function expandLevel(def) {

@@ -107,7 +107,9 @@ export function flatten(group) {
   group.traverse((o) => {
     if (!o.isMesh || o.material.transparent || !o.material.color) return;
     const g = o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
-    parts.push(paint(g, `#${o.material.color.getHexString()}`));
+    // A model painted at build time (its colours on its corners) keeps them.
+    if (o.material.vertexColors && g.attributes.color) parts.push(g.index ? g.toNonIndexed() : g);
+    else parts.push(paint(g, `#${o.material.color.getHexString()}`));
   });
   return mergeGeometries(parts);
 }

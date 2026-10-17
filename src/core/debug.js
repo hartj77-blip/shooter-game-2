@@ -15,6 +15,11 @@ import { NOISE } from '../ai/noise.js';
 import { GRENADE } from '../weapons/grenades.js';
 import { SUPPLY } from '../game/supply.js';
 import { OBJECTIVES } from '../game/objectives.js';
+import { POST } from '../render/post.js';
+import { LIGHTING } from '../world/lighting.js';
+import { GAMEPAD } from './gamepad.js';
+import { NIGHT_VIEW } from '../render/night-view.js';
+import { OUTLINE, setOutlineWidth } from '../render/outline.js';
 
 // Copies of the tables as they were at the start, for "Reset everything".
 const DEFAULT_WEAPONS = structuredClone(WEAPONS);
@@ -238,6 +243,16 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
   }
   addSliders(ai.addFolder('Noticing').close(), AWARENESS, AWARENESS_ROWS);
   addSliders(ai.addFolder('Hearing').close(), NOISE, NOISE_ROWS);
+  // Night missions (world/lighting.js): how much darkness hides you.
+  addSliders(ai.addFolder('In the dark').close(), LIGHTING, [
+    ['night', 0, 1, 0.01, 'Moonlight (0 dark .. 1 day)'],
+    ['lampBright', 0, 1, 0.01, 'Under a lamp'],
+    ['firing', 0, 1, 0.01, 'Muzzle flash lights you'],
+    ['flashlightRange', 0, 40, 1, 'Torch reach (m)'],
+    ['flashlightCone', 2, 40, 1, 'Torch cone (deg either side)'],
+    ['darkSight', 0, 1, 0.01, 'Sight in full dark (x range)'],
+    ['darkRate', 0, 1, 0.01, 'Noticing in full dark (x speed)'],
+  ]);
 
   // ---- missions: what the director is up to, and the numbers behind missions
   const missions = gui.addFolder('Missions').close();
@@ -257,6 +272,34 @@ export function createDebugPanel({ scene, world, player, rig, loop, onRespawn, a
   addSliders(missions.addFolder('Objectives').close(), OBJECTIVES, OBJECTIVE_ROWS);
   addSliders(missions.addFolder('Grenades').close(), GRENADE, GRENADE_ROWS);
   addSliders(missions.addFolder('Ammo crates').close(), SUPPLY, SUPPLY_ROWS);
+
+  // Graphics (render/post.js, render/outline.js): the look on medium and high quality.
+  const graphics = gui.addFolder('Graphics').close();
+  addSliders(graphics, POST, [
+    ['bloomStrength', 0, 2, 0.05, 'Bloom strength (high)'],
+    ['bloomRadius', 0, 1, 0.05, 'Bloom spread (high)'],
+    ['bloomThreshold', 0, 2, 0.05, 'Bloom from brightness (high)'],
+    ['aoIntensity', 0, 1.5, 0.05, 'Corner shading, AO (high)'],
+    ['nvgGain', 1, 6, 0.1, 'Night vision gain'],
+    ['nvgGrain', 0, 0.5, 0.01, 'Night vision grain'],
+  ]);
+  graphics.add(OUTLINE, 'width', 0, 0.04, 0.001).name('Outline width (m)').onChange(setOutlineWidth);
+  addSliders(graphics.addFolder('Night lights').close(), NIGHT_VIEW, [
+    ['lampIntensity', 0, 200, 1, 'Lamp brightness'],
+    ['torchIntensity', 0, 400, 1, 'Torch brightness'],
+  ]);
+
+  // Controllers (core/gamepad.js): how the sticks feel.
+  addSliders(gui.addFolder('Controller').close(), GAMEPAD, [
+    ['deadzone', 0, 0.4, 0.01, 'Dead zone'],
+    ['curve', 1, 3, 0.05, 'Response curve (power)'],
+    ['yawSpeed', 60, 500, 5, 'Turn speed (deg/s)'],
+    ['pitchSpeed', 60, 400, 5, 'Look up/down speed (deg/s)'],
+    ['boost', 0, 2, 0.05, 'Turn boost (extra)'],
+    ['boostAfter', 0, 1, 0.05, 'Boost after (s)'],
+    ['holdUse', 0.1, 0.6, 0.01, 'Hold X to use after (s)'],
+    ['assistSlow', 0.1, 1, 0.01, 'Aim assist: turning over a target'],
+  ]);
 
   // What the physics engine sees: every collider drawn as lines.
   const lines = new THREE.LineSegments(

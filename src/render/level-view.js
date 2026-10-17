@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { wedgePoints, WEDGE_TRIANGLES } from '../world/kit.js';
 import { signTexture } from './signs.js';
 import { mergeTextured } from './merge.js';
+import { paintMaterial } from './materials.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 export const TILE = 32; // metres: the size of a batch
@@ -61,14 +62,19 @@ export function buildLevelView(expanded, materials) {
   // Each piece is built where it stands in the world, then put in its batch:
   // same material, same tile (by where its middle is).
   const batches = new Map(); // 'material|tileX|tileZ' -> geometries
-  for (const solid of expanded.solids) {
+  // (Decor, the trims with no collider, is drawn just like the solids.)
+  for (const solid of [...expanded.solids, ...expanded.decor]) {
     if (solid.hidden) continue; // invisible walls at the map's edge: felt, not seen
-    const geometry = solid.kind === 'box'
-      ? new THREE.BoxGeometry(...solid.size).toNonIndexed()
-      : wedgeGeometry(solid.width, solid.length, solid.height);
+    let geometry;
+    if (solid.kind === 'box') geometry = new THREE.BoxGeometry(...solid.size).toNonIndexed();
+    else if (solid.kind === 'cylinder') {
+      // 16 sides: round enough at arm's length, and cheap (they're batched with the rest).
+      geometry = new THREE.CylinderGeometry(solid.radius, solid.radius, solid.height, 16).toNonIndexed();
+      if (solid.lie) geometry.rotateZ(Math.PI / 2);
+    } else geometry = wedgeGeometry(solid.width, solid.length, solid.height);
     const position = new THREE.Vector3(...solid.center);
     worldGridUVs(geometry, position, solid.rotY);
-    geometry.computeVertexNormals();
+    if (solid.kind !== 'cylinder') geometry.computeVertexNormals(); // (a cylinder keeps its own: smooth round the side)
     geometry.rotateY(solid.rotY);
     geometry.translate(position.x, position.y, position.z);
     const mat = materials[solid.mat] ? solid.mat : 'concrete';
@@ -88,10 +94,11 @@ export function buildLevelView(expanded, materials) {
   }
 
   for (const paint of expanded.paint) {
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(paint.size[0], paint.size[1]),
-      new THREE.MeshStandardMaterial({ color: paint.color, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1 }),
-    );
+    const geometry = new THREE.PlaneGeometry(paint.size[0], paint.size[1]);
+    // UVs in metres (a plane's run 0..1 across it), so the surface keeps its real size.
+    const uv = geometry.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * paint.size[0], uv.getY(i) * paint.size[1]);
+    const mesh = new THREE.Mesh(geometry, paintMaterial(paint.color, materials));
     mesh.position.set(...paint.center);
     mesh.rotation.set(-Math.PI / 2, paint.rotY, 0, 'YXZ');
     mesh.receiveShadow = true;

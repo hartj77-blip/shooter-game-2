@@ -19,6 +19,9 @@ export const SETTINGS_SCHEMA = {
   sprintMode:   { default: 'hold', options: ['hold', 'toggle'] },
   aimMode:      { default: 'hold', options: ['hold', 'toggle'] },
   adsSensitivity: { default: 1.0,  min: 0.2, max: 2 },   // mouse speed while aiming, relative to normal
+  padSensitivity: { default: 1.0,  min: 0.3, max: 2.5 },  // controller look speed (core/gamepad.js)
+  aimAssist:    { default: true },                        // controller: turning slows while your sights are on an enemy
+  rumble:       { default: true },                        // controller vibration
   difficulty:   { default: 'regular', options: ['recruit', 'regular', 'veteran'] }, // enemy damage, reactions, aim
   masterVolume: { default: 0.8,    min: 0,   max: 1 },
   sfxVolume:    { default: 1.0,    min: 0,   max: 1 },

@@ -14,7 +14,9 @@
 //
 // Missions play on maps from the same folder (the Harbour, for now): main.js
 // turns each into its own entry in the map list, so a mission is chosen just
-// like a map.
+// like a map. Each also comes AT NIGHT (`harbour-rescue-night`...): the same
+// mission in the night mood with the lamps lit, where darkness hides you
+// (world/lighting.js) and night-vision goggles help (N).
 
 export const MISSIONS = [
   {
@@ -102,5 +104,13 @@ export const MISSIONS = [
 export function missionLevels(maps) {
   const out = {};
   for (const m of MISSIONS) out[m.id] = { ...maps[m.map], mission: m };
+  for (const m of MISSIONS) {
+    const id = `${m.id}-night`;
+    out[id] = { ...maps[m.map], name: `${maps[m.map].name} at night`, night: true, mood: 'night', mission: { ...m, id, night: true } };
+  }
   return out;
 }
+
+/** The night version of a mission's map id, or the day version of a night one. */
+export const nightOf = (id) => (id.endsWith('-night') ? id : `${id}-night`);
+export const dayOf = (id) => id.replace(/-night$/, '');

@@ -48,7 +48,8 @@ function faceTexture(hostage) {
   return t;
 }
 
-export function createTargetsView(scene, targets, racks = []) {
+/** `guns`: the loaded gun models for the racks (assets.model('guns')), or null for block-built ones. */
+export function createTargetsView(scene, targets, racks = [], guns = null) {
   const group = new THREE.Group();
   group.name = 'targets';
   scene.add(group);
@@ -130,9 +131,16 @@ export function createTargetsView(scene, targets, racks = []) {
     const step = rack.width / rack.weapons.length;
     rack.weapons.forEach((id, i) => {
       const def = WEAPONS[id];
-      const gun = buildGun(def, { hands: false }).group;
-      gun.rotation.set(Math.PI / 2, 0, Math.PI / 2); // lying on its side, muzzle to the left
-      gun.position.set(-rack.width / 2 + step * (i + 0.5), 0.04, 0.05);
+      const gun = buildGun(def, { hands: false, guns }).group;
+      // Lying on its left side, muzzle to the left. three.js turns about z, then
+      // y, then x: y swings the muzzle (-z) round to the left (-x), then x rolls the
+      // gun's right side (+x) to face up. (Until M6 this said (90°, 0, 90°), which
+      // stood every gun on its stock, muzzle up: the order matters. Lesson 18.)
+      // So the gun's own z runs along the table and its x points up: centre it on
+      // its label, resting on the table.
+      const box = new THREE.Box3().setFromObject(gun);
+      gun.rotation.set(Math.PI / 2, Math.PI / 2, 0);
+      gun.position.set(-rack.width / 2 + step * (i + 0.5) - (box.min.z + box.max.z) / 2, 0.005 - box.min.x, 0.05);
       gun.traverse((o) => { o.castShadow = true; });
       holder.add(gun);
       const label = new THREE.Mesh(

@@ -38,13 +38,52 @@ test('the game loads, runs without errors, and the player can walk', async ({ pa
   expect(problems).toEqual([]);
 });
 
+test('a controller: the menus, walking, turning and pausing', async ({ page }) => {
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  // A pretend controller the test can push around (browsers can't fake a real one).
+  await page.addInitScript(() => {
+    const pad = { id: 'test pad', index: 0, connected: true, mapping: 'standard', timestamp: 0,
+      axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })) };
+    window.testPad = {
+      press(i, on) { pad.buttons[i] = { pressed: on, touched: on, value: on ? 1 : 0 }; pad.timestamp++; },
+      axes(a) { pad.axes = a; pad.timestamp++; },
+    };
+    navigator.getGamepads = () => [pad, null, null, null];
+  });
+  await page.goto('/?nolock');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.flow.is('title'), null, { timeout: 30_000 });
+  // Start (on the title screen) plays.
+  await page.evaluate(() => window.testPad.press(9, true));
+  await page.waitForFunction(() => window.fireteam.flow.is('playing'), null, { timeout: 15_000 });
+  await page.evaluate(() => window.testPad.press(9, false));
+  await page.waitForFunction(() => window.fireteam.loop.tick > 30, null, { timeout: 30_000 });
+  const start = await page.evaluate(() => ({ ...window.fireteam.player.state.pos, yaw: window.fireteam.input.yaw }));
+  await page.evaluate(() => window.testPad.axes([0, -1, 0.7, 0])); // forward, and turn right
+  const tick = await page.evaluate(() => window.fireteam.loop.tick);
+  await page.waitForFunction((t) => window.fireteam.loop.tick > t + 60, tick, { timeout: 30_000 });
+  await page.evaluate(() => window.testPad.axes([0, 0, 0, 0]));
+  const end = await page.evaluate(() => ({ ...window.fireteam.player.state.pos, yaw: window.fireteam.input.yaw }));
+  expect(Math.hypot(end.x - start.x, end.z - start.z), 'walked').toBeGreaterThan(1.5);
+  expect(start.yaw - end.yaw, 'turned right').toBeGreaterThan(0.2);
+  expect(await page.evaluate(() => window.fireteam.input.device)).toBe('pad');
+  // Start pauses; the D-pad moves between the pause menu's buttons; B resumes.
+  await page.evaluate(() => window.testPad.press(9, true));
+  await page.waitForFunction(() => window.fireteam.flow.is('paused'), null, { timeout: 15_000 });
+  await page.evaluate(() => { window.testPad.press(9, false); window.testPad.press(13, true); });
+  await page.waitForFunction(() => document.activeElement?.tagName === 'BUTTON', null, { timeout: 15_000 });
+  await page.evaluate(() => { window.testPad.press(13, false); window.testPad.press(1, true); });
+  await page.waitForFunction(() => window.fireteam.flow.is('playing'), null, { timeout: 15_000 });
+  expect(problems).toEqual([]);
+});
+
 test('the title screen and settings open', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => window.fireteam?.ready, null, { timeout: 30_000 });
   await expect(page.locator('#title')).toBeVisible();
   await page.click('#btnSettingsT');
   await expect(page.locator('#settings')).toBeVisible();
-  await expect(page.locator('#settingsForm .setting')).toHaveCount(17);
+  await expect(page.locator('#settingsForm .setting')).toHaveCount(20);
   await page.screenshot({ path: 'test-results/settings.png' });
   await page.click('#btnSettingsDone');
   await expect(page.locator('#settings')).toBeHidden();
@@ -102,6 +141,24 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
   await page.goto('/?map=compound&autostart');
   await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
   expect(await page.evaluate(() => window.fireteam.enemies.list.length)).toBe(16);
+  // The soldiers are the animated, skinned characters (render/character.js), not the fallback,
+  // and their skeletons move (the idle clip breathes).
+  expect(await page.evaluate(() => window.fireteam.assets.failed)).toEqual([]);
+  const bone = () => page.evaluate(() => {
+    const v = [...window.fireteam.mission.enemiesView.views.values()][0];
+    return { kind: v.model.kind, q: v.model.bone('spine_02').quaternion.toArray() };
+  });
+  const before = await bone();
+  expect(before.kind).toBe('skinned');
+  // (Wait for it to move, rather than a fixed time: on a slow test machine half
+  // a second can pass without a single frame being drawn.)
+  await page.waitForFunction((q) => {
+    const v = [...window.fireteam.mission.enemiesView.views.values()][0];
+    return v.model.bone('spine_02').quaternion.toArray().some((x, i) => x !== q[i]);
+  }, before.q, { timeout: 15_000 });
+  // The guns in your hands are the real models too (render/gun-models.js).
+  expect(await page.evaluate(() => Object.values(window.fireteam.mission.viewmodel.models).map((m) => m.kind)))
+    .toEqual(['model', 'model', 'model', 'model']);
 
   // Hold everyone still, step in 3.5 m in front of the gate guard, and aim at their chest.
   await page.evaluate(() => {
@@ -171,6 +228,85 @@ test('the Harbour: a mission loads, you can walk, the objective shows, and it dr
   });
   expect(calls).toBeLessThan(260);
   await page.screenshot({ path: 'test-results/harbour.png' });
+  expect(problems).toEqual([]);
+});
+
+test('graphics quality: low, medium and high all draw, with post-processing on medium and high', async ({ page }) => {
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
+  });
+  await page.goto('/?map=compound&autostart');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
+  /** Switch quality, let a few frames draw, and count one whole frame's draw calls. */
+  const frame = (quality) => page.evaluate(async (q) => {
+    const f = window.fireteam;
+    f.view.applyQuality(q);
+    const next = () => new Promise((res) => requestAnimationFrame(res));
+    for (let i = 0; i < 4; i++) await next();
+    const info = f.view.renderer.info;
+    info.autoReset = false;
+    await next();
+    info.reset();
+    await next();
+    info.autoReset = true;
+    return { calls: info.render.calls, post: !!f.view.post, nvg: f.view.post?.nvg ?? null };
+  }, quality);
+  const low = await frame('low');
+  expect(low.post, 'low draws straight to the screen').toBe(false);
+  const medium = await frame('medium');
+  expect(medium.post, 'medium has the grade').toBe(true);
+  expect(medium.calls).toBeLessThan(450);
+  const high = await frame('high');
+  expect(high.post).toBe(true);
+  expect(high.calls).toBeLessThan(900);
+  await page.screenshot({ path: 'test-results/quality-high.png' });
+  // Night vision draws through the chain even on low.
+  await page.evaluate(() => { window.fireteam.view.nvg = 1; });
+  const goggles = await frame('low');
+  expect(goggles.post).toBe(true);
+  expect(goggles.nvg).toBe(1);
+  await page.screenshot({ path: 'test-results/quality-nvg.png' });
+  await page.evaluate(() => { window.fireteam.view.nvg = 0; });
+  expect(problems).toEqual([]);
+});
+
+test('night: the Day/Night switch picks the night mission, its lamps are lit, and N flips the goggles down', async ({ page }) => {
+  test.setTimeout(150_000); // two maps to load
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
+  });
+  await page.goto('/');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.map, null, { timeout: 60_000 });
+  await page.click('.daynight button[data-time="night"]');
+  await page.click('.map[data-map="harbour-rescue"]');
+  await page.waitForFunction(() => window.fireteam.map === 'harbour-rescue-night' && window.fireteam.mission, null, { timeout: 90_000 });
+  await expect(page.locator('.map[data-map="harbour-rescue"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('.daynight button[data-time="night"]')).toHaveAttribute('aria-checked', 'true');
+  expect(page.url()).toContain('map=harbour-rescue-night');
+  const night = await page.evaluate(() => ({
+    night: window.fireteam.mission.def.night,
+    lamps: window.fireteam.session.level.expanded.lamps.length,
+    lit: window.fireteam.enemies.ai?.lighting?.night ?? null,
+    sky: window.fireteam.view.mood.skyTop,
+  }));
+  expect(night.night).toBe(true);
+  expect(night.lamps).toBeGreaterThan(5);
+  expect(night.sky).toBe('#04060c'); // render/moods.js night
+
+  await page.click('#btnDeploy');
+  await page.waitForFunction(() => window.fireteam.flow.is('playing'), null, { timeout: 30_000 });
+  await expect(page.locator('#nvgIcon')).toBeVisible();
+  await page.keyboard.press('KeyN');
+  await page.waitForFunction(() => window.fireteam.view.nvg > 0.9, null, { timeout: 10_000 });
+  await expect(page.locator('#nvgIcon')).toHaveClass(/on/);
+  await page.screenshot({ path: 'test-results/night-goggles.png' });
+  await page.keyboard.press('KeyN');
+  await page.waitForFunction(() => window.fireteam.view.nvg === 0, null, { timeout: 10_000 });
+  await page.screenshot({ path: 'test-results/night.png' });
   expect(problems).toEqual([]);
 });
 
