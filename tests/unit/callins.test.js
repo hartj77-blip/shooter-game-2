@@ -92,7 +92,7 @@ test('a mortar strike: red smoke warns first, then the shells hurt enemies near 
   const hold = pin(f, [[0, 0, -12], [2, 0, -13]]);
   const hp0 = f.list.map((e) => e.health);
   const blasts = [];
-  f.events.on('explosion', (e) => { if (e.kind === 'mortar') blasts.push(e); }); // (not the guards' own grenades)
+  f.events.on('explosion', (e) => { if (e.kind === 'mortar') blasts.push(e); });
   call(f, 12);
   f.run(WINDUP + 0.2, {}, hold);
   assert.ok(f.list.some((e) => e.senses.hazard), 'the enemies have seen the red smoke');
