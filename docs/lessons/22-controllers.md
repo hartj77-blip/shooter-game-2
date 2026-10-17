@@ -25,6 +25,7 @@ Modern controllers report a **standard mapping**: button 0 is always the bottom 
 | L3 (press the left stick) | Sprint |
 | D-pad left / right | Previous / next gun |
 | D-pad up / down | Squad radio (hold) / night vision |
+| View (Back, Share) | Call-in (lesson 25) |
 | Start | Pause |
 
 X does two jobs, because a controller has fewer buttons than a keyboard. Under 0.25 s (`holdUse`) it's a tap and reloads; held longer it becomes "use". On screen, the prompts change to match whatever you last touched: "Hold F" becomes "Hold X" (`GLYPHS`).
