@@ -5,7 +5,8 @@
 
 import { SURFACES } from '../world/surfaces.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
-import { SIGHT } from '../world/groups.js';
+import { LEVEL } from '../world/groups.js';
+import { CALLINS } from '../game/callins.js';
 import { RAPIER } from '../world/physics.js';
 
 const EYE = 1.6; // roughly where a standing soldier's head is, for placing their sounds
@@ -76,7 +77,7 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
 
   // Missions: bangs, grenades, crates, the big moments.
   events.on('explosion', (e) => {
-    const big = e.kind === 'charge';
+    const big = e.kind === 'charge' || e.kind === 'mortar';
     audio.play('explosion', { position: e.pos, volume: big ? 1.3 : 1, rate: big ? 0.8 : 1 });
   });
   events.on('grenade:bounce', (e) => audio.play('bounce', { position: e.pos, volume: Math.min(1, e.speed / 8), rate: 0.75 }));
@@ -86,6 +87,22 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
   events.on('mission:complete', () => audio.play('chime'));
   events.on('mission:failed', () => audio.play('buzz'));
   events.on('objective:planted', () => audio.play('beep', { rate: 1.4 }));
+  // Call-ins (game/callins.js): the radio, then whatever's coming.
+  events.on('callin:call', (e) => audio.play('radio', { volume: mine(e) ? 0.7 : 0.4 }));
+  events.on('callin:refused', (e) => { if (mine(e)) audio.play('buzz', { volume: 0.35 }); });
+  events.on('callin:ready', (e) => { if (mine(e)) audio.play('chime', { volume: 0.5 }); });
+  events.on('callin:landed', (e) => audio.play('land', { position: e.pos, volume: 1, rate: 0.7 }));
+  events.on('callin:start', (e) => {
+    if (e.kind === 'smoke') for (const c of e.clouds ?? [e.pos]) audio.play('hiss', { position: c });
+    if (e.kind === 'mortar') {
+      // Each shell whistles down before it lands (the shells' times: game/callins.js).
+      const M = CALLINS.mortar;
+      for (let i = 0; i < M.shells; i++) {
+        const lands = M.warn + (M.shells > 1 ? (i / (M.shells - 1)) * M.over : 0);
+        audio.play('whistle', { position: e.pos, delay: Math.max(0, lands - 1.3) });
+      }
+    }
+  });
 
   events.on('course:ready', () => audio.play('beep'));
   events.on('course:start', () => audio.play('beep', { rate: 1.5 }));
@@ -99,7 +116,7 @@ export function connectGameSounds({ audio, events, soldier, cameraRig, world, re
   function surfaceUnderfoot() {
     const p = soldier.state.pos;
     ray.origin = { x: p.x, y: p.y + 0.1, z: p.z };
-    const hit = world.castRay(ray, 0.4, true, undefined, SIGHT); // the floor only, not your own legs
+    const hit = world.castRay(ray, 0.4, true, undefined, LEVEL); // the floor only, not your own legs (or smoke)
     return hit ? registry.get(hit.collider).surface : 'concrete';
   }
 

@@ -27,7 +27,7 @@
 
 import { createJitterBuffer } from './jitter.js';
 import {
-  SNAPSHOT_EVERY, DEAD_KEPT, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, encodeOp, encodeHostage,
+  SNAPSHOT_EVERY, DEAD_KEPT, decodeCommand, encodePlayer, encodeEnemy, encodeTarget, encodeEncounter, encodeOp, encodeHostage, encodeCallins,
   eventFor, wireEvent,
 } from './protocol.js';
 import { WEAPONS } from '../weapons/weapons-data.js';
@@ -77,9 +77,9 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
   // ---------------------------------------------------------------- friends coming and going
 
   /** A friend joins (net/room.js calls this once their browser has loaded the map). */
-  function addClient({ slot, link, callsign, loadout }) {
+  function addClient({ slot, link, callsign, loadout, callin }) {
     if (clients.has(slot)) removeClient(slot);
-    sim.addPlayer(slot, { callsign, loadout }); // their guns: the same ones their browser predicts with
+    sim.addPlayer(slot, { callsign, loadout, callin }); // their guns: the same ones their browser predicts with
     const c = { slot, link, jitter: createJitterBuffer(), heard: clock(), off: [] };
     c.off.push(link.onMessage((msg) => inbox.push([slot, msg])));
     c.off.push(link.onClose(() => removeClient(slot)));
@@ -217,6 +217,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
       ...(sim.supply.list.length ? { cr: sim.supply.save() } : {}), // refills left in each ammo crate
       ...(sim.operation ? { op: encodeOp(sim.operation.view) } : {}),  // the mission: objectives, helicopter
       ...(sim.hostage ? { h: encodeHostage(sim.hostage.view) } : {}),
+      ...(sim.callins.active.length ? { ci: encodeCallins(sim.callins.view) } : {}), // drops, drones, shells, smoke
     };
   }
 
@@ -254,6 +255,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     encounter: sim.encounter,
     course: sim.course,
     supply: sim.supply,
+    callins: sim.callins,
     grenades: sim.grenades,
     operation: sim.operation,
     get hostage() { return sim.hostage; },

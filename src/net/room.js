@@ -12,7 +12,7 @@
 // works the same way: welcome, start, load, loaded.
 //
 // Lobby messages (the in-game ones are in net/protocol.js):
-//   client → host   hello { callsign, version, peer }   loaded { loadout }   rpong { at }   radio { on }
+//   client → host   hello { callsign, version, peer }   loaded { loadout, callin }   rpong { at }   radio { on }
 //   host → client   welcome { slot, code, roster, lobby }   roster { roster }   lobby { lobby }
 //                   start { lobby }   bye { reason }   rping { at }   radio { slot, on }
 //
@@ -30,6 +30,7 @@ import { cleanText } from '../core/settings.js';
 import { PROTOCOL_VERSION } from './protocol.js';
 import { NetError } from './transport.js';
 import { cleanArsenal } from '../weapons/attachments.js';
+import { CALLIN_KINDS } from '../game/callins.js';
 
 export const ROOM_SIZE = 4;
 // No I, L or O: they're too easy to mistake for 1, 1 and 0 when read out loud.
@@ -130,6 +131,7 @@ export async function hostRoom({ net, callsign, code = makeCode(), lobby: start 
       if (msg.t === 'loaded') {
         member.loaded = true;
         member.loadout = cleanArsenal(msg.loadout); // checked: it came from another computer
+        member.callin = CALLIN_KINDS.includes(msg.callin) ? msg.callin : 'supply';
         events.emit('loaded', member);
         tell();
       } else if (msg.t === 'rpong') {
@@ -231,7 +233,7 @@ export async function joinRoom({ net, code, callsign, peer = null }) {
       link,
       on: events.on,
       /** Tell the host this browser has built the map and is ready to play, with these guns. */
-      loaded(loadout) { link.send({ t: 'loaded', loadout }); },
+      loaded(loadout, callin) { link.send({ t: 'loaded', loadout, callin }); },
       /** You pressed or let go of V. */
       setRadio(on) { link.send({ t: 'radio', on: !!on }); },
       /** Leave (back to the title screen). */
