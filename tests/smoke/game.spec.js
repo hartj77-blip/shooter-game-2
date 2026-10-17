@@ -150,8 +150,12 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
   });
   const before = await bone();
   expect(before.kind).toBe('skinned');
-  await page.waitForTimeout(500);
-  expect((await bone()).q).not.toEqual(before.q);
+  // (Wait for it to move, rather than a fixed time: on a slow test machine half
+  // a second can pass without a single frame being drawn.)
+  await page.waitForFunction((q) => {
+    const v = [...window.fireteam.mission.enemiesView.views.values()][0];
+    return v.model.bone('spine_02').quaternion.toArray().some((x, i) => x !== q[i]);
+  }, before.q, { timeout: 15_000 });
   // The guns in your hands are the real models too (render/gun-models.js).
   expect(await page.evaluate(() => Object.values(window.fireteam.mission.viewmodel.models).map((m) => m.kind)))
     .toEqual(['model', 'model', 'model', 'model']);
@@ -265,6 +269,44 @@ test('graphics quality: low, medium and high all draw, with post-processing on m
   expect(goggles.nvg).toBe(1);
   await page.screenshot({ path: 'test-results/quality-nvg.png' });
   await page.evaluate(() => { window.fireteam.view.nvg = 0; });
+  expect(problems).toEqual([]);
+});
+
+test('night: the Day/Night switch picks the night mission, its lamps are lit, and N flips the goggles down', async ({ page }) => {
+  test.setTimeout(150_000); // two maps to load
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
+  });
+  await page.goto('/');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.map, null, { timeout: 60_000 });
+  await page.click('.daynight button[data-time="night"]');
+  await page.click('.map[data-map="harbour-rescue"]');
+  await page.waitForFunction(() => window.fireteam.map === 'harbour-rescue-night' && window.fireteam.mission, null, { timeout: 90_000 });
+  await expect(page.locator('.map[data-map="harbour-rescue"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('.daynight button[data-time="night"]')).toHaveAttribute('aria-checked', 'true');
+  expect(page.url()).toContain('map=harbour-rescue-night');
+  const night = await page.evaluate(() => ({
+    night: window.fireteam.mission.def.night,
+    lamps: window.fireteam.session.level.expanded.lamps.length,
+    lit: window.fireteam.enemies.ai?.lighting?.night ?? null,
+    sky: window.fireteam.view.mood.skyTop,
+  }));
+  expect(night.night).toBe(true);
+  expect(night.lamps).toBeGreaterThan(5);
+  expect(night.sky).toBe('#04060c'); // render/moods.js night
+
+  await page.click('#btnDeploy');
+  await page.waitForFunction(() => window.fireteam.flow.is('playing'), null, { timeout: 30_000 });
+  await expect(page.locator('#nvgIcon')).toBeVisible();
+  await page.keyboard.press('KeyN');
+  await page.waitForFunction(() => window.fireteam.view.nvg > 0.9, null, { timeout: 10_000 });
+  await expect(page.locator('#nvgIcon')).toHaveClass(/on/);
+  await page.screenshot({ path: 'test-results/night-goggles.png' });
+  await page.keyboard.press('KeyN');
+  await page.waitForFunction(() => window.fireteam.view.nvg === 0, null, { timeout: 10_000 });
+  await page.screenshot({ path: 'test-results/night.png' });
   expect(problems).toEqual([]);
 });
 

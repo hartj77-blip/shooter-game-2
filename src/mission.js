@@ -47,6 +47,7 @@ import { createObjectiveHud } from './ui/objective-hud.js';
 import { createMarkers, createRing } from './ui/markers.js';
 import { createPropsView } from './render/props-view.js';
 import { createHeliView } from './render/heli-view.js';
+import { createNightView } from './render/night-view.js';
 import { GAMEPAD } from './core/gamepad.js';
 import { RAPIER } from './world/physics.js';
 import { SIGHT } from './world/groups.js';
@@ -301,6 +302,17 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     return world.castRay(assistRay, best.d - 0.3, true, undefined, SIGHT) ? 1 : GAMEPAD.assistSlow;
   }
 
+  // ---- the night (a night mission: def.night): lamps and torches drawn, and your goggles.
+  // Night vision only changes your own screen (render/post.js), so co-op is unaffected.
+  const night = def.night ? createNightView({ scene: root, lamps: session.level.expanded.lamps, soldiers: enemiesView, camera }) : null;
+  const nvgIcon = document.getElementById('nvgIcon');
+  let goggles = false; // down or up
+  let nvg = 0;         // 0..1: they flip down over a quarter of a second
+  if (night) {
+    input.onNightVision = () => { goggles = !goggles; };
+    nvgIcon.hidden = false;
+  }
+
   /** Draw a frame. `alpha` is how far we are between the last two ticks. */
   function render(alpha, dt, playing) {
     // While aiming, slow the mouse down to match the zoom.
@@ -327,6 +339,13 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     props.update(dt, alpha);
     heli?.update(dt);
     ragdolls?.update(dt);
+    if (night) {
+      night.update();
+      nvg = Math.max(0, Math.min(1, nvg + (goggles ? dt : -dt) / 0.25));
+      view.nvg = nvg * nvg; // eases in: dark at first, then the green blooms up
+      nvgIcon.classList.toggle('on', goggles);
+      nvgIcon.textContent = `NIGHT VISION ${goggles ? 'ON' : 'OFF'} · ${input.glyph?.('nightvision') ?? 'N'}`;
+    }
     aiDebug?.update();
     sounds.frame(dt);
     hud.update(dt, { playing });
@@ -348,6 +367,11 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
     app.debugOpen = debug.visible; // the next mission's panel opens the same way
     for (const off of offs) off();
     if (joining) loop.timeScale = 1;
+    if (night) {
+      input.onNightVision = null;
+      view.nvg = 0;
+      nvgIcon.hidden = true;
+    }
     hud.dispose();
     squadHud?.dispose();
     objectiveHud?.dispose();

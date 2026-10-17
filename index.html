@@ -45,6 +45,7 @@
     <div class="ammo"><b id="ammoMag">0</b><span id="ammoReserve"></span></div>
     <div id="ammoHint" class="ammo-hint"></div>
     <div id="grenades" class="grenades" title="Grenades (G)"></div>
+    <div id="nvgIcon" class="nvg-icon" title="Night-vision goggles" hidden></div>
   </div>
   <div id="course" class="course" hidden>
     <div id="courseTitle" class="course-title">KILL HOUSE</div>
@@ -99,7 +100,12 @@
     <div class="brand">FIRETEAM</div>
     <p class="tag">Milestone 5 &middot; Missions</p>
     <p id="notice" class="note notice" role="status" hidden></p>
-    <h3 class="maps-head">Missions &middot; The Harbour</h3>
+    <h3 class="maps-head">Missions &middot; The Harbour
+      <span class="daynight" role="radiogroup" aria-label="Time of day">
+        <button type="button" role="radio" data-time="day" aria-checked="true">Day</button>
+        <button type="button" role="radio" data-time="night" aria-checked="false">Night</button>
+      </span>
+    </h3>
     <div class="maps" role="radiogroup" aria-label="Mission">
       <button class="map" type="button" role="radio" data-map="harbour-rescue">
         <b>Lifeline</b><span>Rescue: free a hostage held in the fishing village and get them to the helicopter.</span>
@@ -203,6 +209,12 @@
             <option value="harbour-intel">Dead Drop (intel)</option>
             <option value="harbour-sabotage">Short Fuse (sabotage)</option>
             <option value="harbour-hold">Last Light (hold the line)</option>
+          </optgroup>
+          <optgroup label="Missions at night · The Harbour">
+            <option value="harbour-rescue-night">Lifeline at night</option>
+            <option value="harbour-intel-night">Dead Drop at night</option>
+            <option value="harbour-sabotage-night">Short Fuse at night</option>
+            <option value="harbour-hold-night">Last Light at night</option>
           </optgroup>
           <optgroup label="Practice">
             <option value="compound">The Compound</option>

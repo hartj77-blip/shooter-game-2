@@ -420,6 +420,8 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 .radio-line.on { opacity: 1; }
 .radio-line b { font: 600 14px var(--head); letter-spacing: 0.14em; text-transform: uppercase; color: var(--good); margin-right: 10px; }
 .grenades { font: 600 15px var(--head); letter-spacing: 0.12em; color: var(--muted); min-height: 18px; }
+.nvg-icon { font: 600 13px var(--head); letter-spacing: 0.14em; color: var(--muted); }
+.nvg-icon.on { color: #7dff8a; text-shadow: 0 0 6px rgba(125, 255, 138, 0.6); }
 
 /* Objective markers. */
 .mark.objective { --c: var(--accent); font-size: 14px; }
@@ -437,6 +439,10 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 
 /* The map picker's two groups. */
 .maps-head { margin: 18px 0 -8px; font: 600 13px var(--head); letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+/* Day or night, for the missions (the night versions are separate maps: harbour-rescue-night...). */
+.daynight { float: right; display: inline-flex; margin-top: -4px; border: 1px solid var(--line, rgba(255, 255, 255, 0.18)); border-radius: 6px; overflow: hidden; }
+.daynight button { font: 600 12px var(--head); letter-spacing: 0.14em; text-transform: uppercase; padding: 4px 10px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.daynight button[aria-checked="true"] { background: rgba(232, 177, 74, 0.18); color: var(--accent); }
 
 /* The debrief. */
 .debrief-result { font: 600 18px var(--head); letter-spacing: 0.06em; color: var(--good); margin: 0 0 12px; }
