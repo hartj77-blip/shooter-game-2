@@ -157,7 +157,7 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
     }
     for (const [target, sum] of byTarget) {
       sim.events.emit('target:hit', {
-        owner: slot, target, id: target.id, kind: target.kind, hostage: target.hostage, ...sum,
+        owner: slot, weapon: def.id, target, id: target.id, kind: target.kind, hostage: target.hostage, ...sum,
       });
     }
   }

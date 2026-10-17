@@ -43,6 +43,9 @@ import { createPeerNet, createLocalNet } from './net/transport.js';
 import { loadPeer } from './net/peer-loader.js';
 import { createLobbyUi } from './ui/lobby.js';
 import { fillDebrief } from './ui/debrief.js';
+import { createProfile, rankProgress } from './game/profile.js';
+import { createXpTracker } from './game/xp.js';
+import { unlockName } from './ui/names.js';
 import { createVoice } from './net/voice.js';
 import provingGround from '../levels/proving-ground.js';
 import compound from '../levels/compound.js';
@@ -125,7 +128,17 @@ async function boot() {
       }
     },
   });
-  const app = { view, audio, assets, input, settings, loop, debugOpen: params.has('debug') };
+  // Your progress (game/profile.js): rank, XP, gun levels, loadout. Saved in this browser.
+  const profile = createProfile();
+  const app = { view, audio, assets, input, settings, loop, profile, debugOpen: params.has('debug') };
+  // The title screen's rank line.
+  const showRank = () => {
+    const r = rankProgress(profile.data);
+    el('rankLine').textContent = r.max
+      ? `Rank ${r.rank} · ${profile.data.xp.toLocaleString('en-GB')} XP`
+      : `Rank ${r.rank} · ${r.into.toLocaleString('en-GB')} / ${r.needed.toLocaleString('en-GB')} XP to rank ${r.rank + 1}`;
+  };
+  profile.onChange(showRank);
 
   // ---------------------------------------------------------------- game flow
   /** A menu screen over the 3D view (the game stops listening to the keyboard). */
@@ -141,6 +154,7 @@ async function boot() {
     },
   });
   const el = (id) => document.getElementById(id);
+  showRank();
   const flow = createStateMachine({
     title: menuState('title'),
     join: menuState('join', () => el('joinCode').focus()),
@@ -184,6 +198,7 @@ async function boot() {
       old?.dispose();
       mission = await loadMission({ app, mapId: id, def: LEVELS[id], room: withRoom, onProgress: (k, text) => menus.setLoading(k, text) });
       watchMission(mission);
+      countXp(mission);
       try { localStorage.setItem('fireteam.map', id); } catch { /* not remembered, that's all */ }
       if (params.get('map') !== id) {
         params.set('map', id);
@@ -202,6 +217,30 @@ async function boot() {
     return busy;
   }
 
+  // ---------------------------------------------------------------- XP
+  // Each fight against enemies earns XP (game/xp.js), banked as it's earned.
+  let xp = null;
+  function countXp(m) {
+    xp?.dispose();
+    xp = null;
+    if (!m.hasEnemies) return; // the Proving Ground is practice
+    xp = createXpTracker({
+      events: m.events, me: m.session.me, profile,
+      difficulty: m.room?.lobby.difficulty ?? settings.values.difficulty,
+      night: !!m.def.night,
+      onChange: ({ rankUp, unlocks }) => {
+        if (rankUp) m.hud.toast(`Rank ${rankUp}!`, 3);
+        for (const u of unlocks) {
+          m.hud.toast(`New: ${unlockName(u.item, u.gun)}`, 3);
+          xpUnlocks.push(u);
+        }
+      },
+    });
+    xpUnlocks = [];
+    m.hud.xpSource = () => xp?.summary ?? null;
+  }
+  let xpUnlocks = []; // everything this fight unlocked, for the debrief
+
   // ---------------------------------------------------------------- the debrief
   // A mission won: give the helicopter a moment to lift off, then show how it went.
   let debriefTimer = 0;
@@ -212,7 +251,7 @@ async function boot() {
       debriefTimer = setTimeout(() => {
         if (mission !== m || !(flow.is('playing') || flow.is('paused'))) return;
         const role = !m.room ? 'solo' : m.room.role === 'host' ? 'host' : 'client';
-        fillDebrief(r, m.def.mission, { nameOf: m.nameOf, role });
+        fillDebrief(r, m.def.mission, { nameOf: m.nameOf, role, xp: xp?.summary ?? null, profile: profile.data, unlocks: xpUnlocks.map((u) => unlockName(u.item, u.gun)) });
         flow.go('debrief');
       }, 2500);
     });
@@ -549,7 +588,8 @@ async function boot() {
   //   fireteam.enemies.options.freeze = true
   // Everything after `mission` belongs to the map being played, so it changes when the map does.
   window.fireteam = {
-    input, loop, view, flow, settings, audio, assets, app, openMap, hostCoop, joinCoop, ready: true,
+    input, loop, view, flow, settings, audio, assets, app, profile, openMap, hostCoop, joinCoop, ready: true,
+    get xp() { return xp; },
     get mission() { return mission; },
     get room() { return room; },
     get voice() { return voice; },
