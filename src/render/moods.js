@@ -46,9 +46,9 @@ export const MOODS = {
   night: {
     skyTop: '#04060c', skyHorizon: '#16223d',
     fog: '#0c1424', fogNear: 18, fogFar: 150,
-    sun: '#9fb6ff', sunIntensity: 0.45, elevation: deg(42),
-    hemiSky: '#2a3a5e', hemiGround: '#0b0d12', hemiIntensity: 0.55,
-    exposure: 1.0,
+    sun: '#a9bcff', sunIntensity: 0.9, elevation: deg(42),
+    hemiSky: '#3a4d78', hemiGround: '#1a1e28', hemiIntensity: 1.9,
+    exposure: 1.3,
     grade: { saturation: 0.82, contrast: 1.1, tint: '#dfe8ff', vignette: 0.32 },
   },
 };

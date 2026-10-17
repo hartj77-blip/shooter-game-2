@@ -47,7 +47,7 @@ import { createVoice } from './net/voice.js';
 import provingGround from '../levels/proving-ground.js';
 import compound from '../levels/compound.js';
 import harbour from '../levels/harbour.js';
-import { missionLevels } from '../levels/missions.js';
+import { missionLevels, nightOf, dayOf } from '../levels/missions.js';
 
 // Every map you can pick: the practice maps, and each mission (a map with a job attached).
 const LEVELS = { 'proving-ground': provingGround, compound, ...missionLevels({ harbour }) };
@@ -105,6 +105,7 @@ async function boot() {
   input.requireLock = !params.has('autostart') && !params.has('nolock');
 
   let mission = null; // the map being played (src/mission.js)
+  let atNight = false; // the title screen's Day/Night switch, for missions
   const loop = createLoop({
     update(dt) {
       mission?.update(dt, flow.is('playing'));
@@ -188,7 +189,10 @@ async function boot() {
         params.set('map', id);
         history.replaceState(null, '', `?${params}`); // a reload stays on this map
       }
-      for (const b of document.querySelectorAll('.map')) b.setAttribute('aria-checked', String(b.dataset.map === id));
+      // (A night mission lights up its card too, and the Night switch.)
+      for (const b of document.querySelectorAll('.map')) b.setAttribute('aria-checked', String(b.dataset.map === dayOf(id)));
+      if (LEVELS[id].mission) atNight = !!LEVELS[id].night;
+      for (const b of document.querySelectorAll('.daynight button')) b.setAttribute('aria-checked', String((b.dataset.time === 'night') === atNight));
       document.getElementById('btnRespawn').textContent = mission.def.mission ? 'Restart the mission' : mission.hasEnemies ? 'Restart the fight' : 'Back to spawn';
       menus.setLoading(1, 'Ready');
       menus.hide('loading');
@@ -464,9 +468,18 @@ async function boot() {
     } else moveFocus(action);
   };
 
-  // The map picker on the title screen.
+  // The map picker on the title screen. Missions come by day or at night (the switch).
+  const missionId = (id) => (LEVELS[id]?.mission && atNight ? nightOf(id) : id);
   for (const button of document.querySelectorAll('.map')) {
-    button.addEventListener('click', () => openMap(button.dataset.map));
+    button.addEventListener('click', () => openMap(missionId(button.dataset.map)));
+  }
+  for (const button of document.querySelectorAll('.daynight button')) {
+    button.addEventListener('click', () => {
+      atNight = button.dataset.time === 'night';
+      for (const b of document.querySelectorAll('.daynight button')) b.setAttribute('aria-checked', String(b === button));
+      // Playing a mission? Switch it to the same mission at the other time of day.
+      if (mission?.def.mission && !mission.room) openMap(missionId(dayOf(mission.mapId)));
+    });
   }
 
   const restartOrRespawn = () => (mission.hasEnemies ? mission.restart() : mission.respawn());

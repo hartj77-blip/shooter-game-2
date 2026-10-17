@@ -28,6 +28,8 @@ import { createSquads, joinSquad, createTokens, report, squadMates } from './squ
 import { route } from './astar.js';
 import { createRandom } from '../core/random.js';
 import { events as gameEvents } from '../core/events.js';
+import { lightAt } from '../world/lighting.js';
+
 
 const THINK_EVERY = 6;        // ticks between one enemy's thoughts (6 ticks = 0.1 s)
 const ROUTES_PER_TICK = 2;    // A* searches allowed per tick
@@ -43,10 +45,12 @@ const NEAR_MISS = 1.3;        // metres: a bullet passing this close to your hea
  * @param {Array}  [opts.players] [{ soldier, health }]: the people they fight (up to 4)
  * @param {object} [opts.player]  one { soldier, health } (the same as players: [player])
  * @param {string} [opts.difficulty]
+ * @param {object} [opts.lighting]  world/lighting.js createLighting(): how dark it is (null: daylight)
  */
-export function createEnemies({ world, registry, nav, cover, noise, specs, players = null, player = null, events = gameEvents, seed = 1, difficulty = 'regular' }) {
+export function createEnemies({ world, registry, nav, cover, noise, specs, players = null, player = null, events = gameEvents, seed = 1, difficulty = 'regular', lighting = null }) {
   const ai = {
     world, registry, nav, cover, noise, events, seed,
+    lighting,     // world/lighting.js: how dark it is (null: daylight)
     time: 0,
     tick: 0,
     rng: createRandom(seed),
@@ -170,7 +174,7 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     return {
       owner: soldier.owner, soldier, health,
       pos: { x: 0, y: 0, z: 0 }, eye: null, chest: null, head: null,
-      crouched: false, speed: 0, sprinting: false, down: false, firedAt: -Infinity,
+      crouched: false, speed: 0, sprinting: false, down: false, firedAt: -Infinity, light: 1,
     };
   }
 
@@ -187,6 +191,8 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
       P.speed = s.speed;
       P.sprinting = s.sprinting;
       P.down = P.health.state.down || !!P.health.state.bleeding || !!P.health.state.dead;
+      // How lit they are (moon, lamps, their own muzzle flash): ai/senses.js.
+      P.light = ai.lighting ? lightAt(P.pos, ai.lighting, ai.time - P.firedAt) : 1;
     }
     ai.targets = ai.players.filter((P) => !P.down);
     // Anyone whose target went down (or left) looks for someone else.

@@ -12,6 +12,10 @@
 // At 1 you're spotted. Out of sight it cools down again. That's what makes
 // sneaking possible, and gives you a moment to react when you're seen.
 //
+// DARKNESS (world/lighting.js): at night they see less far, and become sure
+// more slowly, unless you're under a lamp, firing, or in their own flashlight's
+// beam. By day the light is 1 everywhere and none of this changes anything.
+//
 // HEARING reads the noise board (ai/noise.js): gunshots carry far, sprinting
 // footsteps a fair way, walking a little, crouch-walking almost not at all.
 //
@@ -26,6 +30,7 @@
 import { RAPIER } from '../world/physics.js';
 import { SIGHT, BULLET } from '../world/groups.js';
 import { AWARENESS } from './enemy-data.js';
+import { flashlightOn, sightScale, noticeScale } from '../world/lighting.js';
 
 const DEG = Math.PI / 180;
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -67,17 +72,29 @@ function shotIsClear(ai, e, from, to) {
   return !hit || ai.registry.get(hit.collider).target?.kind === 'player';
 }
 
-/** Can enemy `e` (eyes at `eye`) see player `p`? Returns { distance, peripheral } or null. */
+/**
+ * How lit player `p` is for enemy `e`: the light where they stand (moon, lamps,
+ * their own muzzle flash; ai/enemies.js works it out each tick), or this enemy's
+ * own flashlight, whichever is brighter.
+ */
+function lightFor(ai, e, eye, p) {
+  if (!ai.lighting?.night) return 1;
+  return Math.max(p.light ?? 1, flashlightOn(ai.lighting, eye, e.motor.yaw, p.chest));
+}
+
+/** Can enemy `e` (eyes at `eye`) see player `p`? Returns { distance, peripheral, light, range } or null. */
 function look(ai, e, eye, p) {
+  const light = lightFor(ai, e, eye, p);
+  const range = e.def.sight.range * sightScale(light, ai.lighting?.tuning);
   for (const point of [p.chest, p.head]) {
     const vx = point.x - eye.x, vy = point.y - eye.y, vz = point.z - eye.z;
     const d = Math.hypot(vx, vy, vz);
-    if (d > e.def.sight.range) return null;
+    if (d > range) return null;
     const yawTo = Math.atan2(-vx, -vz);
     const off = Math.abs(wrap(yawTo - e.motor.yaw)) / DEG;
     if (off > e.def.sight.peripheral / 2) return null;
     if (Math.abs(Math.atan2(vy, Math.hypot(vx, vz))) > 70 * DEG) return null;
-    if (clear(ai.world, eye, point, SIGHT)) return { distance: d, peripheral: off > e.def.sight.fov / 2 };
+    if (clear(ai.world, eye, point, SIGHT)) return { distance: d, peripheral: off > e.def.sight.fov / 2, light, range };
   }
   return null;
 }
@@ -115,11 +132,14 @@ export function sense(e, ai, dt) {
     // Would a bullet get there, or is a squad-mate in the way?
     S.clearShot = shotIsClear(ai, e, eye, p.chest);
     const A = AWARENESS;
-    if (distance < A.instant && !peripheral) {
+    // (In the dark, "right in front of me" is closer, and the kettle heats slower.)
+    const dark = sightScale(seen.light, ai.lighting?.tuning);
+    if (distance < A.instant * dark && !peripheral) {
       S.awareness = 1;
     } else {
-      const near = Math.min(1, Math.max(0.2, 1 - (distance - 6) / (def.sight.range - 6)));
+      const near = Math.min(1, Math.max(0.2, 1 - (distance - 6) / (seen.range - 6)));
       let rate = A.rate * near * (peripheral ? A.peripheral : 1) * ai.difficulty.awareness;
+      rate *= noticeScale(seen.light, ai.lighting?.tuning);
       if (p.crouched) rate *= A.crouched;
       if (p.speed < 0.5) rate *= A.still;
       else if (p.sprinting) rate *= A.sprinting;

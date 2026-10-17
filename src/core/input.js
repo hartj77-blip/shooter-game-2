@@ -41,6 +41,7 @@ export const DEFAULT_BINDINGS = {
   interact: ['KeyF'],            // hold next to a downed teammate to revive them (or a crate, a laptop...)
   ping:    ['KeyZ', 'Mouse1'],   // Mouse1 = the middle button (the wheel, pressed)
   radio:   ['KeyV'],             // hold to talk on the squad radio
+  nightvision: ['KeyN'],         // night-vision goggles on and off (night missions; only your screen changes)
 };
 
 // Classic shooter sensitivity scale: at sensitivity 1, one mouse "count"
@@ -120,6 +121,8 @@ export function createInput({
     }
     if (action === 'ads' && settings.aimMode === 'toggle') input.adsToggled = !input.adsToggled;
     if (action.startsWith('slot') || action === 'last') input.adsToggled = false;
+    // Not a command (nothing in the simulation changes): the mission listens for it.
+    if (action === 'nightvision') input.onNightVision?.();
   }
 
   function onKeyDown(e) {
