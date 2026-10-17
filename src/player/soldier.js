@@ -133,6 +133,7 @@ export function createSoldier({
     for (const [target, hit] of hitTargets) {
       events.emit('target:hit', {
         owner,
+        weapon: def.id,
         target,
         id: target.id,
         kind: target.kind,

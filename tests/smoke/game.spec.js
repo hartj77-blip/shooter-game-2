@@ -180,6 +180,15 @@ test('the Compound: you can drop an enemy, and the rest fight back', async ({ pa
   expect(await page.evaluate(() => window.fireteam.ragdolls.count)).toBeGreaterThan(0);
   await expect(page.locator('#feed')).toContainText('down');
   await page.screenshot({ path: 'test-results/compound-kill.png' });
+  // That kill earned XP (game/xp.js), for you and the carbine, saved in this browser.
+  const xp = await page.evaluate(() => ({
+    xp: window.fireteam.profile.data.xp, gun: window.fireteam.profile.data.guns.carbine.xp,
+    saved: JSON.parse(localStorage.getItem('fireteam.profile')).xp,
+  }));
+  expect(xp.xp).toBeGreaterThanOrEqual(100);
+  expect(xp.gun).toBeGreaterThanOrEqual(100);
+  expect(xp.saved).toBe(xp.xp);
+  await expect(page.locator('#rankLine')).toContainText('Rank 1');
 
   // Now let them fight: someone should shoot at us.
   await page.evaluate(() => { window.fireteam.enemies.options.freeze = false; });
@@ -308,6 +317,24 @@ test('night: the Day/Night switch picks the night mission, its lamps are lit, an
   await page.waitForFunction(() => window.fireteam.view.nvg === 0, null, { timeout: 10_000 });
   await page.screenshot({ path: 'test-results/night.png' });
   expect(problems).toEqual([]);
+});
+
+test('progress: a backup code made in one browser restores your rank in another', async ({ browser }) => {
+  const first = await browser.newPage();
+  await first.goto('/');
+  await first.waitForFunction(() => window.fireteam?.ready, null, { timeout: 60_000 });
+  const code = await first.evaluate(() => { window.fireteam.profile.award(20000, 'smg'); return window.fireteam.profile.backupCode(); });
+  await expect(first.locator('#rankLine')).toContainText('Rank 7');
+  await first.close();
+  // A fresh browser profile (nothing saved), as on another computer.
+  const context = await browser.newContext();
+  const second = await context.newPage();
+  await second.goto('/');
+  await second.waitForFunction(() => window.fireteam?.ready, null, { timeout: 60_000 });
+  await expect(second.locator('#rankLine')).toContainText('Rank 1');
+  await second.evaluate((c) => window.fireteam.profile.restore(c), code);
+  await expect(second.locator('#rankLine')).toContainText('Rank 7');
+  await context.close();
 });
 
 test('changing map needs no page reload, and leaves nothing behind', async ({ page }) => {

@@ -247,6 +247,17 @@ export function createHud({
     }));
     results.hidden = false;
     resultsTimer = 14;
+    // Your XP (main.js sets hud.xpSource). The clear bonus is added by another
+    // listener of this same event, so wait until they've all run.
+    queueMicrotask(() => {
+      const xp = hud.xpSource?.();
+      if (!xp) return;
+      const dt = document.createElement('dt');
+      dt.textContent = 'XP earned';
+      const dd = document.createElement('dd');
+      dd.textContent = `+${Math.round(xp.total).toLocaleString('en-GB')}`;
+      resultsList.append(dt, dd);
+    });
   });
 
   function updateThreats(dt) {
@@ -354,9 +365,13 @@ export function createHud({
     }
   }
 
-  return {
+  const hud = {
+    /** () => game/xp.js summary, or null (main.js sets it): the results panel shows your XP. */
+    xpSource: null,
     options,
     show(on) { root.hidden = !on; },
+    /** A short message in the middle of the screen (rank ups, unlocks). */
+    toast: showToast,
     /** A line in the kill feed (top right). `html` must already be escaped. */
     feedLine(html, cls = '') { line(feed, html, cls); },
     esc,
@@ -434,4 +449,5 @@ export function createHud({
       }
     },
   };
+  return hud;
 }
