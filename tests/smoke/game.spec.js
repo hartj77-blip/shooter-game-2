@@ -394,6 +394,27 @@ test('attachments: a saved loadout fits them, and a scope gives the scope view',
   expect(problems).toEqual([]);
 });
 
+test('call-ins: T calls one where you look; the meter, the radio and the smoke all show up', async ({ page }) => {
+  test.setTimeout(150_000);
+  const problems = [];
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  page.on('console', (msg) => { if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`); });
+  await page.goto('/?autostart');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 60_000 });
+  // The Proving Ground: always charged, for trying them out (game/callins.js).
+  await expect(page.locator('#callin')).toContainText('SUPPLY DROP · T');
+  await page.evaluate(() => {
+    window.fireteam.session.sim.callins.player(0).kind = 'smoke';
+    window.fireteam.input.setLook(0, -Math.atan2(1.6, 12));
+  });
+  await page.keyboard.press('KeyT');
+  await page.waitForFunction(() => window.fireteam.session.callins.view[0]?.phase === 'active', null, { timeout: 120_000 });
+  await page.waitForFunction(() => window.fireteam.mission.callinsView.count === 1, null, { timeout: 10_000 });
+  await expect(page.locator('#feed')).toContainText('smoke screen');
+  await page.screenshot({ path: 'test-results/callin-smoke.png' });
+  expect(problems).toEqual([]);
+});
+
 test('changing map needs no page reload, and leaves nothing behind', async ({ page }) => {
   const problems = [];
   page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));

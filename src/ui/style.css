@@ -449,6 +449,15 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 .radio-line.on { opacity: 1; }
 .radio-line b { font: 600 14px var(--head); letter-spacing: 0.14em; text-transform: uppercase; color: var(--good); margin-right: 10px; }
 .grenades { font: 600 15px var(--head); letter-spacing: 0.12em; color: var(--muted); min-height: 18px; }
+/* Your call-in: its name and a bar that fills as it charges (game/callins.js). */
+.callin { margin-top: 4px; font: 600 12px var(--head); letter-spacing: 0.12em; color: var(--muted); text-align: right; }
+.callin i { display: block; height: 4px; margin-top: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.callin b { display: block; height: 100%; width: 0; background: var(--muted); }
+.callin.ready { color: var(--accent); }
+.callin.ready b { background: var(--accent); animation: pulse 0.8s ease-in-out infinite alternate; }
+/* An enemy a recon drone has marked: a red diamond over their head, seen through walls. */
+.mark.marked { --c: #ff4a3a; }
+.mark.marked::before { content: ""; width: 10px; height: 10px; border: 2px solid var(--c); transform: rotate(45deg); background: rgba(255, 74, 58, 0.25); }
 .nvg-icon { font: 600 13px var(--head); letter-spacing: 0.14em; color: var(--muted); }
 .nvg-icon.on { color: #7dff8a; text-shadow: 0 0 6px rgba(125, 255, 138, 0.6); }
 

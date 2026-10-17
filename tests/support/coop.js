@@ -17,8 +17,9 @@ import { SIM_DT } from '../../src/core/loop.js';
  * @param {number} [opts.clients]  how many friends join (1 to 3)
  * @param {object} [opts.net]      { delay, jitter, loss } for the pretend network (ms, ms, 0..1)
  * @param {object} [opts.loadouts] { slot: loadout } each friend's guns (weapons/attachments.js); missing = the default
+ * @param {object} [opts.callins]  { slot: kind } each friend's call-in (game/callins.js); missing = supply
  */
-export async function makeCoop({ def, clients = 1, net: netOpts = {}, seed = 3, difficulty = 'regular', loadouts = {} }) {
+export async function makeCoop({ def, clients = 1, net: netOpts = {}, seed = 3, difficulty = 'regular', loadouts = {}, callins = {} }) {
   await initPhysics();
   const net = createLoopbackNet({ seed, ...netOpts });
   const sim = createSim({ def, id: 'test', seed, difficulty, coop: true });
@@ -33,11 +34,11 @@ export async function makeCoop({ def, clients = 1, net: netOpts = {}, seed = 3, 
     /** Another friend joins, right now. */
     async join(slot = game.clients.length + 1, loadout = loadouts[slot]) {
       const link = await net.connect('TESTS');
-      host.addClient({ slot, link: pending.shift(), callsign: `Friend ${slot}`, loadout });
+      host.addClient({ slot, link: pending.shift(), callsign: `Friend ${slot}`, loadout, callin: callins[slot] });
       const events = createEvents();
       const log = [];
       events.onAny((name, data) => log.push({ name, ...data }));
-      const client = createClient({ def, me: slot, link, events, clock: () => net.now, roster: [{ slot: 0, callsign: 'Host' }], loadout });
+      const client = createClient({ def, me: slot, link, events, clock: () => net.now, roster: [{ slot: 0, callsign: 'Host' }], loadout, callin: callins[slot] });
       client.link = link;
       game.clients.push(client);
       game.logs.set(slot, log);
