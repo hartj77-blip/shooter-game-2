@@ -43,6 +43,7 @@ import { createPeerNet, createLocalNet } from './net/transport.js';
 import { loadPeer } from './net/peer-loader.js';
 import { createLobbyUi } from './ui/lobby.js';
 import { fillDebrief } from './ui/debrief.js';
+import { createLoadoutScreen } from './ui/loadout.js';
 import { createProfile, rankProgress } from './game/profile.js';
 import { createXpTracker } from './game/xp.js';
 import { unlockName } from './ui/names.js';
@@ -139,6 +140,7 @@ async function boot() {
       : `Rank ${r.rank} · ${r.into.toLocaleString('en-GB')} / ${r.needed.toLocaleString('en-GB')} XP to rank ${r.rank + 1}`;
   };
   profile.onChange(showRank);
+  const loadoutScreen = createLoadoutScreen({ profile });
 
   // ---------------------------------------------------------------- game flow
   /** A menu screen over the 3D view (the game stops listening to the keyboard). */
@@ -446,6 +448,7 @@ async function boot() {
       }
     } else if (e.code === 'Escape' && !input.isLocked()) {
       if (menus.isOpen('settings')) menus.closeSettings();
+      else if (loadoutScreen.isOpen()) loadoutScreen.close();
       else if (flow.is('playing')) flow.go('paused');
       else if (flow.is('join')) flow.go('title');
     }
@@ -502,6 +505,7 @@ async function boot() {
       } else moveFocus('down');
     } else if (action === 'back') {
       if (menus.isOpen('settings')) menus.closeSettings();
+      else if (loadoutScreen.isOpen()) loadoutScreen.close();
       else if (flow.is('paused')) play();
       else if (flow.is('join')) flow.go('title');
     } else moveFocus(action);
@@ -559,6 +563,9 @@ async function boot() {
   callsign.value = settings.values.callsign;
   callsign.addEventListener('change', () => { settings.set('callsign', callsign.value); callsign.value = settings.values.callsign; });
   on('btnSettingsT', () => menus.openSettings());
+  on('btnLoadoutT', () => loadoutScreen.open(() => el('btnLoadoutT').focus()));
+  on('btnLoadoutL', () => loadoutScreen.open(() => el('btnLoadoutL').focus()));
+  on('btnLoadoutDone', () => loadoutScreen.close());
   on('btnSettingsP', () => menus.openSettings());
   on('btnSettingsDone', () => menus.closeSettings());
   on('btnSettingsReset', () => { settings.reset(); menus.refresh(); });

@@ -120,3 +120,24 @@ test('XP is counted from the game\'s own events, only your own, with the night a
   assert.equal(profile.data.xp, expect, 'stops counting once disposed');
   assert.ok(changes.length >= 5);
 });
+
+test('an attachment is only kept in its own slot, on a gun it fits', () => {
+  const a = createProfile({ storage: memoryStorage() });
+  a.award(1e6, 'shotgun');
+  assert.ok(!a.setLoadout({ attachments: { shotgun: { optic: 'scope' } } }), 'a scope doesn\'t fit a shotgun');
+  assert.ok(!a.setLoadout({ attachments: { shotgun: { optic: 'suppressor' } } }), 'a suppressor isn\'t an optic');
+  assert.ok(a.setLoadout({ attachments: { shotgun: { optic: 'holo', muzzle: 'suppressor' } } }));
+  assert.deepEqual(a.data.loadout.attachments.shotgun, { optic: 'holo', muzzle: 'suppressor' });
+});
+
+test('fitting attachments in any order works (regression: the same picks in another order were refused)', () => {
+  const a = createProfile({ storage: memoryStorage() });
+  a.award(1e6, 'smg');
+  a.awardGun('carbine', 1e6);
+  assert.ok(a.setLoadout({ attachments: { smg: { mag: 'extended' } } }));
+  assert.ok(a.setLoadout({ attachments: { carbine: { under: 'foregrip' } } }), 'a second gun after the first');
+  assert.ok(a.setLoadout({ attachments: { carbine: { under: 'foregrip', optic: 'reddot' } } }), 'a slot before an earlier one');
+  assert.deepEqual(a.data.loadout.attachments, { carbine: { optic: 'reddot', under: 'foregrip' }, smg: { mag: 'extended' } });
+  assert.ok(a.setLoadout({ attachments: { carbine: { optic: 'reddot', under: undefined } } }), 'taking one off');
+  assert.deepEqual(a.data.loadout.attachments.carbine, { optic: 'reddot' });
+});

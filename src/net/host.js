@@ -77,9 +77,9 @@ export function createHost({ sim, me = 0, coop = false, clock = () => performanc
   // ---------------------------------------------------------------- friends coming and going
 
   /** A friend joins (net/room.js calls this once their browser has loaded the map). */
-  function addClient({ slot, link, callsign }) {
+  function addClient({ slot, link, callsign, loadout }) {
     if (clients.has(slot)) removeClient(slot);
-    sim.addPlayer(slot, { callsign });
+    sim.addPlayer(slot, { callsign, loadout }); // their guns: the same ones their browser predicts with
     const c = { slot, link, jitter: createJitterBuffer(), heard: clock(), off: [] };
     c.off.push(link.onMessage((msg) => inbox.push([slot, msg])));
     c.off.push(link.onClose(() => removeClient(slot)));

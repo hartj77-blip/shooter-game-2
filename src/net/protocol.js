@@ -36,7 +36,7 @@ import { USE_KINDS } from '../game/interact.js';
 import { PHASES } from '../game/objectives.js';
 export { PRESS_FLAGS } from '../core/input.js';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3; // 3: loadouts (net/room.js `loaded`)
 export const SNAPSHOT_EVERY = 3;   // ticks between snapshots: 60 / 3 = 20 a second
 export const INTERP_DELAY = 6;     // others are drawn this many ticks (0.1 s) in the past
 export const CMD_REDUNDANCY = 3;   // each command packet carries the last 3 commands

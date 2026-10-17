@@ -99,7 +99,7 @@
 <section id="title" class="screen" hidden>
   <div class="card">
     <div class="brand">FIRETEAM</div>
-    <p class="tag">Milestone 6 &middot; Art pass</p>
+    <p class="tag">Milestone 7 &middot; Progression</p>
     <p id="rankLine" class="rank-line"></p>
     <p id="notice" class="note notice" role="status" hidden></p>
     <h3 class="maps-head">Missions &middot; The Harbour
@@ -135,6 +135,7 @@
       <button id="btnDeploy" class="primary" type="button">Play solo</button>
       <button id="btnHost" type="button">Host co-op</button>
       <button id="btnJoin" type="button">Join co-op</button>
+      <button id="btnLoadoutT" type="button">Loadout</button>
       <button id="btnSettingsT" type="button">Settings</button>
     </div>
     <label class="field field-inline callsign">
@@ -237,6 +238,7 @@
     <p id="lobbyError" class="error" role="alert" hidden></p>
     <div class="actions">
       <button id="btnStart" class="primary" type="button">Start</button>
+      <button id="btnLoadoutL" type="button">Loadout</button>
       <button id="btnLeave" type="button">Leave</button>
     </div>
   </div>
@@ -275,6 +277,30 @@
   </div>
 </section>
 
+<section id="loadout" class="screen screen-top" hidden>
+  <div class="card card-wide">
+    <h2>Loadout</h2>
+    <p id="loadoutRank" class="rank-line"></p>
+    <div class="xp-bar"><i id="loadoutRankBar"></i></div>
+    <div id="loadoutBody" class="loadout"></div>
+    <details class="backup">
+      <summary>Backup code: take your progress to another browser</summary>
+      <p class="muted">Your progress is saved in this browser. A backup code carries it anywhere else.</p>
+      <div class="backup-row">
+        <button id="btnBackupCopy" type="button">Copy my code</button>
+        <input id="backupOut" type="text" readonly hidden aria-label="Your backup code">
+      </div>
+      <div class="backup-row">
+        <input id="backupIn" type="text" placeholder="Paste a code (FT1-...)" autocomplete="off" spellcheck="false" aria-label="Backup code to restore">
+        <button id="btnBackupRestore" type="button">Restore</button>
+      </div>
+      <p id="backupNote" class="muted" role="status"></p>
+    </details>
+    <div class="actions">
+      <button id="btnLoadoutDone" class="primary" type="button">Done</button>
+    </div>
+  </div>
+</section>
 <section id="settings" class="screen screen-top" hidden>
   <div class="card">
     <h2>Settings</h2>
