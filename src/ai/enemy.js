@@ -133,6 +133,7 @@ export function viewOf(e, ai) {
     laserCharge: e.def.telegraph ? Math.min(1, m.laser / e.def.telegraph) : 0,
     dead: e.dead,
     marked: !!e.marked, // a recon drone has them marked for the squad (game/callins.js)
+    hvt: !!e.hvt,       // the officer an "eliminate" mission sends you after (game/objectives.js)
   };
 }
 

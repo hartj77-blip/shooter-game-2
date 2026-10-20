@@ -139,3 +139,58 @@ test('number keys pick a gun, R reloads, Q swaps back, the wheel cycles', () => 
   assert.equal(cmd.cycle, 1);
   assert.equal(input.sample().cycle, 0, 'one step per wheel click');
 });
+
+import { cleanKeys, bindingsWith, keyName } from '../../src/core/input.js';
+import { createSettings } from '../../src/core/settings.js';
+
+test('your own keys: one key per action, only real actions and keys, Escape and ` stay reserved', () => {
+  assert.deepEqual(cleanKeys({ interact: 'KeyE', fly: 'KeyX', reload: 'Escape', jump: '<b>', ping: 42 }), { interact: 'KeyE' });
+  assert.deepEqual(cleanKeys('rubbish'), {});
+  const b = bindingsWith({ interact: 'KeyE', reload: 'KeyF' });
+  assert.deepEqual(b.interact, ['KeyE']);
+  assert.deepEqual(b.reload, ['KeyF']);
+  for (const [action, codes] of Object.entries(b)) if (action !== 'reload') assert.ok(!codes.includes('KeyF'), `${action} lost F`);
+  assert.equal(keyName('KeyF'), 'F');
+  assert.equal(keyName('Mouse0'), 'Click');
+  assert.equal(keyName('ShiftLeft'), 'Shift');
+  assert.equal(keyName('ArrowUp'), '↑');
+});
+
+test('a rebound key drives its new action, prompts follow it, and the choice is saved', () => {
+  const store = new Map();
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const settings = createSettings(storage);
+  settings.set('keys', { interact: 'KeyE' });
+  assert.deepEqual(createSettings(storage).values.keys, { interact: 'KeyE' }, 'remembered');
+  const target = new EventTarget();
+  const input = createInput({ target, doc: { pointerLockElement: null }, settings: settings.values, getPads: () => [] });
+  input.enabled = true;
+  assert.equal(input.glyph('interact'), 'E');
+  const key = (type, code) => { const e = new Event(type); e.code = code; target.dispatchEvent(e); };
+  key('keydown', 'KeyE');
+  assert.equal(input.sample().interact, true);
+  key('keyup', 'KeyE');
+  key('keydown', 'KeyF');
+  assert.equal(input.sample().interact, false, 'F does nothing now');
+  input.applyKeys({});
+  assert.equal(input.glyph('interact'), 'F', 'back to the default');
+});
+
+test('touch controls press the same actions as keys (ui/touch.js)', () => {
+  const { input } = setup();
+  input.touch.move(0, 1);
+  input.touch.press('jump');
+  const c = input.sample();
+  assert.equal(c.moveZ, 1);
+  assert.equal(c.jump, true);
+  input.touch.press('fire');
+  assert.equal(input.sample().fire, true);
+  input.touch.release('fire');
+  input.touch.move(0, 0);
+  const d = input.sample();
+  assert.equal(d.fire, false);
+  assert.equal(d.moveZ, 0);
+  const yaw = input.yaw;
+  input.touch.look(0.1, 0);
+  assert.ok(input.yaw < yaw, 'dragging right turns right');
+});

@@ -143,6 +143,7 @@ export function createObjectiveHud({ session, events, hud, markers, ring, hostin
     const hostage = session.hostage?.view;
     switch (`${v.kind}:${v.phase}`) {
       case 'rescue:find': return 'Find the hostage and free them';
+      case 'eliminate:find': return 'Find the officer and take them down';
       case 'intel:find': return 'Find the laptop';
       case 'intel:download': return v.contested ? 'Download stalled: clear the enemies from the laptop!' : 'Defend the laptop while it downloads';
       case 'intel:collect': return 'Take the drive';
@@ -187,7 +188,7 @@ export function createObjectiveHud({ session, events, hud, markers, ring, hostin
     const { mark, metres } = markers;
     const h = session.hostage?.view;
     // Candidate sites: "?" until you've been close enough to see; then what's there.
-    if (['rescue', 'intel', 'sabotage'].includes(v.kind) && ['find', 'plant'].includes(v.phase)) {
+    if (['rescue', 'intel', 'sabotage', 'eliminate'].includes(v.kind) && ['find', 'plant'].includes(v.phase)) {
       const real = new Set(v.sites);
       candidates(v).forEach((i) => {
         const at = posOf(sites[i]);
@@ -199,6 +200,11 @@ export function createObjectiveHud({ session, events, hud, markers, ring, hostin
           if ((v.done | v.armed) & (1 << k)) return; // (an armed one says "Get clear!", below)
           mark('objective', lift(at, 1.6), 'Cache', metres(at));
         } else if (v.kind === 'rescue' && h) mark('objective', lift(h.pos, 1.7), 'Hostage', metres(h.pos));
+        else if (v.kind === 'eliminate') {
+          // Found the place: now the officer themselves is marked (an enemy with view.hvt).
+          const t = session.enemies.list.find((e) => e.view.hvt && !e.view.dead);
+          if (t) mark('objective warn', lift(t.view.pos, 2.2), 'Officer', metres(t.view.pos));
+        }
         else mark('objective', lift(at, 1.4), 'Laptop', metres(at));
       });
     }

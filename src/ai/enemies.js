@@ -58,7 +58,7 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     players: [],  // everyone they could fight, as plain records (see playerRecord below)
     targets: [],  // the players still standing (not down): the ones worth shooting at
     alive: [],
-    options: { freeze: false, noBarks: false },
+    options: { freeze: false, noBarks: false, lethal: 1 }, // lethal: the Lethal modifier's damage multiplier (game/modifiers.js)
   };
   const taken = new Map(); // cover point id -> enemy
   const queue = [];        // enemies waiting for a route
@@ -114,7 +114,7 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
     if (victim.kind === 'civilian') return victim.damage?.(amount * ai.difficulty.damage, hit.from) ?? { killed: false };
     if (victim.kind !== 'player') return { killed: false };
     const p = recordOf(victim.owner);
-    return p ? p.health.damage(amount * ai.difficulty.damage, hit.from) : { killed: false };
+    return p ? p.health.damage(amount * ai.difficulty.damage * ai.options.lethal, hit.from) : { killed: false };
   };
 
   // More players, a little more health each (PLAYER_SCALING in ai/enemy-data.js).
@@ -317,6 +317,7 @@ export function createEnemies({ world, registry, nav, cover, noise, specs, playe
   /** One of your bullets hit enemy `e`. */
   function damage(e, amount, hit) {
     if (e.dead) return { killed: false };
+    amount *= ai.options.lethal;
     e.health -= amount;
     e.pain += amount;
     e.senses.underFire = ai.time;

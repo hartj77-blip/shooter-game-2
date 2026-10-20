@@ -54,6 +54,13 @@ This repo is a browser co-op FPS built as a **learning project**. The owner is l
 - **Call-ins** (`src/game/callins.js`) are host-owned: a `callin` command bit, `callin:*` events (`callin:refused`/`ready` are personal), each player's charge in their row, active call-ins in snapshots (`ci`). Area effects play fair: a warning first, never the squad (the mortar uses the grenade's `explode`), and enemies get the warning as a hazard. Clients add the same smoke colliders (`addSmoke`).
 - **Practice maps** (`armory: true`, the Proving Ground) hand out every gun and keep call-ins charged.
 
+## Polish and content (milestones 8 and 9)
+
+- **Every input is an action.** Keys go through `bindingsWith(settings.keys)` (`src/core/input.js`), touch through `input.touch` (`src/ui/touch.js`); never read a key code outside `input.js`. Prompts use `input.glyph(action)`, which follows rebinding. Lessons 26–27.
+- **Automatic quality** (`src/core/perf.js`) only steps down. Browser tests set `autoQuality: false` so each test draws the quality it asks for.
+- **New mission types** are one function in `KINDS` (`src/game/objectives.js`) with the usual shape; enemies an objective brings come from `ctx.spawnEnemy` and are re-made on restart and retry. Test every candidate site is reachable.
+- **Mission modifiers** (`src/game/modifiers.js`) are data plus one line where each rule lives; `createSim({ modifiers })` ignores them on practice maps. The host's lobby carries them in co-op.
+
 ## Art pass (milestone 6)
 
 - **Assets** come from CC0 packs through the build tools (`tools/build-models.mjs`, `tools/build-textures.py`); commit their output, not the packs. Every file is in `MANIFEST` (`src/render/assets.js`), has a size budget in `tests/unit/assets.test.js`, and a row in `CREDITS.md`. Lessons 18–22.
