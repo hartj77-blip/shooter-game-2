@@ -122,7 +122,12 @@
       <button class="map" type="button" role="radio" data-map="harbour-hold">
         <b>Last Light</b><span>Hold the line: switch on the lighthouse radio and hold the headland for three minutes.</span>
       </button>
+      <button class="map" type="button" role="radio" data-map="harbour-eliminate">
+        <b>Kingpin</b><span>Eliminate: find the officer running the port, get past his guards, take him down, get out.</span>
+      </button>
     </div>
+    <h3 class="maps-head">Modifiers <span class="muted">(missions; harder, more XP)</span></h3>
+    <div id="titleMods" class="chips mods"></div>
     <h3 class="maps-head">Practice</h3>
     <div class="maps" role="radiogroup" aria-label="Practice map">
       <button id="mapProving" class="map" type="button" role="radio" data-map="proving-ground">
@@ -214,12 +219,14 @@
             <option value="harbour-rescue">Lifeline (rescue)</option>
             <option value="harbour-intel">Dead Drop (intel)</option>
             <option value="harbour-sabotage">Short Fuse (sabotage)</option>
+            <option value="harbour-eliminate">Kingpin (eliminate)</option>
             <option value="harbour-hold">Last Light (hold the line)</option>
           </optgroup>
           <optgroup label="Missions at night · The Harbour">
             <option value="harbour-rescue-night">Lifeline at night</option>
             <option value="harbour-intel-night">Dead Drop at night</option>
             <option value="harbour-sabotage-night">Short Fuse at night</option>
+            <option value="harbour-eliminate-night">Kingpin at night</option>
             <option value="harbour-hold-night">Last Light at night</option>
           </optgroup>
           <optgroup label="Practice">
@@ -237,6 +244,8 @@
         </select>
       </label>
     </div>
+    <h3 class="maps-head">Modifiers</h3>
+    <div id="lobbyMods" class="chips mods"></div>
     <p id="lobbyInfo" class="muted" aria-live="polite"></p>
     <p id="lobbyError" class="error" role="alert" hidden></p>
     <div class="actions">

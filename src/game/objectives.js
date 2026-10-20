@@ -31,6 +31,8 @@ export const OBJECTIVES = {
   radio: 2,            // ... to use a radio
   hold: 180,           // seconds to hold the line
   holdRadius: 8,       // metres, unless the site says otherwise
+  officerHealth: 2.5,  // the officer you're sent to take down is this much tougher than a rifleman
+  guards: 2,           // ...and has this many bodyguards, unless the stage says otherwise
 };
 
 // Every phase any objective can be in (snapshots send a phase as its place in this list).
@@ -226,6 +228,42 @@ function hold(ctx, stage) {
   return o;
 }
 
+// ------------------------------------------------------------------ eliminate
+
+/**
+ * Find the officer (at one of a few sites, with bodyguards) and take them
+ * down. They're an enemy soldier like any other, only tougher and marked
+ * `hvt` (high-value target) so every screen can point them out once found.
+ * A checkpoint or restart brings a fresh officer back (reinforcements are
+ * never saved, and the officer is one).
+ */
+function eliminate(ctx, stage) {
+  const [site] = ctx.picks;
+  const T = ctx.tuning;
+  const o = { kind: 'eliminate', phase: 'find', progress: 0, timer: 0, sites: [site.index] };
+  // (Beside the site, not on it: a site can have a solid prop, like a crate stack.)
+  const spot = (dx, dz) => [site.at[0] + dx, site.at[1] ?? 0, site.at[2] + dz];
+  const target = ctx.spawnEnemy({ role: 'rifleman', at: spot(0, 3), yaw: site.yaw ?? 0, squad: `hvt${ctx.index}` });
+  if (target) {
+    target.hvt = true;
+    target.health = target.maxHealth = Math.round(target.maxHealth * T.officerHealth);
+  }
+  const n = stage.guards ?? T.guards;
+  for (let i = 0; i < n; i++) {
+    ctx.spawnEnemy({ role: i % 2 ? 'rusher' : 'rifleman', at: spot(i % 2 ? 3 : -3, 3.5 + Math.floor(i / 2)), yaw: site.yaw ?? 0, squad: `hvt${ctx.index}` });
+  }
+  o.update = () => {
+    if (o.phase !== 'find' || !target?.dead) return;
+    o.phase = 'done';
+    ctx.emit('objective:eliminated', { stage: ctx.index });
+    ctx.complete({ checkpoint: site, moment: 'eliminate:done' });
+  };
+  o.spots = () => [];
+  o.save = () => ({ phase: o.phase });
+  o.restore = (s) => { if (s.phase === 'done' && target && !target.dead) target.health = 0; };
+  return o;
+}
+
 // ------------------------------------------------------------------ extraction
 
 /**
@@ -284,7 +322,7 @@ function extract(ctx, stage) {
   return o;
 }
 
-export const KINDS = { rescue, intel, sabotage, hold, extract };
+export const KINDS = { rescue, intel, sabotage, hold, eliminate, extract };
 
 /** How many sites each kind of objective uses (the rest of a stage's list are decoys). */
-export const SITES_USED = { rescue: 1, intel: 1, hold: 1, sabotage: (stage) => stage.caches ?? 3, extract: 0 };
+export const SITES_USED = { rescue: 1, intel: 1, hold: 1, eliminate: 1, sabotage: (stage) => stage.caches ?? 3, extract: 0 };

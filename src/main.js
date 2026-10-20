@@ -46,6 +46,7 @@ import { loadPeer } from './net/peer-loader.js';
 import { createLobbyUi } from './ui/lobby.js';
 import { fillDebrief } from './ui/debrief.js';
 import { createLoadoutScreen } from './ui/loadout.js';
+import { renderModifiers } from './ui/modifiers-ui.js';
 import { createProfile, rankProgress } from './game/profile.js';
 import { createXpTracker } from './game/xp.js';
 import { unlockName } from './ui/names.js';
@@ -146,7 +147,14 @@ async function boot() {
   });
   // Your progress (game/profile.js): rank, XP, gun levels, loadout. Saved in this browser.
   const profile = createProfile();
-  const app = { view, audio, assets, input, settings, loop, profile, debugOpen: params.has('debug') };
+  const app = { view, audio, assets, input, settings, loop, profile, modifiers: [], debugOpen: params.has('debug') };
+  // Mission modifiers for solo play (game/modifiers.js); in co-op the host's lobby decides.
+  const showTitleMods = () => renderModifiers(el('titleMods'), app.modifiers, (list) => {
+    app.modifiers = list;
+    showTitleMods();
+    // A mission already loaded behind the title is rebuilt with the new rules.
+    if (mission?.def.mission && !mission.room) openMap(mission.mapId);
+  });
   // The title screen's rank line.
   const showRank = () => {
     const r = rankProgress(profile.data);
@@ -173,6 +181,7 @@ async function boot() {
   });
   const el = (id) => document.getElementById(id);
   showRank();
+  showTitleMods();
   const flow = createStateMachine({
     title: menuState('title'),
     join: menuState('join', () => el('joinCode').focus()),
@@ -247,6 +256,7 @@ async function boot() {
       events: m.events, me: m.session.me, profile,
       difficulty: m.room?.lobby.difficulty ?? settings.values.difficulty,
       night: !!m.def.night,
+      modifiers: m.sim?.modifiers ?? m.room?.lobby.modifiers ?? [],
       onChange: ({ rankUp, unlocks }) => {
         if (rankUp) m.hud.toast(`Rank ${rankUp}!`, 3);
         for (const u of unlocks) {
@@ -304,7 +314,7 @@ async function boot() {
   let room = null; // the lobby we're hosting or have joined
   let voice = null; // voice chat while in a room (net/voice.js)
   const local = params.get('net') === 'local';
-  const lobbyUi = createLobbyUi();
+  const lobbyUi = createLobbyUi({ onModifiers: (list) => room?.role === 'host' && room.setLobby({ modifiers: list }) });
 
   async function getNet() {
     if (!net) net = local ? createLocalNet() : createPeerNet(await loadPeer());
@@ -350,7 +360,7 @@ async function boot() {
     try {
       room = await hostRoom({
         net: await getNet(), callsign: settings.values.callsign,
-        lobby: { map: mission?.mapId ?? pickMap(), difficulty: settings.values.difficulty },
+        lobby: { map: mission?.mapId ?? pickMap(), difficulty: settings.values.difficulty, modifiers: app.modifiers },
       });
       watchRoom(room);
       startVoice(room);
