@@ -124,3 +124,32 @@ test('a 4-player Harbour snapshot at the enemy cap fits the size budget', async 
   assert.ok(biggest > 0 && biggest <= SNAPSHOT_BUDGET, `${biggest} bytes with ${g.sim.enemies.alive.length} enemies (budget ${SNAPSHOT_BUDGET})`);
   g.dispose();
 });
+
+test('Kingpin (eliminate): at every candidate site the officer and guards stand somewhere reachable; downing him ends the stage; a retry brings him back', async () => {
+  const mission = MISSIONS.find((m) => m.id === 'harbour-eliminate');
+  for (const siteId of mission.stages[0].sites) {
+    const def = { ...harbour, mission: { ...mission, stages: [{ ...mission.stages[0], sites: [siteId] }, mission.stages[1]] } };
+    const f = await makeFight({ level: def, god: true, seed: 4 });
+    f.enemies.options.freeze = true;
+    f.run(0.2);
+    const officer = f.list.find((e) => e.hvt);
+    assert.ok(officer, `${siteId}: an officer`);
+    assert.ok(officer.health > 200, 'tougher than a rifleman');
+    for (const e of [officer, ...f.list.slice(-2)]) {
+      const c = f.nav.nearest(e.pos, { radius: 1.5, anyIsland: true });
+      assert.ok(c >= 0 && f.nav.component[c] === f.nav.main, `${siteId}: ${e.id} stands on the main map (${e.pos.x.toFixed(1)}, ${e.pos.z.toFixed(1)})`);
+    }
+    assert.equal(f.sim.operation.view.kind, 'eliminate');
+    if (siteId === mission.stages[0].sites[0]) {
+      f.enemies.damage(officer, 1e4, { owner: 0, zone: 'body', point: officer.pos, dir: { x: 0, y: 0, z: -1 }, weapon: 'carbine' });
+      f.run(0.2);
+      assert.equal(f.sim.operation.view.kind, 'extract', 'on to extraction');
+      assert.equal(f.sim.operation.view.checkpoint, 1, 'a checkpoint');
+      f.sim.reset();
+      f.run(0.2);
+      const again = f.list.find((e) => e.hvt && !e.dead);
+      assert.ok(again, 'a restart brings a fresh officer');
+    }
+    f.sim.dispose();
+  }
+});

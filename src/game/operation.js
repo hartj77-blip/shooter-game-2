@@ -54,7 +54,7 @@ const AROUND = [[0, 0], [1.5, 0.9], [-1.5, 0.9], [0, 1.8]];
  */
 export function createOperation({
   mission, level, team, rng, emit, enemies, director, hostage, makeHostage, explode, records, recordId, supply = null,
-  tuning = OBJECTIVES,
+  tuning = OBJECTIVES, checkpoints = true, // false: the Iron man modifier (game/modifiers.js)
 }) {
   const sites = level.expanded.sites.map((s, index) => ({ ...s, index }));
   const lzs = level.expanded.lzs;
@@ -114,6 +114,8 @@ export function createOperation({
     hostage,
     makeHostage,
     explode,
+    /** A soldier the objective brings (the officer and their guards); null on a map with no enemies. */
+    spawnEnemy: (spec) => enemies()?.spawn(spec) ?? null,
     moment: (name) => director()?.moment(name),
     setCargo(cargo) { op.cargo = cargo; },
     /** Is what you came for aboard? (Nothing to bring: yes.) */
@@ -162,6 +164,7 @@ export function createOperation({
   }
 
   function saveCheckpoint(at) {
+    if (!checkpoints) return;
     const all = enemies()?.list ?? [];
     const own = level.expanded.enemies.length; // only the level's own enemies are remembered (reinforcements are gone on a retry)
     op.checkpoints++;

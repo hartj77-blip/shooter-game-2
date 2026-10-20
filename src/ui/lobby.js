@@ -5,8 +5,10 @@
 // ever put on the page as text (textContent), never as HTML.
 
 import { SLOT_COLORS, ROOM_SIZE } from '../net/room.js';
+import { renderModifiers } from './modifiers-ui.js';
 
-export function createLobbyUi() {
+/** @param {object} [opts] { onModifiers(list) }: the host pressed a modifier */
+export function createLobbyUi({ onModifiers = () => {} } = {}) {
   const el = (id) => document.getElementById(id);
   const code = el('roomCode');
   const roster = el('roster');
@@ -61,6 +63,7 @@ export function createLobbyUi() {
         difficulty.value = room.lobby.difficulty;
       }
       map.disabled = difficulty.disabled = !host;
+      renderModifiers(el('lobbyMods'), room?.lobby?.modifiers ?? [], host ? onModifiers : null);
       start.hidden = !host;
       let text = note ?? '';
       if (room && !note) {

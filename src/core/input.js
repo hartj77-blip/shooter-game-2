@@ -46,6 +46,41 @@ export const DEFAULT_BINDINGS = {
   nightvision: ['KeyN'],         // night-vision goggles on and off (night missions; only your screen changes)
 };
 
+// Keys you can't take: Escape pauses and ` opens the tuning panel.
+const RESERVED = new Set(['Escape', 'Backquote']);
+
+/**
+ * Your own keys, as saved in the settings ({ action: code }), made safe: only
+ * real actions, only plausible key codes, and never the reserved keys.
+ */
+export function cleanKeys(keys) {
+  const out = {};
+  if (!keys || typeof keys !== 'object') return out;
+  for (const [action, code] of Object.entries(keys)) {
+    if (Object.hasOwn(DEFAULT_BINDINGS, action) && typeof code === 'string' && /^[A-Za-z0-9]{1,24}$/.test(code) && !RESERVED.has(code)) out[action] = code;
+  }
+  return out;
+}
+
+/** The bindings with your own keys swapped in: a key belongs to one action only. */
+export function bindingsWith(keys) {
+  const b = structuredClone(DEFAULT_BINDINGS);
+  for (const [action, code] of Object.entries(cleanKeys(keys))) {
+    for (const a of Object.keys(b)) b[a] = b[a].filter((c) => c !== code);
+    b[action] = [code];
+  }
+  return b;
+}
+
+/** A key code as a person would say it: 'KeyF' -> 'F', 'Mouse0' -> 'Click'. */
+export function keyName(code = '') {
+  const NAMES = {
+    Mouse0: 'Click', Mouse1: 'Middle mouse', Mouse2: 'Right mouse', Mouse3: 'Mouse 4', Mouse4: 'Mouse 5',
+    ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+  };
+  return NAMES[code] ?? code.replace(/^(Key|Digit|Numpad)/, '').replace(/(Left|Right)$/, '');
+}
+
 // Classic shooter sensitivity scale: at sensitivity 1, one mouse "count"
 // turns you 0.022 degrees (the number Quake, Source and CS use).
 const DEGREES_PER_COUNT = 0.022;
@@ -62,14 +97,16 @@ export function createInput({
   target = globalThis, doc = globalThis.document, settings = {},
   getPads = () => globalThis.navigator?.getGamepads?.() ?? [],
 } = {}) {
-  const bindings = structuredClone(DEFAULT_BINDINGS);
+  let bindings = bindingsWith(settings.keys);
   const actionOf = new Map();          // 'KeyW' -> 'forward'
   const held = new Set();              // actions currently held down
   const pressed = new Set();           // actions pressed since the last command
   let lockedAt = 0;
+  let capture = null;                  // rebinding: the next key or button goes here
   let wheel = 0;                       // mouse wheel steps since the last command
   const pad = createGamepadReader(getPads);
   const padMove = { x: 0, y: 0 };      // the left stick, after its dead zone
+  const touchMove = { x: 0, y: 0 };    // the on-screen stick (ui/touch.js)
   const menuRepeat = { dir: null, t: 0 }; // holding a direction in a menu repeats it
 
   const input = {
@@ -88,7 +125,11 @@ export function createInput({
     onPadMenu: null,
     pollPad,
     /** What to call an action's button right now ("F" on a keyboard, "X" on a controller). */
-    glyph: (action) => GLYPHS[input.device]?.[action] ?? GLYPHS.keyboard[action] ?? action,
+    glyph: (action) => (input.device === 'keyboard' && bindings[action] ? keyName(bindings[action][0]) : GLYPHS[input.device]?.[action] ?? GLYPHS.keyboard[action] ?? action),
+    /** Your own keys changed (Settings → Controls). */
+    applyKeys(keys) { bindings = bindingsWith(keys); input.bindings = bindings; rebuild(); },
+    /** The next key or mouse button pressed goes to `fn` instead of the game (rebinding). */
+    captureNext(fn) { capture = fn; },
     /** Shake the controller, if one is in use and rumble is on. */
     rumble(strong, weak, ms) {
       if (input.device === 'pad' && settings.rumble !== false) pad.rumble(strong, weak, ms);
@@ -101,6 +142,17 @@ export function createInput({
     lockPointer,
     unlockPointer,
     bindings,
+    /**
+     * Touch controls (ui/touch.js) press the same actions a key would, so the
+     * game can't tell a thumb from a finger on W.
+     */
+    touch: {
+      press(action) { if (input.enabled) { input.device = 'touch'; press(action); } },
+      release(action) { held.delete(action); },
+      move(x, y) { touchMove.x = x; touchMove.y = y; },
+      look(dx, dy) { if (input.enabled) addLook(-dx * input.lookScale, -dy * input.lookScale * (settings.invertY ? -1 : 1)); },
+      wheel(n) { if (input.enabled) wheel += n; },
+    },
     /** Is this action held right now? (For things outside the simulation, like push-to-talk.) */
     isHeld: (action) => input.enabled && held.has(action),
   };
@@ -129,6 +181,7 @@ export function createInput({
 
   function onKeyDown(e) {
     input.device = 'keyboard';
+    if (capture) { const fn = capture; capture = null; e.preventDefault?.(); fn(e.code); return; }
     const action = actionOf.get(e.code);
     if (!action || !input.enabled) return;
     e.preventDefault?.(); // stop Space from scrolling the page, etc.
@@ -144,6 +197,7 @@ export function createInput({
   const mouseAllowed = () => input.enabled && (isLocked() || !input.requireLock);
 
   function onMouseDown(e) {
+    if (capture) { const fn = capture; capture = null; e.preventDefault?.(); fn(`Mouse${e.button}`); return; }
     const action = actionOf.get(`Mouse${e.button}`);
     if (!action || !mouseAllowed()) return;
     e.preventDefault?.();
@@ -181,6 +235,7 @@ export function createInput({
     input.adsToggled = false;
     input.padSprint = false;
     padMove.x = padMove.y = 0;
+    touchMove.x = touchMove.y = 0;
   }
 
   /**
@@ -255,8 +310,8 @@ export function createInput({
   function sample() {
     const on = (a) => held.has(a);
     const clamp = (v) => Math.max(-1, Math.min(1, v));
-    const moveX = clamp((on('right') ? 1 : 0) - (on('left') ? 1 : 0) + padMove.x);
-    const moveZ = clamp((on('forward') ? 1 : 0) - (on('back') ? 1 : 0) + padMove.y);
+    const moveX = clamp((on('right') ? 1 : 0) - (on('left') ? 1 : 0) + padMove.x + touchMove.x);
+    const moveZ = clamp((on('forward') ? 1 : 0) - (on('back') ? 1 : 0) + padMove.y + touchMove.y);
 
     // Toggle sprint (and the controller's L3 sprint) switches itself off when you stop running forward.
     if (moveZ <= 0) input.sprintToggled = false;

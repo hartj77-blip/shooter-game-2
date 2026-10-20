@@ -43,6 +43,7 @@ import { createEvents } from '../core/events.js';
 import { idleCommand, heldOnly } from '../core/input.js';
 import { createLighting } from '../world/lighting.js';
 import { createCallins } from './callins.js';
+import { cleanModifiers, MODIFIERS } from './modifiers.js';
 
 
 export const MAX_PLAYERS = 4;
@@ -97,8 +98,10 @@ export function playerView(p) {
  */
 export function createSim({
   def, id = 'map', players = [{ owner: 0 }], seed = 1, difficulty = 'regular', events = createEvents(),
-  records = createRecords(null), infiniteAmmo = null, onMapping = null, coop = false,
+  records = createRecords(null), infiniteAmmo = null, onMapping = null, coop = false, modifiers = [],
 }) {
+  // Mission modifiers (game/modifiers.js): house rules picked before the mission.
+  const mods = def.mission ? cleanModifiers(modifiers) : [];
   // Practice maps: shoot all you like. Missions: your spare ammo runs out (game/supply.js).
   const unlimited = infiniteAmmo ?? !def.mission;
   const world = createPhysicsWorld();
@@ -123,6 +126,7 @@ export function createSim({
   // decides them all. (On a practice map they're always ready, to try them out.)
   const callins = createCallins({
     world, events, rng: createRandom(seed * 31 + 7), practice: !!def.armory,
+    chargeScale: mods.includes('scarce') ? MODIFIERS.scarce.charge : 1,
     explode: (g, tuning) => explode(g, tuning), // the grenade's blast, which never hurts the squad
     enemies: () => enemies?.alive ?? [],
   });
@@ -177,6 +181,7 @@ export function createSim({
       specs: level.expanded.enemies,
       players: [...team.values()],
     });
+    if (mods.includes('lethal')) enemies.options.lethal = MODIFIERS.lethal.damage;
   }
 
   // ---- a mission (levels/missions.js): the director paces the reinforcements,
@@ -209,11 +214,15 @@ export function createSim({
   const isPlayer = (owner) => typeof owner === 'number';
   const revives = createRevives();
   const interactions = createInteractions();
-  const supply = createSupply({ crates: level.expanded.crates, emit: events.emit });
+  const refills = mods.includes('scarce') ? MODIFIERS.scarce.refills : 1;
+  const supply = createSupply({
+    crates: level.expanded.crates.map((c) => ({ ...c, refills: Math.max(1, Math.round((c.refills ?? 4) * refills)) })),
+    emit: events.emit,
+  });
   let charges = 0;
   const operation = mission
     ? createOperation({
-      mission, level, team, emit: events.emit, supply, records,
+      mission, level, team, emit: events.emit, supply, records, checkpoints: !mods.includes('ironman'),
       rng: createRandom(seed * 17 + 5),
       recordId: coop ? () => `${mission.id}-${team.size}p` : () => mission.id,
       enemies: () => enemies, director: () => director, hostage: () => hostage, makeHostage,
@@ -432,7 +441,7 @@ export function createSim({
   return {
     def, level, world, registry, targets, nav, cover, noise, events,
     get enemies() { return enemies; },
-    encounter, course, team, revives, interactions, supply, operation, director, callins,
+    encounter, course, team, revives, interactions, supply, operation, director, callins, modifiers: mods,
     get hostage() { return hostage; },
     spots,
     grenades,

@@ -11,6 +11,8 @@
 //
 // No DOM, no three.js: this runs in Node.
 
+import { modifierXp } from './modifiers.js';
+
 export const XP = {
   kill: 100,          // an enemy down (and the same for the gun that did it)
   headshot: 50,       // ...on top, if it was a headshot
@@ -37,8 +39,9 @@ const REASONS = {
  * @param {boolean} [opts.night]
  * @param {(change) => void} [opts.onChange]  after each award: { xp, reason, rankUp, unlocks }
  */
-export function createXpTracker({ events, me, profile, difficulty = 'regular', night = false, onChange = () => {} }) {
-  const mult = (XP.difficulty[difficulty] ?? 1) * (night ? XP.night : 1);
+export function createXpTracker({ events, me, profile, difficulty = 'regular', night = false, modifiers = [], onChange = () => {} }) {
+  // (Mission modifiers add their bonus too: game/modifiers.js.)
+  const mult = (XP.difficulty[difficulty] ?? 1) * (night ? XP.night : 1) * modifierXp(modifiers);
   const lines = new Map(); // reason -> xp this fight
   const guns = new Map();  // gun -> xp this fight
   let total = 0;

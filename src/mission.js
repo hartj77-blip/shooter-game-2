@@ -88,6 +88,7 @@ export async function loadMission({ app, mapId, def, room = null, onProgress = (
       def, id: mapId, events, coop: !!room,
       seed: (Math.random() * 2 ** 31) | 0,
       difficulty: room?.lobby.difficulty ?? settings.values.difficulty,
+      modifiers: room ? room.lobby.modifiers ?? [] : app.modifiers ?? [],
       records: createRecords(), // best times, saved in this browser
       // Your guns: the loadout from your profile (game/profile.js), or every gun on a practice map.
       players: [{ owner: 0, callsign: cleanCallsign(settings.values.callsign, 'Player 1'), loadout: myLoadout, callin: myCallin }],

@@ -494,3 +494,22 @@ pre { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 12px; bo
 .debrief-players td { text-align: right; padding: 3px 6px; }
 .debrief-players th:first-child, .debrief-players td:first-child { text-align: left; }
 
+
+/* ------------------------------------------------------------------ HUD settings (Settings: HUD size, Show the HUD, Subtitles) */
+/* The panels grow or shrink together; the crosshair, scope and markers in the world keep their size. */
+:is(.health, .readout, .weapon-panel, .course, .feed, .subs, .radio-line, .toast, .hint, .results, .down, .objective, .squad) { zoom: var(--hud-scale, 1); }
+body.no-hud .hud > :is(.health, .readout, .weapon-panel, .feed, .dirs, .dmg-nums, .marks, .fps, .radio-light) { visibility: hidden; }
+body.no-subs :is(.subs, .radio-line) { display: none; }
+.settings-head { margin: 14px 0 4px; font: 600 13px var(--head); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.setting-key { grid-template-columns: 1fr auto; }
+.setting-key button { min-width: 120px; font-size: 14px; padding: 6px 12px; min-height: 36px; }
+
+/* ------------------------------------------------------------------ touch controls (ui/touch.js) */
+.touch { position: fixed; inset: 0; z-index: 5; display: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+.touch.on { display: block; }
+.touch-stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: rgba(0,0,0,0.15); }
+.touch-stick i { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.45); }
+.touch-buttons { position: absolute; right: 12px; bottom: 150px; display: grid; grid-template-columns: repeat(3, 64px); gap: 8px; }
+.touch-buttons button, .touch-pause { width: 64px; height: 64px; min-height: 0; padding: 0; border-radius: 50%; font-size: 12px; background: rgba(0,0,0,0.35); border-color: rgba(255,255,255,0.4); }
+.touch-pause { position: absolute; top: 12px; left: 12px; width: 48px; height: 48px; }
+.mods { margin-top: 6px; }

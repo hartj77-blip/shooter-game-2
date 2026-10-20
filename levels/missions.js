@@ -8,7 +8,7 @@
 //
 // Moment names come from the objectives (rescue:freed, intel:download,
 // intel:downloaded, intel:pickup, sabotage:destroyed, sabotage:done,
-// hold:start, hold:half, hold:late, hold:done, extract:called, extract:landed)
+// hold:start, hold:half, hold:late, hold:done, eliminate:done, extract:called, extract:landed)
 // plus 'start'. Each can send a wave ({ wave: size or true, entry }), start a
 // crescendo, give a breather (relax), and say something on the radio (say).
 //
@@ -93,6 +93,24 @@ export const MISSIONS = [
       'hold:late': { crescendo: true, say: 'Almost there. Hold on!' },
       'hold:done': { say: 'Helicopter is twenty seconds out. Landing on the headland.' },
       'extract:landed': { say: 'Down on the headland. Everybody in!' },
+    },
+  },
+  {
+    id: 'harbour-eliminate',
+    map: 'harbour',
+    title: 'Kingpin',
+    kind: 'Eliminate',
+    brief: 'The officer running this port is meeting his bodyguards somewhere in the yard, warehouse B or the village. Find him, take him down, get out.',
+    stages: [
+      { kind: 'eliminate', sites: ['cache-yard-1', 'cache-warehouse', 'cache-village'], guards: 2 },
+      { kind: 'extract', lz: 'lz', inbound: 60 },
+    ],
+    director: { calm: 40 },
+    moments: {
+      start: { say: 'Overlord to squad: the officer is in the yard, warehouse B or the village square. He has guards. He is the job.' },
+      'eliminate:done': { wave: true, say: "Target down. The whole port knows it. Car park, now, and call the bird." },
+      'extract:called': { crescendo: true, say: 'Helicopter inbound, sixty seconds.' },
+      'extract:landed': { say: 'Bird is down. Everybody aboard.' },
     },
   },
 ];
