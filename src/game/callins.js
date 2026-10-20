@@ -64,7 +64,7 @@ const r2 = (v) => Math.round(v * 100) / 100;
  * @param {() => Array} opts.enemies  the living enemies
  * @param {boolean} [opts.practice] always charged (the Proving Ground)
  */
-export function createCallins({ world, events, rng, explode, enemies = () => [], practice = false, tuning = CALLINS }) {
+export function createCallins({ world, events, rng, explode, enemies = () => [], practice = false, chargeScale = 1, tuning = CALLINS }) {
   const players = new Map(); // owner -> { kind, charge, uses }
   let active = [];           // call-ins on their way or working
   let n = 0;                 // for ids
@@ -87,7 +87,7 @@ export function createCallins({ world, events, rng, explode, enemies = () => [],
   const gain = (owner, amount) => {
     const p = players.get(owner);
     if (!p || p.charge >= 1) return;
-    p.charge = Math.min(1, p.charge + amount / (tuning.slower ** p.uses));
+    p.charge = Math.min(1, p.charge + (amount * chargeScale) / (tuning.slower ** p.uses));
     if (p.charge >= 1) events.emit('callin:ready', { owner, kind: p.kind });
   };
   const offs = [

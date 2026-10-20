@@ -66,7 +66,7 @@ export function createProxy({ world, registry, id, owner, kind, role = null, wea
       Object.assign(view.prev, view.pos);
       Object.assign(view.pos, s.pos);
       for (const k of ['yaw', 'pitch', 'crouched', 'speed', 'sprinting', 'grounded', 'ready', 'reloading', 'alert',
-        'awareness', 'inCombat', 'fresh', 'target', 'sees', 'laserOn', 'laserCharge', 'hp', 'down', 'bleeding', 'dead', 'weapon', 'marked', 'callin',
+        'awareness', 'inCombat', 'fresh', 'target', 'sees', 'laserOn', 'laserCharge', 'hp', 'down', 'bleeding', 'dead', 'weapon', 'marked', 'callin', 'hvt',
         'bleedLeft', 'reviving', 'reviver', 'using', 'useProgress']) {
         if (s[k] !== undefined) view[k] = s[k];
       }

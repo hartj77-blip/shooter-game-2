@@ -79,7 +79,7 @@ export const roundCommand = (cmd) => decodeCommand(encodeCommand(0, cmd))[1];
 // ---------------------------------------------------------------- snapshots
 
 const P_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'down', 'dead', 'bleeding'];
-const E_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'inCombat', 'fresh', 'sees', 'laserOn', 'dead', 'marked'];
+const E_FLAGS = ['crouched', 'sprinting', 'grounded', 'ready', 'reloading', 'inCombat', 'fresh', 'sees', 'laserOn', 'dead', 'marked', 'hvt'];
 const ALERTS = ['calm', 'suspicious', 'combat'];
 const ROLE_LIST = Object.keys(ROLES);
 const ENC_STATES = ['ready', 'running', 'cleared', 'down'];
