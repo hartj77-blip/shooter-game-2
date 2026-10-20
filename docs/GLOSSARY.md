@@ -31,6 +31,7 @@ Every game-dev term we use, in plain English. New terms get added as each milest
 | **Bark** | A short callout a character shouts ("Reloading!", "Flanking!") so you can tell what they're doing. (Lesson 8) |
 | **Base64** | A way of writing any data using only letters, digits and a couple of symbols, so it can be copied and pasted as text. The backup code uses the web-safe kind (base64url). (Lesson 23) |
 | **Batching** | Joining many meshes that share a material into one, so they cost one draw call instead of many. One trolley per shop. (Lesson 16) |
+| **Binding (key)** | Which key or button does which action. Rebinding changes the table, never the game. (Lesson 26) |
 | **Bleed out** | In co-op, the 30 seconds you have after going down before you're out until the next fight, unless a teammate revives you. (Lesson 11) |
 | **Blockout** | A map built from rough grey shapes, to test routes and fights before any art is made. (Lesson 16) |
 | **Bloom** | Spread that grows with each shot and shrinks back when you stop firing. (Lesson 5) |
@@ -100,6 +101,7 @@ Every game-dev term we use, in plain English. New terms get added as each milest
 | **Garbage collection** | The browser pausing to clean up objects nobody uses any more. Too much of it causes stutters. (Lesson 6) |
 | **Getter** | A property that runs a small function each time it's read, so it's always up to date. `Object.assign` copies its answer once, not the getter. (Lesson 14) |
 | **glTF (.glb)** | The common file format for 3D models on the web: meshes, materials, skeletons and animations in one file. (Lesson 18) |
+| **Governor** | Something that watches a measurement and adjusts a setting to keep it in range, like an automatic gearbox. Ours lowers graphics quality when the game stays slow. (Lesson 26) |
 | **Grey-box** | Building a level from plain boxes to get gameplay right before adding real art. |
 | **Gun level** | How much you've used a particular gun, from 1 to 10. Levels unlock that gun's attachments. (Lesson 23) |
 | **Half float** | A way of storing colours that allows values brighter than white, so bloom knows what's really bright. (Lesson 20) |
@@ -113,6 +115,8 @@ Every game-dev term we use, in plain English. New terms get added as each milest
 | **Hole punching** | Two browsers behind home routers sending to each other at the same moment, so each router lets the other in. (Lesson 13) |
 | **Host** | In co-op, the browser that runs the real game (the referee). Solo play is hosting a game for one. (Lesson 11) |
 | **HUD** | Heads-up display: the info drawn over the game view (crosshair, speed, ammo later). |
+| **Hunting** | An automatic setting flicking back and forth between two values, because it reacts to its own change. Avoid it by only changing one way. (Lesson 26) |
+| **HVT (high-value target)** | The officer an eliminate mission sends you after: an enemy marked so every screen can point them out. (Lesson 27) |
 | **Idempotent** | Gives the same result however many times you do it. "Fill to full" is; "add 60" isn't. (Lesson 17) |
 | **Import map** | The part of `index.html` that tells the browser what names like `'three'` mean. (Lesson 0) |
 | **Impulse response** | A recording (or code-made imitation) of how a space echoes. Mixing a sound with it adds that echo. (Lesson 7) |
@@ -148,9 +152,11 @@ Every game-dev term we use, in plain English. New terms get added as each milest
 | **Mesh (network)** | Everyone connected directly to everyone. Our voice chat is a mesh; four players make six links. (Lesson 13) |
 | **Migration** | Upgrading saved data from an older version's shape to the current one, step by step, so nobody loses their progress. (Lesson 23) |
 | **Mission (in our code)** | One map, built and ready to play, with its own event noticeboard; dispose() tears it down without reloading the page. (Lesson 11) |
+| **Modifier (mission)** | An optional house rule that makes a mission harder for more XP: Iron man, Scarce supplies, Lethal. (Lesson 27) |
 | **Modifier (mod)** | One change to a number: "multiply the magazine by 1.5", "set the zoom to 2.2". An attachment is a list of them. (Lesson 24) |
 | **Mood** | A map's lighting as data: sky, fog, sun, ambient light, exposure and colour grade (render/moods.js). (Lesson 20) |
 | **MSAA (multisampling)** | Smoothing jagged edges by checking several points inside each pixel. (Lesson 20) |
+| **Multi-touch** | Several fingers on a touch screen at once. Each has its own identifier, so the stick and the look finger never get mixed up. (Lesson 26) |
 | **Muzzle flash** | The burst of light at the end of the barrel when a gun fires. (Lesson 6) |
 | **NaN (not a number)** | What JavaScript gives for maths that makes no sense, like `undefined × 1.15`. It spreads through every sum it touches, so a single one can freeze a rule. (Lesson 24) |
 | **NAT** | Network address translation: your router sharing one public internet address between every device in the house, like a block of flats with one street address. (Lesson 13) |
@@ -212,6 +218,7 @@ Every game-dev term we use, in plain English. New terms get added as each milest
 | **Scope view** | Aiming all the way through a magnifying scope: the gun disappears and the screen shows the round view through its glass. (Lesson 24) |
 | **Seed / seeded random** | A starting number for a random-number generator. The same seed always gives the same sequence. (Lesson 5) |
 | **Shadow map** | The scene drawn from the sun's point of view to work out what's in shadow. |
+| **Shipping** | Releasing a version and writing down what's left for the next one. A game is never finished, only shipped. (Lesson 27) |
 | **Sightline** | How far you can see (and be seen) in a straight line. Long ones suit snipers, short ones close fights. (Lesson 16) |
 | **Signalling** | Swapping the details two browsers need before they can connect directly, through a matchmaking service. (Lesson 13) |
 | **Simulation vs presentation** | Code that decides what happens vs code that shows it. Kept separate. (Lesson 4) |
@@ -230,12 +237,14 @@ Every game-dev term we use, in plain English. New terms get added as each milest
 | **Step-up** | Climbing small steps automatically while walking. (Lesson 3) |
 | **String pulling** | Straightening a zig-zag route by skipping every corner you can walk straight past, like pulling a string tight. (Lesson 9) |
 | **STUN** | A server that tells your browser what its public internet address looks like from outside. (Lesson 13) |
+| **Subtitles** | Speech shown as text: here, radio lines and enemy callouts. (Lesson 26) |
 | **Suppressor** | A muzzle attachment that makes a gun quieter and hides its flash. Ours: heard less than half as far, no light at night, a little less range. (Lesson 24) |
 | **Telegraph** | A warning before an attack (a laser, a sound, a wind-up) that gives you a fair chance to react. (Lesson 8) |
 | **Tick** | One fixed-size simulation update (1/60 s). (Lesson 1) |
 | **Tile** | A square of the map (32 m on a side) whose level pieces are batched together, so a whole tile can be skipped when it's out of view. (Lesson 16) |
 | **Time slicing** | Spreading expensive work over several ticks (each enemy thinks on a different tick) so no single tick is slow. (Lesson 8) |
 | **Tone mapping** | Squeezing very bright and dark light into what a screen can show, like a camera's exposure. (Lesson 20) |
+| **Touch controls** | On-screen sticks and buttons for phones and tablets. Ours press the same actions as keys. (Lesson 26) |
 | **Tracer** | A glowing streak showing a bullet's path. (Lesson 6) |
 | **Trauma (camera shake)** | A 0-to-1 "how shaken" value that big events add to and time drains. Shake strength is trauma squared. (Lesson 6) |
 | **Trigger volume** | An invisible box that notices when you walk into it, like the kill house's start and finish pads. |

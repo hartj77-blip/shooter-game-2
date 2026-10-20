@@ -4,14 +4,11 @@ A co-op first-person shooter for the browser, built step by step as a game-devel
 
 **Play:** https://hartj77-blip.github.io/shooter-game-2/
 
-**Now:** Milestone 7, **Progression**: every mission counts.
-- **XP and ranks:** kills, revives, objectives and missions earn XP (more on Veteran and at night). Your **rank** unlocks guns (SMG, shotgun, the DMR) and call-ins; each gun's own **level** unlocks its attachments. The debrief shows what you earned.
-- **Attachments:** red dot, holographic and 2× scope sights (with a proper scope view), suppressor, compensator, extended and fast magazines, foregrip and laser. Each changes the gun's numbers, and you see it on the gun.
-- **Loadout:** pick your gun, its attachments and your call-in on the **Loadout** screen (title screen or lobby). In co-op everyone brings their own, and you see your friends' attachments.
-- **Call-ins:** earn a charge, then press **T** to call in a **supply drop**, a **recon drone** that marks enemies, a **mortar strike** (with a fair warning) or a **smoke screen** where you look.
-- **Saved progress:** kept in your browser, and a **backup code** (bottom of the Loadout screen) takes it to another one.
+**Version 1.0**: all ten milestones are done. The latest two:
+- **Polish (M8):** rebind any key (Settings → Controls), HUD size and a hide-HUD switch, subtitles and interface volume settings, automatic graphics quality on slow computers, and **touch controls** for phones and tablets.
+- **Content (M9):** a fifth mission, **Kingpin** (find and take down an officer and his bodyguards), and **mission modifiers** for more XP: Iron man (no checkpoints), Scarce supplies, Lethal (double damage both ways).
 
-Milestone 6 brought the art: animated soldiers, real gun models, textures, a mood per map, night missions with night vision, and controller support.
+Before that, milestone 7 brought progression (XP, ranks, attachments, loadouts, call-ins, saved progress) and milestone 6 the art (animated soldiers, gun models, night missions, controllers).
 
 The missions, from milestone 5, are on the Harbour, solo or with up to three friends. Pick one on the title screen (Day or Night):
 
@@ -19,6 +16,7 @@ The missions, from milestone 5, are on the Harbour, solo or with up to three fri
 - **Dead Drop** (intel): find the laptop, defend it while it downloads, and carry the drive out.
 - **Short Fuse** (sabotage): blow up three hidden weapons caches.
 - **Last Light** (hold the line): switch on the lighthouse radio and hold the headland for three minutes.
+- **Kingpin** (eliminate): find the officer running the port, get past his bodyguards, take him down.
 
 Every mission ends with **extraction**: call the helicopter, survive while it flies in, and get aboard. A **director** watches how the fight is going: it sends reinforcements while things are calm and gives you a breather after a hard fight. Ammo is limited in missions (refill at the ammo crates), you carry two **grenades** (G), and if everyone goes down you retry from the last **checkpoint**. A debrief shows how it went.
 
@@ -27,7 +25,7 @@ Or practise:
 - **The Compound:** clear a walled compound held by 16 enemy soldiers. Riflemen take cover and peek, Rushers charge and flank, and Marksmen warn you with a laser before each shot. They see and hear you, call out to each other, and search where they last saw you. Health recovers if you get out of the fire.
 - **The Proving Ground:** the practice area from milestones 1 and 2: the movement course, every gun (whatever your loadout), the firing range and the timed kill house. Call-ins are always charged here, to try them out.
 
-Then press **Play solo**, **Host co-op** or **Join co-op**.
+Optionally switch on **modifiers** (harder, more XP). Then press **Play solo**, **Host co-op** or **Join co-op**.
 
 ### Playing co-op
 
@@ -67,6 +65,7 @@ Every number (movement, guns, enemies, the director, grenades, call-ins) has a s
 | V (hold) | Squad radio (co-op) |
 | Z or middle mouse | Ping what you're aiming at (co-op) |
 | `` ` `` (under Esc) | Tuning panel (pauses the game) |
+| Any of the above | Can be rebound in Settings → Controls |
 | Esc | Pause |
 
 A controller works too: sticks to move and look, RT to fire, LT to aim, X to reload (tap) or use (hold), RB for a grenade, View for your call-in, D-pad down for night vision. The full table is on the title screen.
@@ -102,6 +101,8 @@ Difficulty (Recruit, Regular, Veteran), mouse and aiming sensitivity, field of v
   23. [Progression and saving](docs/lessons/23-progression-and-saving.md)
   24. [Attachments as data](docs/lessons/24-attachments-as-data.md)
   25. [Call-ins and fair area effects](docs/lessons/25-call-ins-and-fair-area-effects.md)
+  26. [Polish: settings, touch and keeping it smooth](docs/lessons/26-polish-settings-and-touch.md)
+  27. [Content from data, and shipping](docs/lessons/27-content-from-data-and-shipping.md)
 - [`docs/GLOSSARY.md`](docs/GLOSSARY.md): every term in plain English
 - [`docs/DESIGN.md`](docs/DESIGN.md): the game design document and roadmap
 
@@ -172,8 +173,10 @@ docs/             design document, glossary, lessons
 | ✅ | M5 Missions | the Harbour, four missions, the director, extraction, grenades, checkpoints |
 | ✅ | M6 Art pass | animated soldiers, gun models, textures, moods, post-processing, night missions, controllers |
 | ✅ | M7 Progression | XP, ranks, unlocks, attachments, loadouts, call-ins, saved progress |
-| ⏭ | M8 Polish | audio, HUD, settings, touch |
-| | M9 Content | maps, mission types, difficulty |
+| ✅ | M8 Polish | rebinding, HUD and audio options, automatic quality, touch controls |
+| ✅ | M9 Content | a fifth mission type, mission modifiers, version 1.0 |
+
+What could come next (version 2) is listed in [DESIGN.md](docs/DESIGN.md) under Open questions.
 
 ## Credits
 

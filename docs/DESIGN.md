@@ -40,8 +40,8 @@ Each milestone ends with something playable on GitHub Pages, a lesson in `docs/l
 | M5 | Missions | The Harbour map, four missions (rescue, intel, sabotage, hold the line) with extraction by helicopter, the director and reinforcements, checkpoints and retry, limited ammo and crates, grenades, the hostage, explosions, the debrief | **Done** |
 | M6 | Art pass | Animated soldiers on real skeletons, real gun models, textured world with trims and props, a mood per map, post-processing and quality presets, night missions where darkness hides you, night vision; controller support (pulled forward from M8) | **Done** |
 | M7 | Progression | XP, ranks and gun levels, unlocks, nine attachments, the Loadout screen, four call-ins (supply drop, recon drone, mortar, smoke), saved progress with backup codes | **Done** |
-| M8 | Polish | Audio mix, HUD, full settings, touch, loading, performance (controllers arrived early, in M6) | |
-| M9 | Content | Three or more maps, five mission types, modifiers, difficulty, release | |
+| M8 | Polish | Key rebinding, HUD size and hide, subtitles switch, interface volume, automatic graphics quality, touch controls | **Done** |
+| M9 | Content | A fifth mission type (eliminate: Kingpin), mission modifiers (Iron man, Scarce supplies, Lethal), version 1.0 | **Done** |
 
 ## Movement targets (M1)
 
@@ -212,6 +212,21 @@ The DMR is now yours from rank 6 (zoom 2.5×, its scope built in, so no optic sl
 | Mortar | Red smoke and a marker; 3 s later 4 shells over 3 s within 6 m (220 damage, 7 m blast, never the squad); enemies may run | `mortar` |
 | Smoke screen | 4 clouds of 3 m in a line across your view, 25 s; blocks eyes (`SMOKE` group), not bullets | `smoke` |
 
+## Polish and content (M8, M9)
+
+Lessons 26–27 explain how.
+
+| Thing | What | Where |
+|---|---|---|
+| Rebinding | Settings → Controls: click, press a key or mouse button; one key per action; Escape and ` reserved; prompts follow | `core/input.js` (`bindingsWith`, `keyName`), `ui/menus.js` |
+| HUD | Size 75–150%, show/hide, subtitles on/off, interface volume | `core/settings.js`, `ui/style.css` |
+| Automatic quality | Under 40 fps for 5 s while playing: one level down, never back up by itself | `PERF` in `core/perf.js` |
+| Touch | Stick where the left thumb lands (60 px), drag right half to look, 9 buttons + pause; `?touch` to force | `ui/touch.js` |
+| Kingpin (eliminate) | Officer (×2.5 health) + 2 guards at the yard, warehouse B or the village square; down him, extract | `eliminate` in `game/objectives.js`, `levels/missions.js` |
+| Modifiers | Iron man (no checkpoints, +30% XP), Scarce supplies (half crate refills and call-in charge, +20%), Lethal (double damage both ways, +30%) | `MODIFIERS` in `game/modifiers.js` |
+
+Version 1.0 is milestones 0–9. What it leaves out is under **Open questions**.
+
 ## Controls
 
 | Action | Mouse and keyboard |
@@ -232,10 +247,11 @@ The DMR is now yours from rank 6 (zoom 2.5×, its scope built in, so no optic sl
 | Night-vision goggles (night missions) | N |
 | Use (revive, free, plant, download, ammo, radio) | F (hold) |
 | Spectating: next teammate | Left mouse |
+| Rebind any of these | Settings → Controls |
 | Tuning panel | `` ` `` |
 | Pause | Esc |
 
-When you're down in a solo fight, R starts it again. In co-op the host presses R once the whole squad is down. In a mission, R retries from the last checkpoint instead (also when the hostage dies while you're standing). Controllers work too (since M6): see the controller table on the title screen and `core/gamepad.js`; on a controller, X does what R and F do (tap to reload, hold to use). Touch controls arrive in M8. Key and button rebinding arrives with full settings in M8.
+When you're down in a solo fight, R starts it again. In co-op the host presses R once the whole squad is down. In a mission, R retries from the last checkpoint instead (also when the hostage dies while you're standing). Controllers work too (since M6): see the controller table on the title screen and `core/gamepad.js`; on a controller, X does what R and F do (tap to reload, hold to use). On a touch screen, on-screen controls appear (since M8). Keys can be rebound in Settings → Controls.
 
 ## Art direction
 
@@ -284,3 +300,4 @@ Already in: pings and markers so a squad can play without voice, push-to-talk or
 - How fast should call-ins charge? The first charge takes up to 5 minutes, sooner with kills; tune with real squads.
 - Should the Proving Ground let you try every attachment (a gunsmith bench by the rack)? Today it hands out every gun, with no attachments.
 - More missions on the Compound (a raid), and more mission types (escort a convoy, defend a position that moves)? M9.
+- Version 2 ideas: more maps (a raid on the Compound, a town), an escort-a-convoy mission, enemy grenades and call-ins (with warnings), host migration, controller button rebinding, a gunsmith bench on the Proving Ground.
