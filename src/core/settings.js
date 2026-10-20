@@ -6,6 +6,7 @@
 // A broken save must never stop the game from starting.
 
 import { events } from './events.js';
+import { cleanKeys } from './input.js';
 
 const STORAGE_KEY = 'fireteam.settings';
 const VERSION = 1;
@@ -32,6 +33,12 @@ export const SETTINGS_SCHEMA = {
   callsign:     { default: '', text: true, maxLength: 16 },   // your name in co-op games
   voiceMode:    { default: 'both', options: ['both', 'radio', 'off'] }, // co-op voice chat (net/voice-mix.js)
   voiceVolume:  { default: 1.0,  min: 0,   max: 1 },
+  uiVolume:     { default: 0.8,  min: 0,   max: 1 },        // hit markers, beeps, chimes (the audio mix: audio/audio.js)
+  hudScale:     { default: 1.0,  min: 0.75, max: 1.5 },     // how big the HUD is drawn
+  showHud:      { default: true },                        // off: a clean screen (crosshair and prompts stay)
+  subtitles:    { default: true },                        // radio lines and enemy callouts as text
+  autoQuality:  { default: true },                        // drop the graphics quality if the frame rate stays low
+  keys:         { default: {}, bindings: true },          // your own keys: { action: 'KeyE' } (core/input.js)
 };
 
 /**
@@ -50,7 +57,7 @@ export function cleanText(value, max = 32) {
 
 export function defaultSettings() {
   const out = {};
-  for (const [key, rule] of Object.entries(SETTINGS_SCHEMA)) out[key] = rule.default;
+  for (const [key, rule] of Object.entries(SETTINGS_SCHEMA)) out[key] = structuredClone(rule.default);
   return out;
 }
 
@@ -65,6 +72,7 @@ export function sanitize(key, value) {
   if (typeof rule.default === 'boolean') return typeof value === 'boolean' ? value : rule.default;
   if (rule.text) return typeof value === 'string' ? cleanText(value, rule.maxLength) : rule.default;
   if (rule.options) return rule.options.includes(value) ? value : rule.default;
+  if (rule.bindings) return cleanKeys(value);
   return rule.default;
 }
 
