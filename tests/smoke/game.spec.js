@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test';
 test.use({ viewport: { width: 960, height: 540 } });
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('fireteam.settings', JSON.stringify({ version: 1, values: { quality: 'low' } }));
+    localStorage.setItem('fireteam.settings', JSON.stringify({ version: 1, values: { quality: 'low', autoQuality: false } }));
   });
 });
 
@@ -83,11 +83,28 @@ test('the title screen and settings open', async ({ page }) => {
   await expect(page.locator('#title')).toBeVisible();
   await page.click('#btnSettingsT');
   await expect(page.locator('#settings')).toBeVisible();
-  await expect(page.locator('#settingsForm .setting')).toHaveCount(20);
+  await expect(page.locator('#settingsForm .setting:not(.setting-key)')).toHaveCount(25);
+  // Rebinding: click "Use", press E; the prompt now says E, and it's saved.
+  await page.click('#settingsForm button[data-action="interact"]');
+  await expect(page.locator('#settingsForm button[data-action="interact"]')).toHaveText('Press a key…');
+  await page.keyboard.press('KeyE');
+  await expect(page.locator('#settingsForm button[data-action="interact"]')).toHaveText('E');
+  expect(await page.evaluate(() => [window.fireteam.input.glyph('interact'), JSON.parse(localStorage.getItem('fireteam.settings')).values.keys.interact])).toEqual(['E', 'KeyE']);
   await page.screenshot({ path: 'test-results/settings.png' });
   await page.click('#btnSettingsDone');
   await expect(page.locator('#settings')).toBeHidden();
   await page.screenshot({ path: 'test-results/title.png' });
+});
+
+test('touch controls: shown while playing, and the on-screen stick walks you forward', async ({ page }) => {
+  await page.goto('/?touch&autostart');
+  await page.waitForFunction(() => window.fireteam?.ready && window.fireteam.loop.tick > 30, null, { timeout: 30_000 });
+  await expect(page.locator('.touch.on .touch-buttons button')).toHaveCount(9);
+  const z0 = await page.evaluate(() => window.fireteam.player.state.pos.z);
+  await page.evaluate(() => window.fireteam.input.touch.move(0, 1));
+  await page.waitForFunction((z) => window.fireteam.player.state.pos.z < z - 1, z0, { timeout: 30_000 });
+  await page.evaluate(() => window.fireteam.input.touch.move(0, 0));
+  await page.screenshot({ path: 'test-results/touch.png' });
 });
 
 test('shooting works: ammo goes down, a target gets hit, the kill house timer starts', async ({ page }) => {

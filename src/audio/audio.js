@@ -86,7 +86,7 @@ export function createAudio({ settings, fetchFn = globalThis.fetch?.bind(globalT
     if (!ctx) return;
     master.gain.value = settings.masterVolume ?? 0.8;
     sfx.gain.value = settings.sfxVolume ?? 1;
-    ui.gain.value = (settings.sfxVolume ?? 1) * 0.9;
+    ui.gain.value = (settings.uiVolume ?? 0.8) * 0.9; // its own knob: some people want hit sounds loud, others off
   }
 
   /** MP3 files start with a few milliseconds of silence; skip it so shots feel instant. */

@@ -4,6 +4,14 @@
 // adding a setting there automatically adds it here.
 
 import { SETTINGS_SCHEMA } from '../core/settings.js';
+import { DEFAULT_BINDINGS, keyName } from '../core/input.js';
+
+// The actions you can give your own key (Settings → Controls), in a sensible order.
+const ACTION_NAMES = {
+  forward: 'Forward', back: 'Back', left: 'Left', right: 'Right', jump: 'Jump / climb', sprint: 'Sprint',
+  crouch: 'Crouch / slide', fire: 'Fire', ads: 'Aim', reload: 'Reload', last: 'Last gun', grenade: 'Grenade',
+  interact: 'Use (hold)', ping: 'Ping', callin: 'Call-in', radio: 'Squad radio (hold)', nightvision: 'Night vision',
+};
 
 const LABELS = {
   sensitivity:  { label: 'Mouse sensitivity', step: 0.05, format: (v) => v.toFixed(2) },
@@ -34,15 +42,25 @@ const LABELS = {
     help: 'Nearby voice: teammates close to you hear you from where you stand. Wear headphones so nobody hears themselves echo.',
   },
   voiceVolume:  { label: 'Voice volume', step: 0.05, format: (v) => `${Math.round(v * 100)}%` },
+  uiVolume:     { label: 'Interface volume', step: 0.05, format: (v) => `${Math.round(v * 100)}%`, help: 'Hit markers, beeps and chimes.' },
+  hudScale:     { label: 'HUD size', step: 0.05, format: (v) => `${Math.round(v * 100)}%` },
+  showHud:      { label: 'Show the HUD', help: 'Off: a clean screen for screenshots. The crosshair and prompts stay.' },
+  subtitles:    { label: 'Subtitles', help: 'Radio lines and enemy callouts as text.' },
+  autoQuality:  { label: 'Automatic graphics quality', help: 'Steps the graphics quality down if the game stays slow for a few seconds.' },
 };
 
-export function createMenus(settings) {
+/**
+ * @param {object} settings  core/settings.js
+ * @param {object} [input]   core/input.js, for catching the key you press when rebinding
+ */
+export function createMenus(settings, input = null) {
   const screens = {};
   for (const id of ['loading', 'title', 'join', 'lobby', 'debrief', 'pause', 'settings', 'loadout', 'error']) screens[id] = document.getElementById(id);
   const form = document.getElementById('settingsForm');
   const controls = {};
 
   for (const [key, rule] of Object.entries(SETTINGS_SCHEMA)) {
+    if (rule.bindings) continue; // your keys get their own list below
     const meta = LABELS[key] ?? { label: key };
     const row = document.createElement('label');
     row.className = 'setting';
@@ -100,11 +118,46 @@ export function createMenus(settings) {
     controls[key] = { input, value, meta };
   }
 
+  // ---- Controls: click an action, then press the key (or mouse button) you want for it.
+  const keysHead = document.createElement('h3');
+  keysHead.className = 'settings-head';
+  keysHead.textContent = 'Controls (click, then press a key)';
+  form.append(keysHead);
+  const keyButtons = {};
+  const bound = (action) => keyName(settings.values.keys[action] ?? DEFAULT_BINDINGS[action][0]);
+  for (const [action, label] of Object.entries(ACTION_NAMES)) {
+    const row = document.createElement('div');
+    row.className = 'setting setting-key';
+    const name = document.createElement('span');
+    name.className = 'setting-name';
+    name.textContent = label;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.action = action;
+    b.addEventListener('click', () => {
+      if (!input) return;
+      b.textContent = 'Press a key…';
+      input.captureNext((code) => {
+        if (code !== 'Escape') settings.set('keys', { ...settings.values.keys, [action]: code });
+        refresh();
+      });
+    });
+    row.append(name, b);
+    form.append(row);
+    keyButtons[action] = b;
+  }
+  const resetKeys = document.createElement('button');
+  resetKeys.type = 'button';
+  resetKeys.textContent = 'Default keys';
+  resetKeys.addEventListener('click', () => { settings.set('keys', {}); refresh(); });
+  form.append(resetKeys);
+
   function refresh() {
-    for (const [key, { input, value, meta }] of Object.entries(controls)) {
+    for (const [action, b] of Object.entries(keyButtons)) b.textContent = bound(action);
+    for (const [key, { input: control, value, meta }] of Object.entries(controls)) {
       const v = settings.values[key];
-      if (input.type === 'checkbox') input.checked = v;
-      else input.value = v;
+      if (control.type === 'checkbox') control.checked = v;
+      else control.value = v;
       if (value) value.textContent = meta.format ? meta.format(v) : v;
     }
   }

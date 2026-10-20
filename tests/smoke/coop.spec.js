@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 test.use({ viewport: { width: 800, height: 450 } });
 test.beforeEach(async ({ context }) => {
   await context.addInitScript(() => {
-    localStorage.setItem('fireteam.settings', JSON.stringify({ version: 1, values: { quality: 'low' } }));
+    localStorage.setItem('fireteam.settings', JSON.stringify({ version: 1, values: { quality: 'low', autoQuality: false } }));
   });
 });
 

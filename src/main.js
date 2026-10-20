@@ -31,6 +31,8 @@ import { initPhysics } from './world/physics.js';
 import { createLoop } from './core/loop.js';
 import { createInput } from './core/input.js';
 import { createSettings } from './core/settings.js';
+import { createQualityGovernor } from './core/perf.js';
+import { createTouchControls } from './ui/touch.js';
 import { createStateMachine } from './core/fsm.js';
 import { events as appEvents } from './core/events.js';
 import { createRenderer } from './render/renderer.js';
@@ -89,7 +91,8 @@ function pickMap() {
 
 async function boot() {
   const settings = createSettings();
-  const menus = createMenus(settings);
+  // (The input is made below; rebinding only needs it once someone clicks.)
+  const menus = createMenus(settings, { captureNext: (fn) => input.captureNext(fn) });
   const audio = createAudio({ settings: settings.values });
   menus.setLoading(0.1, 'Loading the physics engine…');
   await initPhysics();
@@ -110,6 +113,10 @@ async function boot() {
 
   let mission = null; // the map being played (src/mission.js)
   let atNight = false; // the title screen's Day/Night switch, for missions
+  const governor = createQualityGovernor();
+  const touch = matchMedia('(pointer: coarse)').matches || params.has('touch')
+    ? createTouchControls({ input, onPause: () => flow.go('paused') })
+    : null;
   const loop = createLoop({
     update(dt) {
       mission?.update(dt, flow.is('playing'));
@@ -119,6 +126,14 @@ async function boot() {
       document.body.classList.toggle('pad', input.device === 'pad'); // menus show the focus clearly
       if (mission) {
         mission.render(alpha, dt, flow.is('playing'));
+        // Automatic quality (core/perf.js): only judged while playing, never in menus.
+        if (settings.values.autoQuality && flow.is('playing')) {
+          const lower = governor.update(dt, loop.stats.fps, settings.values.quality);
+          if (lower) {
+            settings.set('quality', lower);
+            mission.hud.toast?.(`Graphics quality lowered to ${lower} to keep the game smooth (Settings)`, 4);
+          }
+        } else governor.reset();
         audio.update(view.camera);
       }
       if (voice) {
@@ -152,6 +167,7 @@ async function boot() {
       mission?.hud.show(false);
       menus.only(screen);
       document.body.classList.remove('playing');
+      touch?.show(false);
       after();
     },
   });
@@ -168,6 +184,7 @@ async function boot() {
         menus.only();
         mission?.hud.show(true);
         document.body.classList.add('playing');
+        touch?.show(true);
       },
     },
     paused: {
@@ -575,8 +592,20 @@ async function boot() {
     if (key === 'quality') view.applyQuality(value);
     if (key === 'masterVolume' || key === 'sfxVolume') audio.applyVolumes();
     if (key === 'difficulty') mission?.setDifficulty(value);
+    if (key === 'uiVolume') audio.applyVolumes();
+    if (key === 'keys') input.applyKeys(value);
+    if (key === 'hudScale' || key === 'showHud' || key === 'subtitles') applyHudSettings();
   });
+  // The HUD's size, whether it's shown, and subtitles: page styles only (src/ui/style.css).
+  function applyHudSettings() {
+    const hudEl = document.getElementById('hud');
+    hudEl.style.setProperty('--hud-scale', settings.values.hudScale);
+    document.body.classList.toggle('no-hud', !settings.values.showHud);
+    document.body.classList.toggle('no-subs', !settings.values.subtitles);
+  }
+  applyHudSettings();
 
+  // Touch screens get on-screen controls (ui/touch.js); ?touch forces them on for testing.
   if (matchMedia('(pointer: coarse)').matches) document.getElementById('touchNote').hidden = false;
 
   await openMap(pickMap());
