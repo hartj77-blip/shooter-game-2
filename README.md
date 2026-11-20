@@ -181,3 +181,7 @@ What could come next (version 2) is listed in [DESIGN.md](docs/DESIGN.md) under 
 ## Credits
 
 Third-party libraries, fonts, sounds, models and textures are listed with their licences in [CREDITS.md](CREDITS.md).
+
+## License
+
+The game's own code is MIT, see [LICENSE](LICENSE). Third-party libraries and assets keep their own licences, listed in [CREDITS.md](CREDITS.md).
