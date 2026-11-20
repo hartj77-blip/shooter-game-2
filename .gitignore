@@ -3,3 +3,9 @@ test-results/
 playwright-report/
 .DS_Store
 .texture-cache/
+
+# OS and editor files
+Thumbs.db
+.vscode/
+.idea/
+*.swp
